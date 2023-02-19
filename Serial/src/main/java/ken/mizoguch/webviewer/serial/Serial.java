@@ -315,6 +315,17 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
 
     /**
      *
+     * @return
+     */
+    public Boolean isRTS() {
+        if (owner_) {
+            return port_.isRTS();
+        }
+        return null;
+    }
+
+    /**
+     *
      * @param state
      */
     public void setRTS(boolean state) {
@@ -363,17 +374,6 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
     public Boolean isRI() {
         if (owner_) {
             return port_.isRI();
-        }
-        return null;
-    }
-
-    /**
-     *
-     * @return
-     */
-    public Boolean isRTS() {
-        if (owner_) {
-            return port_.isRTS();
         }
         return null;
     }
