@@ -1,8 +1,14 @@
 # WebPlugins OnlineArt
-## Overview 概要
+## Overview
+
+## 概要
+
  * Serial protocol for data exchange. 
- データ交換のためのシリアルプロトコル
-## Functions 関数
+ * データ交換のためのシリアルプロトコル
+## Functions
+
+## 関数
+
  * void licenses();
  * void setNotifyReceiveRequest(String func);
  * void setNotifyReceiveResponse(String func);
@@ -51,9 +57,12 @@
  * long getSendWaitTime();
  * long getSendDelayTime();
  * long getOneCycleTime();
-## Usage 使い方
+## Usage
+
+## 使い方
+
  * Run with Javascript 
- Javascriptで実行する  
+ * Javascriptで実行する  
 
 e.g.  
 ```

@@ -1,8 +1,14 @@
 # WebPlugins Serial
-## Overview 概要
+## Overview
+
+## 概要
+
  * Serial control. 
- シリアル制御
-## Functions 関数
+ * シリアル制御
+## Functions
+
+## 関数
+
  * void serial.licenses()
  * SerialPort serial.getSerialPort()
  * String serial.getPortNames()
@@ -39,9 +45,12 @@
  * Boolean serial.write(String text) throws IOException
  * Boolean serial.isOwned()
  * void serial.close()
-## Usage 使い方
+## Usage
+
+## 使い方
+
  * Run with Javascript 
- Javascriptで実行する  
+ * Javascriptで実行する  
 
 e.g.  
 ```
