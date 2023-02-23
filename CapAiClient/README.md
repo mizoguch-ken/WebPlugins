@@ -4,7 +4,7 @@
 ## 概要
 
  * Plug-in for communication with CapAi. (CAP-AI System is a product of Sekisui Jushi CAP-AI System Co.,Ltd.)
- * CapAiとの通信のためのプラグイン(CAP-AI Systemは積水樹脂キャップアイシステム株式会社の製品です)
+ * CapAiとの通信のためのプラグイン (CAP-AI Systemは積水樹脂キャップアイシステム株式会社の製品です)
 ## Functions
 
 ## 関数
@@ -46,10 +46,10 @@
 
 ## 使い方
 
- * Run with Javascript 
- * Javascriptで実行する  
+ * Run with Javascript
+ * Javascriptで実行する
 
-e.g.  
+e.g.
 ```
 if(!capaiclient.isLinkBoxClientRunning()) {
   capaiclient.setLinkBoxClientConfig('192.168.10.51', 30000);

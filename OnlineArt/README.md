@@ -3,7 +3,7 @@
 
 ## 概要
 
- * Serial protocol for data exchange. 
+ * Serial protocol for data exchange.
  * データ交換のためのシリアルプロトコル
 ## Functions
 
@@ -61,10 +61,10 @@
 
 ## 使い方
 
- * Run with Javascript 
- * Javascriptで実行する  
+ * Run with Javascript
+ * Javascriptで実行する
 
-e.g.  
+e.g.
 ```
 serial.open('COM1', '115200', '8', '1', 'EVEN');
 onlineArt.setSerialPort(serial.getSerialPort());

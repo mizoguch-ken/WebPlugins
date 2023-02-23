@@ -3,7 +3,7 @@
 
 ## 概要
 
- * Serial control. 
+ * Serial control.
  * シリアル制御
 ## Functions
 
@@ -49,10 +49,10 @@
 
 ## 使い方
 
- * Run with Javascript 
- * Javascriptで実行する  
+ * Run with Javascript
+ * Javascriptで実行する
 
-e.g.  
+e.g.
 ```
 var data = '';
 serial.open('COM1', 115200, 8, 1, 'EVEN');

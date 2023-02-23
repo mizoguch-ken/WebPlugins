@@ -3,7 +3,7 @@
 
 ## 概要
 
- * onnect to the database and execute SQL. 
+ * onnect to the database and execute SQL.
  * データベースへの接続し、SQLの実行
 ## Functions
 
@@ -17,10 +17,10 @@
 
 ## 使い方
 
- * Run with Javascript 
- * Javascriptで実行する  
+ * Run with Javascript
+ * Javascriptで実行する
 
-e.g.  
+e.g.
 ```
 db.connect('./web/postgresql.jar', 'jdbc:postgresql://localhost:5432/dbname', 'user', 'pass');
 var result = db.query('select id from tbl');
@@ -44,4 +44,3 @@ if (result) {
 ※If you get the error 'Non supported character set (add orai18n.jar in your classpath)',put orai18n.jar in web/plugins/lib folder
 
 ※'サポートされていない文字セットです(orai18n.jarをクラスパスに追加してください)'のエラーが出るなら、orai18n.jar を web/plugins/lib フォルダに入れてください
-

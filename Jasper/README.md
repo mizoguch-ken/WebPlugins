@@ -3,7 +3,7 @@
 
 ## 概要
 
- * Use JasperReports Library to perform printing, PDF output, etc. 
+ * Use JasperReports Library to perform printing, PDF output, etc.
  * JasperReports Libraryを使用して、印刷、PDF出力などを実行します。
 ## Functions
 
@@ -25,15 +25,15 @@
 
 ## 使い方
 
- * Run with Javascript 
- 
- * Javascriptで実行する  
- 
+ * Run with Javascript
+
+ * Javascriptで実行する
+
  * To add fonts, create a font file with the name jasperfonts.jar and put it in web/plugins/lib folder
 
  * フォントを追加する場合は、 jasperfonts.jar の名前でフォントファイルを作成し web/plugins/lib フォルダに入れてください
 
-e.g.  
+e.g.
 ```
 jasper.jrxml('path/to/file.jrxml');
 jasper.setParameters(JSON.stringify([{PARAM_NAME: PARAM_DATA}]));

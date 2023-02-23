@@ -32,9 +32,9 @@
 ## 使い方
 
  * Run with Javascript
- * Javascriptで実行する  
+ * Javascriptで実行する
 
-e.g.  
+e.g.
 ```
 ftp.readAsText('/path/to/file', 'UTF-8');
 ```

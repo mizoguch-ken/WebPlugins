@@ -3,7 +3,7 @@
 
 ## 概要
 
- * File operation.  
+ * File operation.
  * ファイル操作
 ## Functions
 
@@ -37,10 +37,10 @@
 
 ## 使い方
 
- * Run with Javascript  
- * Javascriptで実行する  
+ * Run with Javascript
+ * Javascriptで実行する
 
-e.g.  
+e.g.
 ```
 file.readAsText('/path/to/file', 'UTF-8');
 ```
