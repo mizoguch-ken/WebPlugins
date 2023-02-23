@@ -1,6 +1,6 @@
 # WebPlugins OnlineArt
 ## Overview 概要
- * Serial protocol for data exchange.  
+ * Serial protocol for data exchange. 
  データ交換のためのシリアルプロトコル
 ## Functions 関数
  * void licenses();
@@ -52,7 +52,7 @@
  * long getSendDelayTime();
  * long getOneCycleTime();
 ## Usage 使い方
- * Run with Javascript  
+ * Run with Javascript 
  Javascriptで実行する  
 
 e.g.  

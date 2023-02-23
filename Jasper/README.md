@@ -1,6 +1,6 @@
 # WebPlugins Jasper
 ## Overview 概要
- * Use JasperReports Library to perform printing, PDF output, etc.  
+ * Use JasperReports Library to perform printing, PDF output, etc. 
  JasperReports Libraryを使用して、印刷、PDF出力などを実行します。
 ## Functions 関数
  * void jasper(String path);
@@ -16,7 +16,7 @@
  * void html(String path);
  * void xml(String path);
 ## Usage 使い方
- * Run with Javascript  
+ * Run with Javascript 
  Javascriptで実行する  
 
  * To add fonts, create a font file with the name jasperfonts.jar and put it in web/plugins/lib folder

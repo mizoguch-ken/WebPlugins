@@ -1,6 +1,6 @@
 # WebPlugins Serial
 ## Overview 概要
- * Serial control.  
+ * Serial control. 
  シリアル制御
 ## Functions 関数
  * void serial.licenses()
@@ -40,7 +40,7 @@
  * Boolean serial.isOwned()
  * void serial.close()
 ## Usage 使い方
- * Run with Javascript  
+ * Run with Javascript 
  Javascriptで実行する  
 
 e.g.  
