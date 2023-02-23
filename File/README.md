@@ -9,30 +9,30 @@
 
 ## 関数
 
- * void licenses();
- * String getNewLineCharacter();
- * void setNewLineCharacter(String c);
- * Boolean createNewFile(String path);
- * Boolean exists(String path);
- * String ls();
- * String mv(String src, String dst);
- * String cd(String path);
- * String touch(String path, long time);
- * String mkdir(String path);
- * Boolean rm(String path);
- * Long lastModifiedDate(String path);
- * String name(String path);
- * String path(String path);
- * String type(String path);
- * Long size(String path);
- * String openDialog(String title, String description, String extensions);
- * String saveDialog(String title, String description, String extensions);
- * String readAsText(String path, String charset);
- * Boolean writeAsText(String path, String text, String charset);
- * Boolean reader(String path, String charset);
- * String readerReadLine();
- * Boolean writer(String path, String charset);
- * Boolean writerWriteLine(String text);
+ * void file.licenses()
+ * String file.getNewLineCharacter()
+ * void file.setNewLineCharacter(String c)
+ * Boolean file.createNewFile(String path)
+ * Boolean file.exists(String path)
+ * String file.ls()
+ * String file.mv(String src, String dst)
+ * String file.cd(String path)
+ * String file.touch(String path, long time)
+ * String file.mkdir(String path)
+ * Boolean file.rm(String path)
+ * Long file.lastModifiedDate(String path)
+ * String file.name(String path)
+ * String file.path(String path)
+ * String file.type(String path)
+ * Long file.size(String path)
+ * String file.openDialog(String title, String description, String extensions)
+ * String file.saveDialog(String title, String description, String extensions)
+ * String file.readAsText(String path, String charset)
+ * Boolean file.writeAsText(String path, String text, String charset)
+ * Boolean file.reader(String path, String charset)
+ * String file.readerReadLine()
+ * Boolean file.writer(String path, String charset)
+ * Boolean file.writerWriteLine(String text)
 ## Usage
 
 ## 使い方

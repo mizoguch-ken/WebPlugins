@@ -9,39 +9,39 @@
 
 ## 関数
 
- * void void licenses();
- * void setNotifyClientStart(String func);
- * void setNotifyClientStop(String func);
- * void setNotifyClientRequest(String func);
- * void setNotifyClientResponse(String func);
- * void setNotifyClientError(String func);
- * Boolean isLinkBoxClientRunning();
- * Boolean setLinkBoxClientConfig(String address, int timeout);
- * Boolean openLinkBoxClient();
- * Boolean closeLinkBoxClient();
- * String getLocalAddress();
- * Integer getConnectionPort();
- * Boolean portClose(int port);
- * Boolean getPortInfo(int port);
- * Boolean initAK();
- * Boolean mnt(int ch);
- * Boolean addrAK(int unit);
- * Boolean setAutoATT();
- * Boolean clearAutoATT();
- * Boolean setL1(int accNumber, String normalDirection, String normalLed, String normalSeg, String normalBuz, String answerDirection, String answerLed, String answerSeg, String answerBuz, String jsonElement);
- * Boolean getAK();
- * Boolean startDev(String jsonElement);
- * Boolean demoAK(int unit, String view);
- * Boolean clearAK(String jsonElement);
- * Boolean lock(int unit);
- * Boolean unLock(int unit);
- * Boolean getLock(int unit);
- * Boolean clearLock(int unit);
- * Boolean getErrorCode();
- * Boolean clearErrorCode();
- * Boolean setIPAddr(String address, String mask, String gateway);
- * Boolean setHostAddr(String jsonElement);
- * Boolean reboot();
+ * void void capaiclient.licenses()
+ * void capaiclient.setNotifyClientStart(String func)
+ * void capaiclient.setNotifyClientStop(String func)
+ * void capaiclient.setNotifyClientRequest(String func)
+ * void capaiclient.setNotifyClientResponse(String func)
+ * void capaiclient.setNotifyClientError(String func)
+ * Boolean capaiclient.isLinkBoxClientRunning()
+ * Boolean capaiclient.setLinkBoxClientConfig(String address, int timeout)
+ * Boolean capaiclient.openLinkBoxClient()
+ * Boolean capaiclient.closeLinkBoxClient()
+ * String capaiclient.getLocalAddress()
+ * Integer capaiclient.getConnectionPort()
+ * Boolean capaiclient.portClose(int port)
+ * Boolean capaiclient.getPortInfo(int port)
+ * Boolean capaiclient.initAK()
+ * Boolean capaiclient.mnt(int ch)
+ * Boolean capaiclient.addrAK(int unit)
+ * Boolean capaiclient.setAutoATT()
+ * Boolean capaiclient.clearAutoATT()
+ * Boolean capaiclient.setL1(int accNumber, String normalDirection, String normalLed, String normalSeg, String normalBuz, String answerDirection, String answerLed, String answerSeg, String answerBuz, String jsonElement)
+ * Boolean capaiclient.getAK()
+ * Boolean capaiclient.startDev(String jsonElement)
+ * Boolean capaiclient.demoAK(int unit, String view)
+ * Boolean capaiclient.clearAK(String jsonElement)
+ * Boolean capaiclient.lock(int unit)
+ * Boolean capaiclient.unLock(int unit)
+ * Boolean capaiclient.getLock(int unit)
+ * Boolean capaiclient.clearLock(int unit)
+ * Boolean capaiclient.getErrorCode()
+ * Boolean capaiclient.clearErrorCode()
+ * Boolean capaiclient.setIPAddr(String address, String mask, String gateway)
+ * Boolean capaiclient.setHostAddr(String jsonElement)
+ * Boolean capaiclient.reboot()
 ## Usage
 
 ## 使い方

@@ -9,24 +9,24 @@
 
 ## 関数
 
- * void licenses();
- * void charset(String charset);
- * Boolean binary();
- * Boolean ascii();
- * Boolean open(String host, String username, String password);
- * String getNewLineCharacter();
- * void setNewLineCharacter(String c);
- * Boolean passive();
- * String ls();
- * String pwd();
- * Boolean cd(String path);
- * Boolean mkdir(String path);
- * Boolean delete(String path);
- * Boolean rename(String from, String to);
- * Boolean get(String from, String to);
- * Boolean put(String from, String to);
- * String readAsText(String path, String charset);
- * Boolean writeAsText(String path, String text, String charset);
+ * void ftp.licenses()
+ * void ftp.charset(String charset)
+ * Boolean ftp.binary()
+ * Boolean ftp.ascii()
+ * Boolean ftp.open(String host, String username, String password)
+ * String ftp.getNewLineCharacter()
+ * void ftp.setNewLineCharacter(String c)
+ * Boolean ftp.passive()
+ * String ftp.ls()
+ * String ftp.pwd()
+ * Boolean ftp.cd(String path)
+ * Boolean ftp.mkdir(String path)
+ * Boolean ftp.delete(String path)
+ * Boolean ftp.rename(String from, String to)
+ * Boolean ftp.get(String from, String to)
+ * Boolean ftp.put(String from, String to)
+ * String ftp.readAsText(String path, String charset)
+ * Boolean ftp.writeAsText(String path, String text, String charset)
 ## Usage
 
 ## 使い方

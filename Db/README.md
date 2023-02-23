@@ -9,10 +9,10 @@
 
 ## 関数
 
- * Boolean connect(String libraryPath, String url, String user, String pass);
- * void close();
- * String(JSON) query(String sql);
- * Integer update(String sql);
+ * Boolean db.connect(String libraryPath, String url, String user, String pass)
+ * void db.close()
+ * String(JSON) db.query(String sql)
+ * Integer db.update(String sql)
 ## Usage
 
 ## 使い方

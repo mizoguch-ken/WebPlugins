@@ -9,18 +9,19 @@
 
 ## 関数
 
- * void jasper(String path);
- * void jrxml(String path);
- * void clearParameters();
- * void setParameters(String jsonElement);
- * void clearJsonData();
- * void setJsonData(String jsonElement);
- * void setCsvData(String csvElement);
- * String getPrintServices();
- * void print(String printerName);
- * void pdf(String path);
- * void html(String path);
- * void xml(String path);
+ * void jasper.licenses()
+ * void jasper.jasper(String path)
+ * void jasper.jrxml(String path)
+ * void jasper.clearParameters()
+ * void jasper.setParameters(String jsonElement)
+ * void jasper.clearJsonData()
+ * void jasper.setJsonData(String jsonElement)
+ * void jasper.setCsvData(String csvElement)
+ * String jasper.getPrintServices()
+ * void jasper.print(String printerName)
+ * void jasper.pdf(String path)
+ * void jasper.html(String path)
+ * void jasper.xml(String path)
 ## Usage
 
 ## 使い方

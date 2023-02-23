@@ -9,37 +9,37 @@
 
 ## 関数
 
- * void licenses();
- * void setNotifyResultImage(String func);
- * void setNotifyResultBlob(String func, String blobInfo);
- * String getWebcams();
- * String getImageType();
- * Boolean setImageType(String type);
- * String getImageSize();
- * void setImageSize(int width, int height);
- * String getImageColor();
- * void setImageColor(String color);
- * Boolean isOpened();
- * Boolean open(int deviceNumber);
- * Boolean isPlaying();
- * Boolean play();
- * Boolean stop();
- * Boolean save(String path);
- * Boolean isShowing();
- * Boolean show();
- * Boolean hide();
- * Double getWidth();
- * Double getHeight();
- * Boolean isFocused();
- * Boolean requestFocus();
- * Double getOpacity();
- * Boolean setOpacity(double value);
- * Boolean isAlwaysOnTop();
- * Boolean setAlwaysOnTop(boolean state);
- * Double getX();
- * Boolean setX(double x);
- * Double getY();
- * Boolean setY(double y);
+ * void webcam.licenses()
+ * void webcam.setNotifyResultImage(String func)
+ * void webcam.setNotifyResultBlob(String func, String blobInfo)
+ * String webcam.getWebcams()
+ * String webcam.getImageType()
+ * Boolean webcam.setImageType(String type)
+ * String webcam.getImageSize()
+ * void webcam.setImageSize(int width, int height)
+ * String webcam.getImageColor()
+ * void webcam.setImageColor(String color)
+ * Boolean webcam.isOpened()
+ * Boolean webcam.open(int deviceNumber)
+ * Boolean webcam.isPlaying()
+ * Boolean webcam.play()
+ * Boolean webcam.stop()
+ * Boolean webcam.save(String path)
+ * Boolean webcam.isShowing()
+ * Boolean webcam.show()
+ * Boolean webcam.hide()
+ * Double webcam.getWidth()
+ * Double webcam.getHeight()
+ * Boolean webcam.isFocused()
+ * Boolean webcam.requestFocus()
+ * Double webcam.getOpacity()
+ * Boolean webcam.setOpacity(double value)
+ * Boolean webcam.isAlwaysOnTop()
+ * Boolean webcam.setAlwaysOnTop(boolean state)
+ * Double webcam.getX()
+ * Boolean webcam.setX(double x)
+ * Double webcam.getY()
+ * Boolean webcam.setY(double y)
 ## Usage
 
 ## 使い方

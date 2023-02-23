@@ -9,16 +9,16 @@
 
 ## 関数
 
- * void void licenses();
- * void setNotifyServerStart(String func) ;
- * void setNotifyServerStop(String func);
- * void setNotifyServerRequest(String func);
- * void setNotifyServerResponse(String func);
- * void setNotifyServerError(String func);
- * Boolean isLinkBoxServerRunning();
- * Boolean openLinkBoxServer();
- * Boolean closeLinkBoxServer();
- * String getLocalAddress();
+ * void void capaiserver.licenses()
+ * void capaiserver.setNotifyServerStart(String func) 
+ * void capaiserver.setNotifyServerStop(String func)
+ * void capaiserver.setNotifyServerRequest(String func)
+ * void capaiserver.setNotifyServerResponse(String func)
+ * void capaiserver.setNotifyServerError(String func)
+ * Boolean capaiserver.isLinkBoxServerRunning()
+ * Boolean capaiserver.openLinkBoxServer()
+ * Boolean capaiserver.closeLinkBoxServer()
+ * String capaiserver.getLocalAddress()
 ## Usage
 
 ## 使い方
