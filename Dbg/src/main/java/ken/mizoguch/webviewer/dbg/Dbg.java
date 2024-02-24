@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.dbg;
 
 import java.io.IOException;
@@ -79,16 +74,16 @@ public class Dbg implements WebViewerPlugin {
 
         webViewer_.webEngine().executeScript(
                 "if(!document.getElementById('FirebugLite')){"
-                + "E=document['createElement'+'NS']&&document.documentElement.namespaceURI;"
-                + "E=E?document['createElement'+'NS'](E,'script'):document['createElement']('script');"
-                + "E['setAttribute']('id','FirebugLite');"
-                + "E['setAttribute']('src','" + local.resolve(firebugBaseDir).resolve(firebugBuildDir).toUri() + "' + 'firebug-lite-beta.js'+'#startOpened');"
-                + "E['setAttribute']('FirebugLite','4');"
-                + "(document['getElementsByTagName']('head')[0]||document['getElementsByTagName']('body')[0]).appendChild(E);"
-                + "E=new Image;"
-                + "E['setAttribute']('src','" + local.resolve(firebugBaseDir).toUri() + "'+'#startOpened');"
-                + "}"
-        );
+                        + "E=document['createElement'+'NS']&&document.documentElement.namespaceURI;"
+                        + "E=E?document['createElement'+'NS'](E,'script'):document['createElement']('script');"
+                        + "E['setAttribute']('id','FirebugLite');"
+                        + "E['setAttribute']('src','" + local.resolve(firebugBaseDir).resolve(firebugBuildDir).toUri()
+                        + "' + 'firebug-lite-beta.js'+'#startOpened');"
+                        + "E['setAttribute']('FirebugLite','4');"
+                        + "(document['getElementsByTagName']('head')[0]||document['getElementsByTagName']('body')[0]).appendChild(E);"
+                        + "E=new Image;"
+                        + "E['setAttribute']('src','" + local.resolve(firebugBaseDir).toUri() + "'+'#startOpened');"
+                        + "}");
     }
 
     /**

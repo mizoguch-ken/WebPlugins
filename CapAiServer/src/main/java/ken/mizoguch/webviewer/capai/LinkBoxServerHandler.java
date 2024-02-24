@@ -1,7 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.capai;
 
 import io.netty.buffer.ByteBuf;
@@ -50,7 +46,7 @@ public final class LinkBoxServerHandler extends ChannelHandlerAdapter {
                         buffer.delete(0, buffer.length());
                         break;
                     default:
-                        buffer.append(new String(new byte[]{data}, "US-ASCII"));
+                        buffer.append(new String(new byte[] { data }, "US-ASCII"));
                         break;
                 }
             }

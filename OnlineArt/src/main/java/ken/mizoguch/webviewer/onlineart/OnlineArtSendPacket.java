@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.onlineart;
 
 import java.io.UnsupportedEncodingException;
@@ -159,7 +154,8 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
      * @param maxRegisterNumber
      * @param connectionUnits
      */
-    public void makeSynchronizeRequest(int source, int maxUnitNumber, int baseTime, int delayTime, int retryNumber, int maxRegisterNumber, int connectionUnits) {
+    public void makeSynchronizeRequest(int source, int maxUnitNumber, int baseTime, int delayTime, int retryNumber,
+            int maxRegisterNumber, int connectionUnits) {
         isDivided_ = false;
 
         setDestination(DESTINATION_ALL);
@@ -201,7 +197,8 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
      * @param addressOffset
      * @param registerNumber
      */
-    public void makeReadRelayRequest(int destination, int source, int startAddress, int addressOffset, int registerNumber) {
+    public void makeReadRelayRequest(int destination, int source, int startAddress, int addressOffset,
+            int registerNumber) {
         isDivided_ = false;
 
         setDestination(destination);
@@ -223,7 +220,8 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
      * @param addressOffset
      * @param registerNumber
      */
-    public void makeReadRegisterRequest(int destination, int source, int startAddress, int addressOffset, int registerNumber) {
+    public void makeReadRegisterRequest(int destination, int source, int startAddress, int addressOffset,
+            int registerNumber) {
         isDivided_ = false;
 
         setDestination(destination);
@@ -246,7 +244,8 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
      * @param registerNumber
      * @param relay
      */
-    public void makeWriteRelayRequest(int destination, int source, int startAddress, int addressOffset, int registerNumber, int[] relay) {
+    public void makeWriteRelayRequest(int destination, int source, int startAddress, int addressOffset,
+            int registerNumber, int[] relay) {
         int index, data, count, i;
 
         isDivided_ = false;
@@ -296,7 +295,8 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
      * @param registerNumber
      * @param register
      */
-    public void makeWriteRegisterRequest(int destination, int source, int startAddress, int addressOffset, int registerNumber, int[] register) {
+    public void makeWriteRegisterRequest(int destination, int source, int startAddress, int addressOffset,
+            int registerNumber, int[] register) {
         int index, count, i;
 
         isDivided_ = false;
@@ -337,7 +337,8 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
      * @param registerNumber
      * @param relay
      */
-    public void makeReadRelayResponse(int destination, int source, int startAddress, int addressOffset, int registerNumber, int[] relay) {
+    public void makeReadRelayResponse(int destination, int source, int startAddress, int addressOffset,
+            int registerNumber, int[] relay) {
         int index, data, count, i;
 
         isDivided_ = false;
@@ -387,7 +388,8 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
      * @param registerNumber
      * @param register
      */
-    public void makeReadRegisterResponse(int destination, int source, int startAddress, int addressOffset, int registerNumber, int[] register) {
+    public void makeReadRegisterResponse(int destination, int source, int startAddress, int addressOffset,
+            int registerNumber, int[] register) {
         int index, count, i;
 
         isDivided_ = false;
@@ -427,7 +429,8 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
      * @param addressOffset
      * @param registerNumber
      */
-    public void makeWriteRelayResponse(int destination, int source, int startAddress, int addressOffset, int registerNumber) {
+    public void makeWriteRelayResponse(int destination, int source, int startAddress, int addressOffset,
+            int registerNumber) {
         isDivided_ = false;
 
         setDestination(destination);
@@ -449,7 +452,8 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
      * @param addressOffset
      * @param registerNumber
      */
-    public void makeWriteRegisterResponse(int destination, int source, int startAddress, int addressOffset, int registerNumber) {
+    public void makeWriteRegisterResponse(int destination, int source, int startAddress, int addressOffset,
+            int registerNumber) {
         isDivided_ = false;
 
         setDestination(destination);
@@ -473,16 +477,20 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
             if (getDataType() == DATATYPE_REQUEST) {
                 switch (getCommand()) {
                     case COMMAND_READ_RELAY:
-                        makeReadRelayRequest(getDestination(), getSource(), dividedStartAddress_, dividedAddressOffset_, dividedRegisterNumber_);
+                        makeReadRelayRequest(getDestination(), getSource(), dividedStartAddress_, dividedAddressOffset_,
+                                dividedRegisterNumber_);
                         break;
                     case COMMAND_READ_REGISTER:
-                        makeReadRegisterRequest(getDestination(), getSource(), dividedStartAddress_, dividedAddressOffset_, dividedRegisterNumber_);
+                        makeReadRegisterRequest(getDestination(), getSource(), dividedStartAddress_,
+                                dividedAddressOffset_, dividedRegisterNumber_);
                         break;
                     case COMMAND_WRITE_RELAY:
-                        makeWriteRelayRequest(getDestination(), getSource(), dividedStartAddress_, dividedAddressOffset_, dividedRegisterNumber_, relay);
+                        makeWriteRelayRequest(getDestination(), getSource(), dividedStartAddress_,
+                                dividedAddressOffset_, dividedRegisterNumber_, relay);
                         break;
                     case COMMAND_WRITE_REGISTER:
-                        makeWriteRegisterRequest(getDestination(), getSource(), dividedStartAddress_, dividedAddressOffset_, dividedRegisterNumber_, register);
+                        makeWriteRegisterRequest(getDestination(), getSource(), dividedStartAddress_,
+                                dividedAddressOffset_, dividedRegisterNumber_, register);
                         break;
                     case COMMAND_STATUS:
                         makeStatusRequest(getSource());
@@ -524,7 +532,8 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
 
     private int setBuffer(int msb, int lsb, int[] buffer, int index) {
         if (0 <= index) {
-            if (((msb == ESCAPE_CODE_7D) && (lsb == ESCAPE_CODE_7D)) || ((msb == END_CODE_CR) && (lsb == END_CODE_LF)) || ((index > 0) && ((buffer[index - 1] == END_CODE_CR) && (msb == END_CODE_LF)))) {
+            if (((msb == ESCAPE_CODE_7D) && (lsb == ESCAPE_CODE_7D)) || ((msb == END_CODE_CR) && (lsb == END_CODE_LF))
+                    || ((index > 0) && ((buffer[index - 1] == END_CODE_CR) && (msb == END_CODE_LF)))) {
                 if ((index + 3) < buffer.length) {
                     buffer[index] = ESCAPE_CODE_7D;
                     buffer[index + 1] = ESCAPE_CODE_7D;
@@ -543,7 +552,8 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
 
     private int setBuffer(int data, int[] buffer, int index) {
         if (0 <= index) {
-            if ((data == ESCAPE_CODE) || (data == END_CODE) || ((index > 0) && ((buffer[index - 1] == END_CODE_CR) && (((data >>> 8) & 0xff) == END_CODE_LF)))) {
+            if ((data == ESCAPE_CODE) || (data == END_CODE) || ((index > 0)
+                    && ((buffer[index - 1] == END_CODE_CR) && (((data >>> 8) & 0xff) == END_CODE_LF)))) {
                 if ((index + 3) < buffer.length) {
                     buffer[index] = ESCAPE_CODE_7D;
                     buffer[index + 1] = ESCAPE_CODE_7D;

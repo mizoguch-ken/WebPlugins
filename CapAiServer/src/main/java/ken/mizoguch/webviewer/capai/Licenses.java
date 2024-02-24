@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.capai;
 
 import javafx.scene.control.Alert;
@@ -14,8 +9,7 @@ import javafx.scene.control.TextArea;
  */
 public class Licenses {
 
-    private final String LICENSES
-            = "*** Third Party Licenses ***\n"
+    private final String LICENSES = "*** Third Party Licenses ***\n"
             + "\n"
             + "* Gson\n"
             + "Copyright 2008 Google Inc.\n"

@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.serial;
 
 import com.google.gson.Gson;
@@ -49,7 +44,8 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
     private Worker.State state_;
     private SerialPort port_;
     private boolean owner_;
-    private String funcDataAvailable_, funcOutputEmpty_, funcBreakInterrupt_, funcCarrierDetect_, funcCTS_, funcDSR_, funcFramingError_, funcOverrunError_, funcParityError_, funcRingIndicator_;
+    private String funcDataAvailable_, funcOutputEmpty_, funcBreakInterrupt_, funcCarrierDetect_, funcCTS_, funcDSR_,
+            funcFramingError_, funcOverrunError_, funcParityError_, funcRingIndicator_;
     private BlockingQueue<Integer> data_;
     private BufferedReader bufferedReader_;
     private BufferedWriter bufferedWriter_;
@@ -145,22 +141,25 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
         boolean portOwned;
 
         List<String> retPortName = new ArrayList<>();
-        Enumeration enm = CommPortIdentifier.getPortIdentifiers();
+        Enumeration<?> enm = CommPortIdentifier.getPortIdentifiers();
         CommPortIdentifier cpi;
 
         while (enm.hasMoreElements()) {
-            // get port of list
-            cpi = (CommPortIdentifier) enm.nextElement();
+            Object element = enm.nextElement();
+            if (element instanceof CommPortIdentifier) {
+                // get port of list
+                cpi = (CommPortIdentifier) element;
 
-            // get port name
-            portName = cpi.getName();
+                // get port name
+                portName = cpi.getName();
 
-            // true = used / false = unused
-            portOwned = cpi.isCurrentlyOwned();
+                // true = used / false = unused
+                portOwned = cpi.isCurrentlyOwned();
 
-            // add port
-            if (!portOwned) {
-                retPortName.add(portName);
+                // add port
+                if (!portOwned) {
+                    retPortName.add(portName);
+                }
             }
         }
         return gson_.toJson(retPortName);
@@ -251,7 +250,8 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
      * @param xonxoff_out
      * @throws UnsupportedCommOperationException
      */
-    public void setFlowControlMode(boolean rtscts_in, boolean rtscts_out, boolean xonxoff_in, boolean xonxoff_out) throws UnsupportedCommOperationException {
+    public void setFlowControlMode(boolean rtscts_in, boolean rtscts_out, boolean xonxoff_in, boolean xonxoff_out)
+            throws UnsupportedCommOperationException {
         if (owner_) {
             int flowcontrol = SerialPort.FLOWCONTROL_NONE;
 
@@ -509,7 +509,9 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
      * @throws gnu.io.PortInUseException
      * @throws gnu.io.UnsupportedCommOperationException
      */
-    public Boolean open(String name, int baud, int databits, double stopbits, String parity) throws TooManyListenersException, IOException, NoSuchPortException, PortInUseException, UnsupportedCommOperationException {
+    public Boolean open(String name, int baud, int databits, double stopbits, String parity)
+            throws TooManyListenersException, IOException, NoSuchPortException, PortInUseException,
+            UnsupportedCommOperationException {
         if (!owner_) {
             if ((name != null) && (parity != null)) {
                 if ((!name.isEmpty()) && (!parity.isEmpty())) {
@@ -575,8 +577,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
                             param[0],
                             param[1],
                             param[2],
-                            param[3]
-                    );
+                            param[3]);
                     port_.setFlowControlMode(SerialPort.FLOWCONTROL_NONE);
                     bufferedReader_ = new BufferedReader(new InputStreamReader(port_.getInputStream(), "UTF-8"));
                     bufferedWriter_ = new BufferedWriter(new OutputStreamWriter(port_.getOutputStream(), "UTF-8"));

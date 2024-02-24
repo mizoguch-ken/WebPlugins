@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.capai;
 
 import com.google.gson.Gson;
@@ -73,7 +68,8 @@ public class CapAiServer implements WebViewerPlugin, LinkBoxServerListener {
      */
     public void setNotifyServerStart(String func) {
         funcServerStart_ = func;
-        if ((funcServerStart_ == null) && (funcServerStop_ == null) && (funcServerRequest_ == null) && (funcServerResponse_ == null) && (funcServerError_ == null)) {
+        if ((funcServerStart_ == null) && (funcServerStop_ == null) && (funcServerRequest_ == null)
+                && (funcServerResponse_ == null) && (funcServerError_ == null)) {
             linkBoxServer_.removeLinkBoxServerListener(this);
         } else {
             linkBoxServer_.addLinkBoxServerListener(this);
@@ -86,7 +82,8 @@ public class CapAiServer implements WebViewerPlugin, LinkBoxServerListener {
      */
     public void setNotifyServerStop(String func) {
         funcServerStop_ = func;
-        if ((funcServerStart_ == null) && (funcServerStop_ == null) && (funcServerRequest_ == null) && (funcServerResponse_ == null) && (funcServerError_ == null)) {
+        if ((funcServerStart_ == null) && (funcServerStop_ == null) && (funcServerRequest_ == null)
+                && (funcServerResponse_ == null) && (funcServerError_ == null)) {
             linkBoxServer_.removeLinkBoxServerListener(this);
         } else {
             linkBoxServer_.addLinkBoxServerListener(this);
@@ -99,7 +96,8 @@ public class CapAiServer implements WebViewerPlugin, LinkBoxServerListener {
      */
     public void setNotifyServerRequest(String func) {
         funcServerRequest_ = func;
-        if ((funcServerStart_ == null) && (funcServerStop_ == null) && (funcServerRequest_ == null) && (funcServerResponse_ == null) && (funcServerError_ == null)) {
+        if ((funcServerStart_ == null) && (funcServerStop_ == null) && (funcServerRequest_ == null)
+                && (funcServerResponse_ == null) && (funcServerError_ == null)) {
             linkBoxServer_.removeLinkBoxServerListener(this);
         } else {
             linkBoxServer_.addLinkBoxServerListener(this);
@@ -112,7 +110,8 @@ public class CapAiServer implements WebViewerPlugin, LinkBoxServerListener {
      */
     public void setNotifyServerResponse(String func) {
         funcServerResponse_ = func;
-        if ((funcServerStart_ == null) && (funcServerStop_ == null) && (funcServerRequest_ == null) && (funcServerResponse_ == null) && (funcServerError_ == null)) {
+        if ((funcServerStart_ == null) && (funcServerStop_ == null) && (funcServerRequest_ == null)
+                && (funcServerResponse_ == null) && (funcServerError_ == null)) {
             linkBoxServer_.removeLinkBoxServerListener(this);
         } else {
             linkBoxServer_.addLinkBoxServerListener(this);
@@ -125,7 +124,8 @@ public class CapAiServer implements WebViewerPlugin, LinkBoxServerListener {
      */
     public void setNotifyServerError(String func) {
         funcServerError_ = func;
-        if ((funcServerStart_ == null) && (funcServerStop_ == null) && (funcServerRequest_ == null) && (funcServerResponse_ == null) && (funcServerError_ == null)) {
+        if ((funcServerStart_ == null) && (funcServerStop_ == null) && (funcServerRequest_ == null)
+                && (funcServerResponse_ == null) && (funcServerError_ == null)) {
             linkBoxServer_.removeLinkBoxServerListener(this);
         } else {
             linkBoxServer_.addLinkBoxServerListener(this);
@@ -173,7 +173,8 @@ public class CapAiServer implements WebViewerPlugin, LinkBoxServerListener {
         JsonArray localAddress = new JsonArray();
 
         try {
-            Enumeration enumMip, enumIa;
+            Enumeration<NetworkInterface> enumMip;
+            Enumeration<InetAddress> enumIa;
             NetworkInterface ni;
             InetAddress ia;
             StringBuilder address;
@@ -235,7 +236,8 @@ public class CapAiServer implements WebViewerPlugin, LinkBoxServerListener {
     }
 
     @Override
-    public void requestLinkBoxServer(String command, String request, Integer errorCode, Integer unitNumber, Integer status, String view) {
+    public void requestLinkBoxServer(String command, String request, Integer errorCode, Integer unitNumber,
+            Integer status, String view) {
         if (funcServerRequest_ != null) {
             JsonObject jsonElement = new JsonObject();
 

@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.capai;
 
 import java.util.EventListener;
@@ -41,7 +36,8 @@ public interface LinkBoxClientListener extends EventListener {
      * @param ipAddress1
      * @param status
      */
-    public void responseLinkBoxClient(String command, String response, Integer errorCode, String ipAddress, Integer unitNumber, Integer portNumber, Integer ipAddress1, String status);
+    public void responseLinkBoxClient(String command, String response, Integer errorCode, String ipAddress,
+            Integer unitNumber, Integer portNumber, Integer ipAddress1, String status);
 
     /**
      *

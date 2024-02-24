@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.ftp;
 
 import com.google.gson.Gson;
@@ -314,7 +309,8 @@ public class Ftp implements WebViewerPlugin {
             if (charset == null) {
                 charset = "UTF-8";
             }
-            try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(ftpClient_.retrieveFileStream(path), charset))) {
+            try (BufferedReader bufferedReader = new BufferedReader(
+                    new InputStreamReader(ftpClient_.retrieveFileStream(path), charset))) {
                 StringBuilder stringBuilder = new StringBuilder();
                 String line;
                 while ((line = bufferedReader.readLine()) != null) {
@@ -344,7 +340,8 @@ public class Ftp implements WebViewerPlugin {
             if (charset == null) {
                 charset = "UTF-8";
             }
-            try (OutputStreamWriter outputStreamWriter = new OutputStreamWriter(ftpClient_.storeFileStream(path), charset);
+            try (OutputStreamWriter outputStreamWriter = new OutputStreamWriter(ftpClient_.storeFileStream(path),
+                    charset);
                     BufferedReader bufferedReader = new BufferedReader(new StringReader(text))) {
                 String line;
                 while ((line = bufferedReader.readLine()) != null) {

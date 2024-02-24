@@ -1,22 +1,14 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/Classes/module-info.java to edit this template
- */
-
 module Jasper {
     requires jdk.jsobject;
     requires java.desktop;
     requires javafx.web;
-    
+
     requires jasperreports;
     requires commons.beanutils;
     requires commons.collections;
     requires commons.digester;
     requires commons.logging;
     requires org.apache.commons.collections4;
-    requires itext;
-    requires org.bouncycastle.provider;
-    requires org.bouncycastle.util;
     requires jcommon;
     requires jfreechart;
     requires ecj;

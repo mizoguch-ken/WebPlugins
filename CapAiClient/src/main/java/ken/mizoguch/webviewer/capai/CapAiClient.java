@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.capai;
 
 import com.google.gson.Gson;
@@ -77,7 +72,8 @@ public class CapAiClient implements WebViewerPlugin, LinkBoxClientListener {
      */
     public void setNotifyClientStart(String func) {
         funcClientStart_ = func;
-        if ((funcClientStart_ == null) && (funcClientStop_ == null) && (funcClientRequest_ == null) && (funcClientResponse_ == null) && (funcClientError_ == null)) {
+        if ((funcClientStart_ == null) && (funcClientStop_ == null) && (funcClientRequest_ == null)
+                && (funcClientResponse_ == null) && (funcClientError_ == null)) {
             linkBoxClient_.removeLinkBoxClientListener(this);
         } else {
             linkBoxClient_.addLinkBoxClientListener(this);
@@ -90,7 +86,8 @@ public class CapAiClient implements WebViewerPlugin, LinkBoxClientListener {
      */
     public void setNotifyClientStop(String func) {
         funcClientStop_ = func;
-        if ((funcClientStart_ == null) && (funcClientStop_ == null) && (funcClientRequest_ == null) && (funcClientResponse_ == null) && (funcClientError_ == null)) {
+        if ((funcClientStart_ == null) && (funcClientStop_ == null) && (funcClientRequest_ == null)
+                && (funcClientResponse_ == null) && (funcClientError_ == null)) {
             linkBoxClient_.removeLinkBoxClientListener(this);
         } else {
             linkBoxClient_.addLinkBoxClientListener(this);
@@ -103,7 +100,8 @@ public class CapAiClient implements WebViewerPlugin, LinkBoxClientListener {
      */
     public void setNotifyClientRequest(String func) {
         funcClientRequest_ = func;
-        if ((funcClientStart_ == null) && (funcClientStop_ == null) && (funcClientRequest_ == null) && (funcClientResponse_ == null) && (funcClientError_ == null)) {
+        if ((funcClientStart_ == null) && (funcClientStop_ == null) && (funcClientRequest_ == null)
+                && (funcClientResponse_ == null) && (funcClientError_ == null)) {
             linkBoxClient_.removeLinkBoxClientListener(this);
         } else {
             linkBoxClient_.addLinkBoxClientListener(this);
@@ -116,7 +114,8 @@ public class CapAiClient implements WebViewerPlugin, LinkBoxClientListener {
      */
     public void setNotifyClientResponse(String func) {
         funcClientResponse_ = func;
-        if ((funcClientStart_ == null) && (funcClientStop_ == null) && (funcClientRequest_ == null) && (funcClientResponse_ == null) && (funcClientError_ == null)) {
+        if ((funcClientStart_ == null) && (funcClientStop_ == null) && (funcClientRequest_ == null)
+                && (funcClientResponse_ == null) && (funcClientError_ == null)) {
             linkBoxClient_.removeLinkBoxClientListener(this);
         } else {
             linkBoxClient_.addLinkBoxClientListener(this);
@@ -129,7 +128,8 @@ public class CapAiClient implements WebViewerPlugin, LinkBoxClientListener {
      */
     public void setNotifyClientError(String func) {
         funcClientError_ = func;
-        if ((funcClientStart_ == null) && (funcClientStop_ == null) && (funcClientRequest_ == null) && (funcClientResponse_ == null) && (funcClientError_ == null)) {
+        if ((funcClientStart_ == null) && (funcClientStop_ == null) && (funcClientRequest_ == null)
+                && (funcClientResponse_ == null) && (funcClientError_ == null)) {
             linkBoxClient_.removeLinkBoxClientListener(this);
         } else {
             linkBoxClient_.addLinkBoxClientListener(this);
@@ -198,7 +198,8 @@ public class CapAiClient implements WebViewerPlugin, LinkBoxClientListener {
         JsonArray localAddress = new JsonArray();
 
         try {
-            Enumeration enumMip, enumIa;
+            Enumeration<NetworkInterface> enumMip;
+            Enumeration<InetAddress> enumIa;
             NetworkInterface ni;
             InetAddress ia;
             StringBuilder address;
@@ -584,7 +585,8 @@ public class CapAiClient implements WebViewerPlugin, LinkBoxClientListener {
                 views.add(buff.getAsJsonObject().get("view").getAsString());
             }
 
-            return linkBoxClient_.cmdSetL1(accNum, nmlDir, nmlLed, nmlSeg, nmlBuz, ansDir, ansLed, ansSeg, ansBuz, units, views);
+            return linkBoxClient_.cmdSetL1(accNum, nmlDir, nmlLed, nmlSeg, nmlBuz, ansDir, ansLed, ansSeg, ansBuz,
+                    units, views);
         }
         return null;
     }
@@ -831,7 +833,8 @@ public class CapAiClient implements WebViewerPlugin, LinkBoxClientListener {
     }
 
     @Override
-    public void responseLinkBoxClient(String command, String response, Integer errorCode, String ipAddress, Integer unitNumber, Integer portNumber, Integer ipAddress1, String status) {
+    public void responseLinkBoxClient(String command, String response, Integer errorCode, String ipAddress,
+            Integer unitNumber, Integer portNumber, Integer ipAddress1, String status) {
         if (funcClientResponse_ != null) {
             JsonObject jsonElement = new JsonObject();
 

@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.onlineart;
 
 import com.google.gson.Gson;
@@ -126,9 +121,13 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
 
     private final EventListenerList eventListenerList_;
 
-    private int linkUnitNumber_, linkMaxUnitNumber_, linkBaseTime_, linkDelayTime_, linkRetryNumber_, linkReceiveAddressOffset_, linkSendAddressOffset_, linkMaxRegisterNumber_, linkConnectionUnits_, linkTriggerUnitNumber_;
+    private int linkUnitNumber_, linkMaxUnitNumber_, linkBaseTime_, linkDelayTime_, linkRetryNumber_,
+            linkReceiveAddressOffset_, linkSendAddressOffset_, linkMaxRegisterNumber_, linkConnectionUnits_,
+            linkTriggerUnitNumber_;
     private long linkSynchronizeTime_, linkRequestWaitTime_, linkSendWaitTime_, linkSendDelayTime_, lineOneCycleTime_;
-    private int reserveSendRequestDestination_, reserveSendRequestCommand_, reserveSendRequestStartAddress_, reserveSendRequestRegisterNumber_, reserveSendRequestReceiveAddressOffset_, reserveSendRequestSendAddressOffset_;
+    private int reserveSendRequestDestination_, reserveSendRequestCommand_, reserveSendRequestStartAddress_,
+            reserveSendRequestRegisterNumber_, reserveSendRequestReceiveAddressOffset_,
+            reserveSendRequestSendAddressOffset_;
 
     private OnlineArtReceivePacket artReceivePacket_;
     private OnlineArtSendPacket artSendMasterPacket_;
@@ -231,7 +230,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
      */
     public void setNotifyReceiveRequest(String func) {
         funcReceiveRequest_ = func;
-        if ((funcReceiveRequest_ == null) && (funcReceiveResponse_ == null) && (funcSendRequest_ == null) && (funcSendResponse_ == null) && (funcSendRetry_ == null)) {
+        if ((funcReceiveRequest_ == null) && (funcReceiveResponse_ == null) && (funcSendRequest_ == null)
+                && (funcSendResponse_ == null) && (funcSendRetry_ == null)) {
             removeOnlineArtListener(this);
         } else {
             addOnlineArtListener(this);
@@ -244,7 +244,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
      */
     public void setNotifyReceiveResponse(String func) {
         funcReceiveResponse_ = func;
-        if ((funcReceiveRequest_ == null) && (funcReceiveResponse_ == null) && (funcSendRequest_ == null) && (funcSendResponse_ == null) && (funcSendRetry_ == null)) {
+        if ((funcReceiveRequest_ == null) && (funcReceiveResponse_ == null) && (funcSendRequest_ == null)
+                && (funcSendResponse_ == null) && (funcSendRetry_ == null)) {
             removeOnlineArtListener(this);
         } else {
             addOnlineArtListener(this);
@@ -257,7 +258,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
      */
     public void setNotifySendRequest(String func) {
         funcSendRequest_ = func;
-        if ((funcReceiveRequest_ == null) && (funcReceiveResponse_ == null) && (funcSendRequest_ == null) && (funcSendResponse_ == null) && (funcSendRetry_ == null)) {
+        if ((funcReceiveRequest_ == null) && (funcReceiveResponse_ == null) && (funcSendRequest_ == null)
+                && (funcSendResponse_ == null) && (funcSendRetry_ == null)) {
             removeOnlineArtListener(this);
         } else {
             addOnlineArtListener(this);
@@ -270,7 +272,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
      */
     public void setNotifySendResponse(String func) {
         funcSendResponse_ = func;
-        if ((funcReceiveRequest_ == null) && (funcReceiveResponse_ == null) && (funcSendRequest_ == null) && (funcSendResponse_ == null) && (funcSendRetry_ == null)) {
+        if ((funcReceiveRequest_ == null) && (funcReceiveResponse_ == null) && (funcSendRequest_ == null)
+                && (funcSendResponse_ == null) && (funcSendRetry_ == null)) {
             removeOnlineArtListener(this);
         } else {
             addOnlineArtListener(this);
@@ -283,7 +286,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
      */
     public void setNotifySendRetry(String func) {
         funcSendRetry_ = func;
-        if ((funcReceiveRequest_ == null) && (funcReceiveResponse_ == null) && (funcSendRequest_ == null) && (funcSendResponse_ == null) && (funcSendRetry_ == null)) {
+        if ((funcReceiveRequest_ == null) && (funcReceiveResponse_ == null) && (funcSendRequest_ == null)
+                && (funcSendResponse_ == null) && (funcSendRetry_ == null)) {
             removeOnlineArtListener(this);
         } else {
             addOnlineArtListener(this);
@@ -548,7 +552,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
      * @param registerNumber
      * @return
      */
-    public Boolean cmdReadRelay(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset, int registerNumber) {
+    public Boolean cmdReadRelay(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset,
+            int registerNumber) {
         if (setReadRelay(destination, startAddress, receiveAddressOffset, sendAddressOffset, registerNumber)) {
             return true;
         }
@@ -565,7 +570,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
      * @param registerNumber
      * @return
      */
-    public Boolean cmdReadRegister(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset, int registerNumber) {
+    public Boolean cmdReadRegister(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset,
+            int registerNumber) {
         if (setReadRegister(destination, startAddress, receiveAddressOffset, sendAddressOffset, registerNumber)) {
             return true;
         }
@@ -582,7 +588,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
      * @param registerNumber
      * @return
      */
-    public Boolean cmdWriteRelay(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset, int registerNumber) {
+    public Boolean cmdWriteRelay(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset,
+            int registerNumber) {
         if (setWriteRelay(destination, startAddress, receiveAddressOffset, sendAddressOffset, registerNumber)) {
             return true;
         }
@@ -599,7 +606,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
      * @param registerNumber
      * @return
      */
-    public Boolean cmdWriteRegister(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset, int registerNumber) {
+    public Boolean cmdWriteRegister(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset,
+            int registerNumber) {
         if (setWriteRegister(destination, startAddress, receiveAddressOffset, sendAddressOffset, registerNumber)) {
             return true;
         }
@@ -916,7 +924,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
         return setData(data, register_, position, bit);
     }
 
-    private boolean setReadRelay(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset, int registerNumber) {
+    private boolean setReadRelay(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset,
+            int registerNumber) {
         if ((reserveSendRequestCommand_ <= 0) && !artSendRequestPacket_.isDivided()) {
             reserveSendRequestDestination_ = destination;
             reserveSendRequestCommand_ = OnlineArtPacket.COMMAND_READ_RELAY;
@@ -929,7 +938,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
         return false;
     }
 
-    private boolean setReadRegister(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset, int registerNumber) {
+    private boolean setReadRegister(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset,
+            int registerNumber) {
         if ((reserveSendRequestCommand_ <= 0) && !artSendRequestPacket_.isDivided()) {
             reserveSendRequestDestination_ = destination;
             reserveSendRequestCommand_ = OnlineArtPacket.COMMAND_READ_REGISTER;
@@ -942,7 +952,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
         return false;
     }
 
-    private boolean setWriteRelay(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset, int registerNumber) {
+    private boolean setWriteRelay(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset,
+            int registerNumber) {
         if ((reserveSendRequestCommand_ <= 0) && !artSendRequestPacket_.isDivided()) {
             reserveSendRequestDestination_ = destination;
             reserveSendRequestCommand_ = OnlineArtPacket.COMMAND_WRITE_RELAY;
@@ -955,7 +966,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
         return false;
     }
 
-    private boolean setWriteRegister(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset, int registerNumber) {
+    private boolean setWriteRegister(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset,
+            int registerNumber) {
         if ((reserveSendRequestCommand_ <= 0) && !artSendRequestPacket_.isDivided()) {
             reserveSendRequestDestination_ = destination;
             reserveSendRequestCommand_ = OnlineArtPacket.COMMAND_WRITE_REGISTER;
@@ -1035,7 +1047,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                                         if (linkUnitNumber_ == 1) {
                                             connectionUnits |= 0x0001 << (artReceivePacket_.getSource() - 1);
                                         }
-                                        if ((artReceivePacket_.getDestination() == OnlineArtPacket.DESTINATION_ALL) || (artReceivePacket_.getDestination() == linkUnitNumber_)) {
+                                        if ((artReceivePacket_.getDestination() == OnlineArtPacket.DESTINATION_ALL)
+                                                || (artReceivePacket_.getDestination() == linkUnitNumber_)) {
                                             switch (artReceivePacket_.getDataType()) {
                                                 case OnlineArtPacket.DATATYPE_REQUEST:
                                                     switch (artReceivePacket_.getCommand()) {
@@ -1048,43 +1061,76 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                                                             linkConnectionUnits_ = artReceivePacket_.getData(5);
                                                             linkSynchronizeTime_ = currentTimeNanos;
                                                             linkRequestWaitTime_ = linkBaseTime_ + linkDelayTime_;
-                                                            linkSendWaitTime_ = ((linkRetryNumber_ + 1) * (linkBaseTime_ + linkDelayTime_)) * linkUnitNumber_;
+                                                            linkSendWaitTime_ = ((linkRetryNumber_ + 1)
+                                                                    * (linkBaseTime_ + linkDelayTime_))
+                                                                    * linkUnitNumber_;
                                                             linkSendDelayTime_ = linkDelayTime_;
-                                                            lineOneCycleTime_ = ((linkRetryNumber_ + 1) * (linkBaseTime_ + linkDelayTime_)) * (linkMaxUnitNumber_ + 2);
-                                                            artSendMasterPacket_.setMaxRegisterNumber(linkMaxRegisterNumber_);
-                                                            artSendRequestPacket_.setMaxRegisterNumber(linkMaxRegisterNumber_);
+                                                            lineOneCycleTime_ = ((linkRetryNumber_ + 1)
+                                                                    * (linkBaseTime_ + linkDelayTime_))
+                                                                    * (linkMaxUnitNumber_ + 2);
+                                                            artSendMasterPacket_
+                                                                    .setMaxRegisterNumber(linkMaxRegisterNumber_);
+                                                            artSendRequestPacket_
+                                                                    .setMaxRegisterNumber(linkMaxRegisterNumber_);
                                                             artSendRequestPacket_.setSendRequest(true);
-                                                            artSendResponsePacket_.setMaxRegisterNumber(linkMaxRegisterNumber_);
+                                                            artSendResponsePacket_
+                                                                    .setMaxRegisterNumber(linkMaxRegisterNumber_);
                                                             artSendResponsePacket_.setSendRequest(false);
                                                             retryNumber = 0;
                                                             break;
                                                         case OnlineArtPacket.COMMAND_STATUS:
                                                             if (linkTriggerUnitNumber_ > 0) {
-                                                                if (artReceivePacket_.getSource() == linkTriggerUnitNumber_) {
+                                                                if (artReceivePacket_
+                                                                        .getSource() == linkTriggerUnitNumber_) {
                                                                     artSendRequestPacket_.setSendRequestTrigger(true);
                                                                 }
                                                             }
                                                             break;
                                                         case OnlineArtPacket.COMMAND_READ_RELAY:
-                                                            artSendResponsePacket_.makeReadRelayResponse(artReceivePacket_.getSource(), linkUnitNumber_, artReceivePacket_.getData(0), linkSendAddressOffset_, artReceivePacket_.getData(1), relay_);
+                                                            artSendResponsePacket_.makeReadRelayResponse(
+                                                                    artReceivePacket_.getSource(), linkUnitNumber_,
+                                                                    artReceivePacket_.getData(0),
+                                                                    linkSendAddressOffset_,
+                                                                    artReceivePacket_.getData(1), relay_);
                                                             artSendResponsePacket_.setSendRequest(true);
                                                             break;
                                                         case OnlineArtPacket.COMMAND_READ_REGISTER:
-                                                            artSendResponsePacket_.makeReadRegisterResponse(artReceivePacket_.getSource(), linkUnitNumber_, artReceivePacket_.getData(0), linkSendAddressOffset_, artReceivePacket_.getData(1), register_);
+                                                            artSendResponsePacket_.makeReadRegisterResponse(
+                                                                    artReceivePacket_.getSource(), linkUnitNumber_,
+                                                                    artReceivePacket_.getData(0),
+                                                                    linkSendAddressOffset_,
+                                                                    artReceivePacket_.getData(1), register_);
                                                             artSendResponsePacket_.setSendRequest(true);
                                                             break;
                                                         case OnlineArtPacket.COMMAND_WRITE_RELAY:
-                                                            for (i = 0, startAddress = (artReceivePacket_.getData(0) + linkReceiveAddressOffset_), registerNumber = artReceivePacket_.getData(1); i < registerNumber; i++) {
-                                                                setData(((artReceivePacket_.getData((i / 16) + 2) >>> (i % 16)) & 0x0001) == 0x0001, relay_, (startAddress + i) / 16, (startAddress + i) % 16);
+                                                            for (i = 0, startAddress = (artReceivePacket_.getData(0)
+                                                                    + linkReceiveAddressOffset_), registerNumber = artReceivePacket_
+                                                                            .getData(1); i < registerNumber; i++) {
+                                                                setData(((artReceivePacket_
+                                                                        .getData((i / 16) + 2) >>> (i % 16))
+                                                                        & 0x0001) == 0x0001, relay_,
+                                                                        (startAddress + i) / 16,
+                                                                        (startAddress + i) % 16);
                                                             }
-                                                            artSendResponsePacket_.makeWriteRelayResponse(artReceivePacket_.getSource(), linkUnitNumber_, artReceivePacket_.getData(0), linkSendAddressOffset_, artReceivePacket_.getData(1));
+                                                            artSendResponsePacket_.makeWriteRelayResponse(
+                                                                    artReceivePacket_.getSource(), linkUnitNumber_,
+                                                                    artReceivePacket_.getData(0),
+                                                                    linkSendAddressOffset_,
+                                                                    artReceivePacket_.getData(1));
                                                             artSendResponsePacket_.setSendRequest(true);
                                                             break;
                                                         case OnlineArtPacket.COMMAND_WRITE_REGISTER:
-                                                            for (i = 0, startAddress = (artReceivePacket_.getData(0) + linkReceiveAddressOffset_), registerNumber = artReceivePacket_.getData(1); i < registerNumber; i++) {
-                                                                setData(artReceivePacket_.getData(i + 2), register_, startAddress + i);
+                                                            for (i = 0, startAddress = (artReceivePacket_.getData(0)
+                                                                    + linkReceiveAddressOffset_), registerNumber = artReceivePacket_
+                                                                            .getData(1); i < registerNumber; i++) {
+                                                                setData(artReceivePacket_.getData(i + 2), register_,
+                                                                        startAddress + i);
                                                             }
-                                                            artSendResponsePacket_.makeWriteRegisterResponse(artReceivePacket_.getSource(), linkUnitNumber_, artReceivePacket_.getData(0), linkSendAddressOffset_, artReceivePacket_.getData(1));
+                                                            artSendResponsePacket_.makeWriteRegisterResponse(
+                                                                    artReceivePacket_.getSource(), linkUnitNumber_,
+                                                                    artReceivePacket_.getData(0),
+                                                                    linkSendAddressOffset_,
+                                                                    artReceivePacket_.getData(1));
                                                             artSendResponsePacket_.setSendRequest(true);
                                                             break;
                                                         default:
@@ -1092,22 +1138,36 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                                                     }
 
                                                     // notify
-                                                    for (OnlineArtListener listener : eventListenerList_.getListeners(OnlineArtListener.class)) {
-                                                        listener.receiveRequestOnlineArt(artReceivePacket_.getDestination(), artReceivePacket_.getSource(), artReceivePacket_.getDataType(), artReceivePacket_.getCommand());
+                                                    for (OnlineArtListener listener : eventListenerList_
+                                                            .getListeners(OnlineArtListener.class)) {
+                                                        listener.receiveRequestOnlineArt(
+                                                                artReceivePacket_.getDestination(),
+                                                                artReceivePacket_.getSource(),
+                                                                artReceivePacket_.getDataType(),
+                                                                artReceivePacket_.getCommand());
                                                     }
                                                     break;
 
                                                 case OnlineArtPacket.DATATYPE_RESPONSE:
                                                     switch (artReceivePacket_.getCommand()) {
                                                         case OnlineArtPacket.COMMAND_READ_RELAY:
-                                                            for (i = 0, startAddress = (artReceivePacket_.getData(0) + reserveSendRequestReceiveAddressOffset_), registerNumber = artReceivePacket_.getData(1); i < registerNumber; i++) {
-                                                                setData(((artReceivePacket_.getData((i / 16) + 2) >>> (i % 16)) & 0x0001) == 0x0001, relay_, (startAddress + i) / 16, (startAddress + i) % 16);
+                                                            for (i = 0, startAddress = (artReceivePacket_.getData(0)
+                                                                    + reserveSendRequestReceiveAddressOffset_), registerNumber = artReceivePacket_
+                                                                            .getData(1); i < registerNumber; i++) {
+                                                                setData(((artReceivePacket_
+                                                                        .getData((i / 16) + 2) >>> (i % 16))
+                                                                        & 0x0001) == 0x0001, relay_,
+                                                                        (startAddress + i) / 16,
+                                                                        (startAddress + i) % 16);
                                                             }
                                                             break;
 
                                                         case OnlineArtPacket.COMMAND_READ_REGISTER:
-                                                            for (i = 0, startAddress = (artReceivePacket_.getData(0) + reserveSendRequestReceiveAddressOffset_), registerNumber = artReceivePacket_.getData(1); i < registerNumber; i++) {
-                                                                setData(artReceivePacket_.getData(i + 2), register_, startAddress + i);
+                                                            for (i = 0, startAddress = (artReceivePacket_.getData(0)
+                                                                    + reserveSendRequestReceiveAddressOffset_), registerNumber = artReceivePacket_
+                                                                            .getData(1); i < registerNumber; i++) {
+                                                                setData(artReceivePacket_.getData(i + 2), register_,
+                                                                        startAddress + i);
                                                             }
                                                             break;
 
@@ -1119,13 +1179,20 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                                                     }
 
                                                     // notify
-                                                    for (OnlineArtListener listener : eventListenerList_.getListeners(OnlineArtListener.class)) {
-                                                        listener.receiveResponseOnlineArt(artReceivePacket_.getDestination(), artReceivePacket_.getSource(), artReceivePacket_.getDataType(), artReceivePacket_.getCommand());
+                                                    for (OnlineArtListener listener : eventListenerList_
+                                                            .getListeners(OnlineArtListener.class)) {
+                                                        listener.receiveResponseOnlineArt(
+                                                                artReceivePacket_.getDestination(),
+                                                                artReceivePacket_.getSource(),
+                                                                artReceivePacket_.getDataType(),
+                                                                artReceivePacket_.getCommand());
                                                     }
                                                     break;
                                             }
                                         } else if (linkTriggerUnitNumber_ > 0) {
-                                            if ((artReceivePacket_.getDestination() == linkTriggerUnitNumber_) && (artReceivePacket_.getDataType() == OnlineArtPacket.DATATYPE_RESPONSE)) {
+                                            if ((artReceivePacket_.getDestination() == linkTriggerUnitNumber_)
+                                                    && (artReceivePacket_
+                                                            .getDataType() == OnlineArtPacket.DATATYPE_RESPONSE)) {
                                                 artSendRequestPacket_.setSendRequestTrigger(true);
                                             }
                                         }
@@ -1140,18 +1207,23 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                                 // synchronize
                                 if ((linkUnitNumber_ == 1)
                                         && (artSendRequestPacket_.isSendRequestTrigger()
-                                        || (currentTimeNanos >= (linkSynchronizeTime_ + (lineOneCycleTime_ * 100000000))))) {
+                                                || (currentTimeNanos >= (linkSynchronizeTime_
+                                                        + (lineOneCycleTime_ * 100000000))))) {
                                     artSendMasterPacket_.setSentTimeNanos(currentTimeNanos);
-                                    artSendMasterPacket_.makeSynchronizeRequest(linkUnitNumber_, linkMaxUnitNumber_, linkBaseTime_, linkDelayTime_, linkRetryNumber_, linkMaxRegisterNumber_, linkConnectionUnits_);
+                                    artSendMasterPacket_.makeSynchronizeRequest(linkUnitNumber_, linkMaxUnitNumber_,
+                                            linkBaseTime_, linkDelayTime_, linkRetryNumber_, linkMaxRegisterNumber_,
+                                            linkConnectionUnits_);
                                     for (i = 0; i < artSendMasterPacket_.getIndex(); i++) {
                                         outputStream_.write(artSendMasterPacket_.getBuffer(i));
                                     }
                                     outputStream_.flush();
                                     linkSynchronizeTime_ = currentTimeNanos;
                                     linkRequestWaitTime_ = linkBaseTime_ + linkDelayTime_;
-                                    linkSendWaitTime_ = ((linkRetryNumber_ + 1) * (linkBaseTime_ + linkDelayTime_)) * linkUnitNumber_;
+                                    linkSendWaitTime_ = ((linkRetryNumber_ + 1) * (linkBaseTime_ + linkDelayTime_))
+                                            * linkUnitNumber_;
                                     linkSendDelayTime_ = linkDelayTime_;
-                                    lineOneCycleTime_ = ((linkRetryNumber_ + 1) * (linkBaseTime_ + linkDelayTime_)) * (linkMaxUnitNumber_ + 2);
+                                    lineOneCycleTime_ = ((linkRetryNumber_ + 1) * (linkBaseTime_ + linkDelayTime_))
+                                            * (linkMaxUnitNumber_ + 2);
                                     artSendMasterPacket_.setMaxRegisterNumber(linkMaxRegisterNumber_);
                                     artSendRequestPacket_.setMaxRegisterNumber(linkMaxRegisterNumber_);
                                     artSendRequestPacket_.setSendRequest(true);
@@ -1166,8 +1238,11 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                                     connectionUnits = 0x0001;
 
                                     // notify
-                                    for (OnlineArtListener listener : eventListenerList_.getListeners(OnlineArtListener.class)) {
-                                        listener.sendRequestOnlineArt(artSendMasterPacket_.getDestination(), artSendMasterPacket_.getSource(), artSendMasterPacket_.getDataType(), artSendMasterPacket_.getCommand());
+                                    for (OnlineArtListener listener : eventListenerList_
+                                            .getListeners(OnlineArtListener.class)) {
+                                        listener.sendRequestOnlineArt(artSendMasterPacket_.getDestination(),
+                                                artSendMasterPacket_.getSource(), artSendMasterPacket_.getDataType(),
+                                                artSendMasterPacket_.getCommand());
                                     }
                                 }
 
@@ -1186,37 +1261,60 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                                     artSendResponsePacket_.setSendRequest(false);
 
                                     // notify
-                                    for (OnlineArtListener listener : eventListenerList_.getListeners(OnlineArtListener.class)) {
-                                        listener.sendResponseOnlineArt(artSendResponsePacket_.getDestination(), artSendResponsePacket_.getSource(), artSendResponsePacket_.getDataType(), artSendResponsePacket_.getCommand());
+                                    for (OnlineArtListener listener : eventListenerList_
+                                            .getListeners(OnlineArtListener.class)) {
+                                        listener.sendResponseOnlineArt(artSendResponsePacket_.getDestination(),
+                                                artSendResponsePacket_.getSource(),
+                                                artSendResponsePacket_.getDataType(),
+                                                artSendResponsePacket_.getCommand());
                                     }
                                 }
 
                                 // request
                                 if (artSendRequestPacket_.isSendRequest()) {
                                     if (artSendRequestPacket_.isSendRequestTrigger()
-                                            || ((linkSynchronizeTime_ + (linkSendWaitTime_ * 100000000)) < currentTimeNanos) && (currentTimeNanos < (linkSynchronizeTime_ + (lineOneCycleTime_ * 100000000)))) {
+                                            || ((linkSynchronizeTime_
+                                                    + (linkSendWaitTime_ * 100000000)) < currentTimeNanos)
+                                                    && (currentTimeNanos < (linkSynchronizeTime_
+                                                            + (lineOneCycleTime_ * 100000000)))) {
                                         artSendRequestPacket_.setSentTimeNanos(currentTimeNanos);
                                         if (artSendRequestPacket_.isDivided()) {
                                             artSendRequestPacket_.makeDivided(relay_, register_);
                                         } else {
                                             switch (reserveSendRequestCommand_) {
                                                 case OnlineArtPacket.COMMAND_READ_RELAY:
-                                                    artSendRequestPacket_.makeReadRelayRequest(reserveSendRequestDestination_, linkUnitNumber_, reserveSendRequestStartAddress_, reserveSendRequestSendAddressOffset_, reserveSendRequestRegisterNumber_);
+                                                    artSendRequestPacket_.makeReadRelayRequest(
+                                                            reserveSendRequestDestination_, linkUnitNumber_,
+                                                            reserveSendRequestStartAddress_,
+                                                            reserveSendRequestSendAddressOffset_,
+                                                            reserveSendRequestRegisterNumber_);
                                                     reserveSendRequestCommand_ = 0;
                                                     break;
 
                                                 case OnlineArtPacket.COMMAND_READ_REGISTER:
-                                                    artSendRequestPacket_.makeReadRegisterRequest(reserveSendRequestDestination_, linkUnitNumber_, reserveSendRequestStartAddress_, reserveSendRequestSendAddressOffset_, reserveSendRequestRegisterNumber_);
+                                                    artSendRequestPacket_.makeReadRegisterRequest(
+                                                            reserveSendRequestDestination_, linkUnitNumber_,
+                                                            reserveSendRequestStartAddress_,
+                                                            reserveSendRequestSendAddressOffset_,
+                                                            reserveSendRequestRegisterNumber_);
                                                     reserveSendRequestCommand_ = 0;
                                                     break;
 
                                                 case OnlineArtPacket.COMMAND_WRITE_RELAY:
-                                                    artSendRequestPacket_.makeWriteRelayRequest(reserveSendRequestDestination_, linkUnitNumber_, reserveSendRequestStartAddress_, reserveSendRequestSendAddressOffset_, reserveSendRequestRegisterNumber_, relay_);
+                                                    artSendRequestPacket_.makeWriteRelayRequest(
+                                                            reserveSendRequestDestination_, linkUnitNumber_,
+                                                            reserveSendRequestStartAddress_,
+                                                            reserveSendRequestSendAddressOffset_,
+                                                            reserveSendRequestRegisterNumber_, relay_);
                                                     reserveSendRequestCommand_ = 0;
                                                     break;
 
                                                 case OnlineArtPacket.COMMAND_WRITE_REGISTER:
-                                                    artSendRequestPacket_.makeWriteRegisterRequest(reserveSendRequestDestination_, linkUnitNumber_, reserveSendRequestStartAddress_, reserveSendRequestSendAddressOffset_, reserveSendRequestRegisterNumber_, register_);
+                                                    artSendRequestPacket_.makeWriteRegisterRequest(
+                                                            reserveSendRequestDestination_, linkUnitNumber_,
+                                                            reserveSendRequestStartAddress_,
+                                                            reserveSendRequestSendAddressOffset_,
+                                                            reserveSendRequestRegisterNumber_, register_);
                                                     reserveSendRequestCommand_ = 0;
                                                     break;
 
@@ -1233,15 +1331,20 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                                         artSendRequestPacket_.setSendRequestTrigger(false);
 
                                         // notify
-                                        for (OnlineArtListener listener : eventListenerList_.getListeners(OnlineArtListener.class)) {
-                                            listener.sendRequestOnlineArt(artSendRequestPacket_.getDestination(), artSendRequestPacket_.getSource(), artSendRequestPacket_.getDataType(), artSendRequestPacket_.getCommand());
+                                        for (OnlineArtListener listener : eventListenerList_
+                                                .getListeners(OnlineArtListener.class)) {
+                                            listener.sendRequestOnlineArt(artSendRequestPacket_.getDestination(),
+                                                    artSendRequestPacket_.getSource(),
+                                                    artSendRequestPacket_.getDataType(),
+                                                    artSendRequestPacket_.getCommand());
                                         }
                                     }
                                 }
 
                                 // retry
                                 if (retryNumber < linkRetryNumber_) {
-                                    if (currentTimeNanos > (artSendRequestPacket_.getSentTimeNanos() + (linkRequestWaitTime_ * 100000000))) {
+                                    if (currentTimeNanos > (artSendRequestPacket_.getSentTimeNanos()
+                                            + (linkRequestWaitTime_ * 100000000))) {
                                         artSendRequestPacket_.setSentTimeNanos(currentTimeNanos);
                                         for (i = 0; i < artSendRequestPacket_.getIndex(); i++) {
                                             outputStream_.write(artSendRequestPacket_.getBuffer(i));
@@ -1250,8 +1353,12 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                                         retryNumber++;
 
                                         // notify
-                                        for (OnlineArtListener listener : eventListenerList_.getListeners(OnlineArtListener.class)) {
-                                            listener.sendRetryOnlineArt(artSendRequestPacket_.getDestination(), artSendRequestPacket_.getSource(), artSendRequestPacket_.getDataType(), artSendRequestPacket_.getCommand());
+                                        for (OnlineArtListener listener : eventListenerList_
+                                                .getListeners(OnlineArtListener.class)) {
+                                            listener.sendRetryOnlineArt(artSendRequestPacket_.getDestination(),
+                                                    artSendRequestPacket_.getSource(),
+                                                    artSendRequestPacket_.getDataType(),
+                                                    artSendRequestPacket_.getCommand());
                                         }
                                     }
                                 }
@@ -1266,13 +1373,15 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
     }
 
     @Override
-    public void receiveRequestOnlineArt(final int destination, final int source, final int dataType, final int command) {
+    public void receiveRequestOnlineArt(final int destination, final int source, final int dataType,
+            final int command) {
         if (funcReceiveRequest_ != null) {
             Platform.runLater(() -> {
                 if (funcReceiveRequest_ != null) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcReceiveRequest_ + "(" + destination + "," + source + "," + dataType + "," + command + ");");
+                            webEngine_.executeScript(funcReceiveRequest_ + "(" + destination + "," + source + ","
+                                    + dataType + "," + command + ");");
                         } catch (JSException ex) {
                             webViewer_.writeStackTrace(FUNCTION_NAME, ex);
                         }
@@ -1289,7 +1398,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                 if (funcReceiveResponse_ != null) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcReceiveResponse_ + "(" + destination + "," + source + "," + dataType + "," + command + ");");
+                            webEngine_.executeScript(funcReceiveResponse_ + "(" + destination + "," + source + ","
+                                    + dataType + "," + command + ");");
                         } catch (JSException ex) {
                             webViewer_.writeStackTrace(FUNCTION_NAME, ex);
                         }
@@ -1306,7 +1416,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                 if (funcSendRequest_ != null) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcSendRequest_ + "(" + destination + "," + source + "," + dataType + "," + command + ");");
+                            webEngine_.executeScript(funcSendRequest_ + "(" + destination + "," + source + ","
+                                    + dataType + "," + command + ");");
                         } catch (JSException ex) {
                             webViewer_.writeStackTrace(FUNCTION_NAME, ex);
                         }
@@ -1323,7 +1434,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                 if (funcSendResponse_ != null) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcSendResponse_ + "(" + destination + "," + source + "," + dataType + "," + command + ");");
+                            webEngine_.executeScript(funcSendResponse_ + "(" + destination + "," + source + ","
+                                    + dataType + "," + command + ");");
                         } catch (JSException ex) {
                             webViewer_.writeStackTrace(FUNCTION_NAME, ex);
                         }
@@ -1340,7 +1452,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                 if (funcSendRetry_ != null) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcSendRetry_ + "(" + destination + "," + source + "," + dataType + "," + command + ");");
+                            webEngine_.executeScript(funcSendRetry_ + "(" + destination + "," + source + "," + dataType
+                                    + "," + command + ");");
                         } catch (JSException ex) {
                             webViewer_.writeStackTrace(FUNCTION_NAME, ex);
                         }

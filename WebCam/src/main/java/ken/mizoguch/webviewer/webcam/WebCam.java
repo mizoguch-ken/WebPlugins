@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.webcam;
 
 import com.google.gson.Gson;
@@ -190,7 +185,8 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
                     blobInfo_.mean = new Scalar(mean.get(0).getAsDouble(), mean.get(1).getAsDouble());
                     break;
                 case 4:
-                    blobInfo_.mean = new Scalar(mean.get(0).getAsDouble(), mean.get(1).getAsDouble(), mean.get(2).getAsDouble(), mean.get(3).getAsDouble());
+                    blobInfo_.mean = new Scalar(mean.get(0).getAsDouble(), mean.get(1).getAsDouble(),
+                            mean.get(2).getAsDouble(), mean.get(3).getAsDouble());
                     break;
                 default:
                     break;
@@ -1038,17 +1034,18 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
 
                 if (frame != null) {
                     if (frame.image != null) {
-                        OpenCVFrameConverter.ToMat openCVFrameConverter = new OpenCVFrameConverter.ToMat();
-                        Mat matImage = matImage = openCVFrameConverter.convert(frame);
+                        try (OpenCVFrameConverter.ToMat openCVFrameConverter = new OpenCVFrameConverter.ToMat()) {
+                            Mat matImage = openCVFrameConverter.convert(frame);
 
-                        if (matImage != null) {
-                            if (webcamImageColor_ >= 0) {
-                                opencv_imgproc.cvtColor(matImage, matImage, webcamImageColor_);
+                            if (matImage != null) {
+                                if (webcamImageColor_ >= 0) {
+                                    opencv_imgproc.cvtColor(matImage, matImage, webcamImageColor_);
+                                }
+                                opencv_imgcodecs.imwrite(path, matImage);
+                                matImage.release();
+
+                                return true;
                             }
-                            opencv_imgcodecs.imwrite(path, matImage);
-                            matImage.release();
-
-                            return true;
                         }
                     }
                 }
@@ -1056,6 +1053,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
             return false;
         }
         return null;
+
     }
 
     /**
@@ -1256,111 +1254,122 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
             @Override
             protected Void call() {
                 Frame frame;
-                OpenCVFrameConverter.ToMat openCVFrameConverter = new OpenCVFrameConverter.ToMat();
-                Mat matImage, matBlob;
-                AtomicReference<WritableImage> webcamImage = new AtomicReference<>();
-                BufferedImage bufferedImage;
-                ByteArrayOutputStream byteArrayImage = new ByteArrayOutputStream();
-                byte[] bytesBlob;
+                try (OpenCVFrameConverter.ToMat openCVFrameConverter = new OpenCVFrameConverter.ToMat()) {
+                    Mat matImage, matBlob;
+                    AtomicReference<WritableImage> webcamImage = new AtomicReference<>();
+                    BufferedImage bufferedImage;
+                    ByteArrayOutputStream byteArrayImage = new ByteArrayOutputStream();
+                    byte[] bytesBlob;
 
-                while (isPlay_ && (webcam_ != null)) {
-                    if ((webcamStage_.isShowing() && !isUpdateWebcamView_)
-                            || ((funcResultImage_ != null) && !isUpdateFuncResultImage_)
-                            || ((funcResultBlob_ != null) && !isUpdateFuncResultBlob_)
-                            || (saveFilePath_ != null)) {
-                        try {
-                            frame = webcam_.grab();
+                    while (isPlay_ && (webcam_ != null)) {
+                        if ((webcamStage_.isShowing() && !isUpdateWebcamView_)
+                                || ((funcResultImage_ != null) && !isUpdateFuncResultImage_)
+                                || ((funcResultBlob_ != null) && !isUpdateFuncResultBlob_)
+                                || (saveFilePath_ != null)) {
+                            try {
+                                frame = webcam_.grab();
 
-                            if (frame != null) {
-                                if (frame.image != null) {
-                                    matImage = openCVFrameConverter.convert(frame);
+                                if (frame != null) {
+                                    if (frame.image != null) {
+                                        matImage = openCVFrameConverter.convert(frame);
 
-                                    if (matImage != null) {
-                                        if (webcamImageColor_ >= 0) {
-                                            opencv_imgproc.cvtColor(matImage, matImage, webcamImageColor_);
-                                        }
+                                        if (matImage != null) {
+                                            if (webcamImageColor_ >= 0) {
+                                                opencv_imgproc.cvtColor(matImage, matImage, webcamImageColor_);
+                                            }
 
-                                        if ((webcamStage_.isShowing() && !isUpdateWebcamView_)
-                                                || ((funcResultImage_ != null) && !isUpdateFuncResultImage_)) {
-                                            bufferedImage = Java2DFrameUtils.toBufferedImage(matImage);
+                                            if ((webcamStage_.isShowing() && !isUpdateWebcamView_)
+                                                    || ((funcResultImage_ != null) && !isUpdateFuncResultImage_)) {
+                                                bufferedImage = Java2DFrameUtils.toBufferedImage(matImage);
 
-                                            if (bufferedImage != null) {
-                                                if (webcamStage_.isShowing() && !isUpdateWebcamView_) {
-                                                    webcamImage.set(SwingFXUtils.toFXImage(bufferedImage, webcamImage.get()));
-                                                    isUpdateWebcamView_ = true;
-
-                                                    Platform.runLater(() -> {
-                                                        imageProperty_.set(webcamImage.get());
-                                                        isUpdateWebcamView_ = false;
-                                                    });
-                                                }
-
-                                                if ((funcResultImage_ != null) && (!isUpdateFuncResultImage_)) {
-                                                    ImageIO.write(bufferedImage, webcamImageType_, byteArrayImage);
-
-                                                    if (byteArrayImage.size() > 0) {
-                                                        resultImage_ = gson_.toJson(byteArrayImage.toByteArray());
-                                                        isUpdateFuncResultImage_ = true;
+                                                if (bufferedImage != null) {
+                                                    if (webcamStage_.isShowing() && !isUpdateWebcamView_) {
+                                                        webcamImage.set(
+                                                                SwingFXUtils.toFXImage(bufferedImage,
+                                                                        webcamImage.get()));
+                                                        isUpdateWebcamView_ = true;
 
                                                         Platform.runLater(() -> {
-                                                            if (funcResultImage_ != null) {
-                                                                if (state_ == Worker.State.SUCCEEDED) {
-                                                                    try {
-                                                                        webEngine_.executeScript(funcResultImage_ + "('" + resultImage_ + "', '" + webcamImageType_ + "');");
-                                                                    } catch (JSException ex) {
-                                                                        webViewer_.writeStackTrace(FUNCTION_NAME, ex);
-                                                                    }
-                                                                }
-                                                            }
-                                                            isUpdateFuncResultImage_ = false;
+                                                            imageProperty_.set(webcamImage.get());
+                                                            isUpdateWebcamView_ = false;
                                                         });
                                                     }
-                                                    byteArrayImage.flush();
-                                                    byteArrayImage.reset();
+
+                                                    if ((funcResultImage_ != null) && (!isUpdateFuncResultImage_)) {
+                                                        ImageIO.write(bufferedImage, webcamImageType_, byteArrayImage);
+
+                                                        if (byteArrayImage.size() > 0) {
+                                                            resultImage_ = gson_.toJson(byteArrayImage.toByteArray());
+                                                            isUpdateFuncResultImage_ = true;
+
+                                                            Platform.runLater(() -> {
+                                                                if (funcResultImage_ != null) {
+                                                                    if (state_ == Worker.State.SUCCEEDED) {
+                                                                        try {
+                                                                            webEngine_.executeScript(
+                                                                                    funcResultImage_ + "('"
+                                                                                            + resultImage_ + "', '"
+                                                                                            + webcamImageType_ + "');");
+                                                                        } catch (JSException ex) {
+                                                                            webViewer_.writeStackTrace(FUNCTION_NAME,
+                                                                                    ex);
+                                                                        }
+                                                                    }
+                                                                }
+                                                                isUpdateFuncResultImage_ = false;
+                                                            });
+                                                        }
+                                                        byteArrayImage.flush();
+                                                        byteArrayImage.reset();
+                                                    }
+                                                    bufferedImage.flush();
                                                 }
-                                                bufferedImage.flush();
                                             }
-                                        }
 
-                                        if ((funcResultBlob_ != null) && !isUpdateFuncResultBlob_) {
-                                            matBlob = opencv_dnn.blobFromImage(matImage, blobInfo_.scalefactor, blobInfo_.size, blobInfo_.mean, blobInfo_.swapRB, blobInfo_.crop, blobInfo_.ddepth);
-                                            bytesBlob = new byte[(int) (matBlob.total() * matBlob.elemSize())];
-                                            matBlob.data().get(bytesBlob);
-                                            matBlob.release();
-                                            resultBlob_ = gson_.toJson(bytesBlob);
-                                            isUpdateFuncResultBlob_ = true;
+                                            if ((funcResultBlob_ != null) && !isUpdateFuncResultBlob_) {
+                                                matBlob = opencv_dnn.blobFromImage(matImage, blobInfo_.scalefactor,
+                                                        blobInfo_.size, blobInfo_.mean, blobInfo_.swapRB,
+                                                        blobInfo_.crop,
+                                                        blobInfo_.ddepth);
+                                                bytesBlob = new byte[(int) (matBlob.total() * matBlob.elemSize())];
+                                                matBlob.data().get(bytesBlob);
+                                                matBlob.release();
+                                                resultBlob_ = gson_.toJson(bytesBlob);
+                                                isUpdateFuncResultBlob_ = true;
 
-                                            Platform.runLater(() -> {
-                                                if (resultBlob_ != null) {
-                                                    if (state_ == Worker.State.SUCCEEDED) {
-                                                        try {
-                                                            webEngine_.executeScript(funcResultBlob_ + "('" + resultBlob_ + "');");
-                                                        } catch (JSException ex) {
-                                                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                                                Platform.runLater(() -> {
+                                                    if (resultBlob_ != null) {
+                                                        if (state_ == Worker.State.SUCCEEDED) {
+                                                            try {
+                                                                webEngine_.executeScript(
+                                                                        funcResultBlob_ + "('" + resultBlob_ + "');");
+                                                            } catch (JSException ex) {
+                                                                webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                                                            }
                                                         }
                                                     }
-                                                }
-                                                isUpdateFuncResultBlob_ = false;
-                                            });
-                                        }
+                                                    isUpdateFuncResultBlob_ = false;
+                                                });
+                                            }
 
-                                        if (saveFilePath_ != null) {
-                                            opencv_imgcodecs.imwrite(saveFilePath_, matImage);
-                                            saveFilePath_ = null;
+                                            if (saveFilePath_ != null) {
+                                                opencv_imgcodecs.imwrite(saveFilePath_, matImage);
+                                                saveFilePath_ = null;
+                                            }
+                                            matImage.release();
                                         }
-                                        matImage.release();
                                     }
                                 }
-                            }
-                        } catch (FrameGrabber.Exception ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
-                        } catch (IOException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
-                        } finally {
-                            try {
-                                byteArrayImage.close();
+                            } catch (FrameGrabber.Exception ex) {
+                                webViewer_.writeStackTrace(FUNCTION_NAME, ex);
                             } catch (IOException ex) {
                                 webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                            } finally {
+                                try {
+                                    byteArrayImage.close();
+                                } catch (IOException ex) {
+                                    webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                                }
                             }
                         }
                     }

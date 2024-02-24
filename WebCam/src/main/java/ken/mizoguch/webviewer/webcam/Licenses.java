@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.webcam;
 
 import javafx.scene.control.Alert;
@@ -14,19 +9,10 @@ import javafx.scene.control.TextArea;
  */
 public class Licenses {
 
-    private final String LICENSES
-            = "*** Third Party Licenses ***\n"
+    private final String LICENSES = "*** Third Party Licenses ***\n"
             + "\n"
             + "* JavaCV\n"
             + "* JavaCPP\n"
-            + "* JavaCPP Presets For ARToolKitPlus\n"
-            + "* JavaCPP Presets For FFmpeg\n"
-            + "* JavaCPP Presets For Flandmark\n"
-            + "* JavaCPP Presets For FlyCapture\n"
-            + "* JavaCPP Presets For Libdc1394\n"
-            + "* JavaCPP Presets For Libfreenect\n"
-            + "* JavaCPP Presets For Libfreenect2\n"
-            + "* JavaCPP Presets For Librealsense\n"
             + "* JavaCPP Presets For OpenCV\n"
             + "* JavaCPP Presets For VideoInput\n"
             + "You may use this work under the terms of either the Apache License,\n"
@@ -600,7 +586,23 @@ public class Licenses {
             + "    module is a module which is not derived from or based on this library.  If\n"
             + "    you modify this library, you may extend this exception to your version of\n"
             + "    the library, but you are not obligated to do so.  If you do not wish to do\n"
-            + "    so, delete this exception statement from your version.";
+            + "    so, delete this exception statement from your version.\n"
+            + "\n"
+            + "\n"
+            + "* Gson\n"
+            + "Copyright 2008 Google Inc.\n"
+            + "\n"
+            + "Licensed under the Apache License, Version 2.0 (the \"License\");\n"
+            + "you may not use this file except in compliance with the License.\n"
+            + "You may obtain a copy of the License at\n"
+            + "\n"
+            + "    http://www.apache.org/licenses/LICENSE-2.0\n"
+            + "\n"
+            + "Unless required by applicable law or agreed to in writing, software\n"
+            + "distributed under the License is distributed on an \"AS IS\" BASIS,\n"
+            + "WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.\n"
+            + "See the License for the specific language governing permissions and\n"
+            + "limitations under the License.";
 
     public void show() {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);

@@ -1,7 +1,3 @@
-/*
- * To change this template, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.capai;
 
 import java.io.BufferedReader;
@@ -114,7 +110,7 @@ public final class LinkBoxClient {
      */
     public boolean setServerAddress(byte address1, byte address2, byte address3, byte address4) {
         try {
-            serverAddress_ = InetAddress.getByAddress(new byte[]{address1, address2, address3, address4});
+            serverAddress_ = InetAddress.getByAddress(new byte[] { address1, address2, address3, address4 });
             return true;
         } catch (UnknownHostException ex) {
             exceptionCaught(ex);
@@ -172,14 +168,16 @@ public final class LinkBoxClient {
             inetSocketAddress = new InetSocketAddress(serverAddress_, 50099);
             socket.connect(inetSocketAddress, 5000);
             bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
-            printWriter = new PrintWriter(new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8")));
+            printWriter = new PrintWriter(
+                    new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8")));
 
             request.append("PortClose");
             if (port > 50000) {
                 request.append(Integer.toString(port));
             }
 
-            result = checkErrorCode(sendRequest("PortClose", request.toString(), 5000 + clientTimeout_, 0, socket, bufferedReader, printWriter));
+            result = checkErrorCode(sendRequest("PortClose", request.toString(), 5000 + clientTimeout_, 0, socket,
+                    bufferedReader, printWriter));
         } catch (IOException ex) {
             exceptionCaught(ex);
         } finally {
@@ -222,10 +220,12 @@ public final class LinkBoxClient {
             inetSocketAddress = new InetSocketAddress(serverAddress_, 50099);
             socket.connect(inetSocketAddress, 5000);
             bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
-            printWriter = new PrintWriter(new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8")));
+            printWriter = new PrintWriter(
+                    new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8")));
 
             request.append("GetPortInfo").append(Integer.toString(port));
-            result = checkErrorCode(sendRequest("GetPortInfo", request.toString(), clientTimeout_, 0, socket, bufferedReader, printWriter));
+            result = checkErrorCode(sendRequest("GetPortInfo", request.toString(), clientTimeout_, 0, socket,
+                    bufferedReader, printWriter));
         } catch (IOException ex) {
             exceptionCaught(ex);
         } finally {
@@ -294,7 +294,8 @@ public final class LinkBoxClient {
      * @return
      */
     public boolean cmdDisconnect() {
-        return checkErrorCode(sendRequest("Disconnect", "Disconnect", clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(
+                sendRequest("Disconnect", "Disconnect", clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
     }
 
     /**
@@ -303,7 +304,8 @@ public final class LinkBoxClient {
      * @return
      */
     public boolean cmdInitAK() {
-        return checkErrorCode(sendRequest("InitAK", "InitAK", 100 + clientTimeout_, 100, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(
+                sendRequest("InitAK", "InitAK", 100 + clientTimeout_, 100, socket_, bufferedReader_, printWriter_));
     }
 
     /**
@@ -320,7 +322,8 @@ public final class LinkBoxClient {
         if (ch > 0) {
             request.append(ch);
         }
-        return checkErrorCode(sendRequest("Mnt", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(
+                sendRequest("Mnt", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
     }
 
     /**
@@ -342,7 +345,8 @@ public final class LinkBoxClient {
         StringBuilder request = new StringBuilder();
 
         request.append("AddrAK").append(String.format("%04d", unit));
-        return checkErrorCode(sendRequest("AddrAK", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(
+                sendRequest("AddrAK", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
     }
 
     /**
@@ -352,7 +356,8 @@ public final class LinkBoxClient {
      * @return
      */
     public boolean cmdSetAutoATT() {
-        return checkErrorCode(sendRequest("SetAutoATT", "SetAutoATT", clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(
+                sendRequest("SetAutoATT", "SetAutoATT", clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
     }
 
     /**
@@ -361,7 +366,8 @@ public final class LinkBoxClient {
      * @return
      */
     public boolean cmdClearAutoATT() {
-        return checkErrorCode(sendRequest("ClearAutoATT", "ClearAutoATT", clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(
+                sendRequest("ClearAutoATT", "ClearAutoATT", clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
     }
 
     /**
@@ -412,7 +418,8 @@ public final class LinkBoxClient {
         request.append(answerBuz.getString());
         request.append(String.format("%04d", unit));
         request.append(String.format("%5s", view));
-        return checkErrorCode(sendRequest("SetL1", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(
+                sendRequest("SetL1", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
     }
 
     /**
@@ -463,7 +470,8 @@ public final class LinkBoxClient {
             request.append(String.format("%04d", units.get(i)));
             request.append(String.format("%5s", views.get(i)));
         }
-        return checkErrorCode(sendRequest("SetL1", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(
+                sendRequest("SetL1", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
     }
 
     /**
@@ -1037,7 +1045,8 @@ public final class LinkBoxClient {
      * @return
      */
     public boolean cmdGetAK() {
-        return checkErrorCode(sendRequest("GetAK", "GetAK", clientTimeout_, 0, socket_, bufferedReader_, printWriter_), LinkBoxEnums.ERROR_AUTO_MODE_OPERATION.getNumber());
+        return checkErrorCode(sendRequest("GetAK", "GetAK", clientTimeout_, 0, socket_, bufferedReader_, printWriter_),
+                LinkBoxEnums.ERROR_AUTO_MODE_OPERATION.getNumber());
     }
 
     /**
@@ -1059,7 +1068,8 @@ public final class LinkBoxClient {
             });
             count = 1000 * units.size();
         }
-        return checkErrorCode(sendRequest("StartDev", request.toString(), count + clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(sendRequest("StartDev", request.toString(), count + clientTimeout_, 0, socket_,
+                bufferedReader_, printWriter_));
     }
 
     /**
@@ -1073,7 +1083,8 @@ public final class LinkBoxClient {
         StringBuilder request = new StringBuilder();
 
         request.append("DemoAK").append(String.format("%04d", unit)).append(String.format("%5s", view));
-        return checkErrorCode(sendRequest("DemoAK", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(
+                sendRequest("DemoAK", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
     }
 
     /**
@@ -1088,7 +1099,8 @@ public final class LinkBoxClient {
         StringBuilder request = new StringBuilder();
 
         request.append("ClearAK").append(String.format("%04d", unit));
-        return checkErrorCode(sendRequest("ClearAK", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(
+                sendRequest("ClearAK", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
     }
 
     /**
@@ -1103,7 +1115,8 @@ public final class LinkBoxClient {
         units.stream().forEach((unit) -> {
             request.append(String.format("%04d", unit));
         });
-        return checkErrorCode(sendRequest("ClearAK", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(
+                sendRequest("ClearAK", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
     }
 
     /**
@@ -1117,7 +1130,8 @@ public final class LinkBoxClient {
         StringBuilder request = new StringBuilder();
 
         request.append("Lock").append(String.format("%04d", unit));
-        return checkErrorCode(sendRequest("Lock", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(
+                sendRequest("Lock", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
     }
 
     /**
@@ -1130,7 +1144,8 @@ public final class LinkBoxClient {
         StringBuilder request = new StringBuilder();
 
         request.append("UnLock").append(String.format("%04d", unit));
-        return checkErrorCode(sendRequest("UnLock", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(
+                sendRequest("UnLock", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
     }
 
     /**
@@ -1143,7 +1158,8 @@ public final class LinkBoxClient {
         StringBuilder request = new StringBuilder();
 
         request.append("GetLock").append(String.format("%04d", unit));
-        return checkErrorCode(sendRequest("GetLock", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(
+                sendRequest("GetLock", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
     }
 
     /**
@@ -1156,7 +1172,8 @@ public final class LinkBoxClient {
         StringBuilder request = new StringBuilder();
 
         request.append("ClearLock").append(String.format("%04d", unit));
-        return checkErrorCode(sendRequest("ClearLock", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(sendRequest("ClearLock", request.toString(), clientTimeout_, 0, socket_, bufferedReader_,
+                printWriter_));
     }
 
     /**
@@ -1165,7 +1182,8 @@ public final class LinkBoxClient {
      * @return
      */
     public boolean cmdGetErrCode() {
-        return checkErrorCode(sendRequest("GetErrCode", "GetErrCode", clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(
+                sendRequest("GetErrCode", "GetErrCode", clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
     }
 
     /**
@@ -1174,7 +1192,8 @@ public final class LinkBoxClient {
      * @return
      */
     public boolean cmdClearErrCode() {
-        return checkErrorCode(sendRequest("ClearErrCode", "ClearErrCode", clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+        return checkErrorCode(
+                sendRequest("ClearErrCode", "ClearErrCode", clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
     }
 
     /**
@@ -1193,11 +1212,15 @@ public final class LinkBoxClient {
             byte gwy[] = InetAddress.getByName(gateway).getAddress();
 
             request.append("SetIPAddr");
-            request.append("<").append(String.format("%03d%03d%03d%03d", Byte.toUnsignedInt(adr[0]), Byte.toUnsignedInt(adr[1]), Byte.toUnsignedInt(adr[2]), Byte.toUnsignedInt(adr[3]))).append(">");
-            request.append("<").append(String.format("%03d%03d%03d%03d", Byte.toUnsignedInt(msk[0]), Byte.toUnsignedInt(msk[1]), Byte.toUnsignedInt(msk[2]), Byte.toUnsignedInt(msk[3]))).append(">");
-            request.append("<").append(String.format("%03d%03d%03d%03d", Byte.toUnsignedInt(gwy[0]), Byte.toUnsignedInt(gwy[1]), Byte.toUnsignedInt(gwy[2]), Byte.toUnsignedInt(gwy[3]))).append(">");
+            request.append("<").append(String.format("%03d%03d%03d%03d", Byte.toUnsignedInt(adr[0]),
+                    Byte.toUnsignedInt(adr[1]), Byte.toUnsignedInt(adr[2]), Byte.toUnsignedInt(adr[3]))).append(">");
+            request.append("<").append(String.format("%03d%03d%03d%03d", Byte.toUnsignedInt(msk[0]),
+                    Byte.toUnsignedInt(msk[1]), Byte.toUnsignedInt(msk[2]), Byte.toUnsignedInt(msk[3]))).append(">");
+            request.append("<").append(String.format("%03d%03d%03d%03d", Byte.toUnsignedInt(gwy[0]),
+                    Byte.toUnsignedInt(gwy[1]), Byte.toUnsignedInt(gwy[2]), Byte.toUnsignedInt(gwy[3]))).append(">");
 
-            return checkErrorCode(sendRequest("SetIPAddr", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+            return checkErrorCode(sendRequest("SetIPAddr", request.toString(), clientTimeout_, 0, socket_,
+                    bufferedReader_, printWriter_));
         } catch (UnknownHostException ex) {
             exceptionCaught(ex);
         }
@@ -1218,9 +1241,13 @@ public final class LinkBoxClient {
             for (int i = 0; i < address.size(); i++) {
                 byte adr[] = InetAddress.getByName(address.get(i)).getAddress();
 
-                request.append("<").append(String.format("%03d%03d%03d%03d", Byte.toUnsignedInt(adr[0]), Byte.toUnsignedInt(adr[1]), Byte.toUnsignedInt(adr[2]), Byte.toUnsignedInt(adr[3]))).append(">");
+                request.append("<")
+                        .append(String.format("%03d%03d%03d%03d", Byte.toUnsignedInt(adr[0]),
+                                Byte.toUnsignedInt(adr[1]), Byte.toUnsignedInt(adr[2]), Byte.toUnsignedInt(adr[3])))
+                        .append(">");
             }
-            return checkErrorCode(sendRequest("SetHostAddr", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
+            return checkErrorCode(sendRequest("SetHostAddr", request.toString(), clientTimeout_, 0, socket_,
+                    bufferedReader_, printWriter_));
         } catch (UnknownHostException ex) {
             exceptionCaught(ex);
         }
@@ -1233,8 +1260,10 @@ public final class LinkBoxClient {
      * @return
      */
     public boolean cmdReboot() {
-        if (checkErrorCode(sendRequest("Reboot", "Reboot", clientTimeout_, 0, socket_, bufferedReader_, printWriter_))) {
-            return checkErrorCode(sendRequest("Reboot", "RebootR5F70855", clientTimeout_, 5000, socket_, bufferedReader_, printWriter_));
+        if (checkErrorCode(
+                sendRequest("Reboot", "Reboot", clientTimeout_, 0, socket_, bufferedReader_, printWriter_))) {
+            return checkErrorCode(sendRequest("Reboot", "RebootR5F70855", clientTimeout_, 5000, socket_,
+                    bufferedReader_, printWriter_));
         }
         return false;
     }
@@ -1262,10 +1291,12 @@ public final class LinkBoxClient {
                     }
 
                     bufferedReader_ = new BufferedReader(new InputStreamReader(socket_.getInputStream(), "UTF-8"));
-                    printWriter_ = new PrintWriter(new BufferedWriter(new OutputStreamWriter(socket_.getOutputStream(), "UTF-8")));
+                    printWriter_ = new PrintWriter(
+                            new BufferedWriter(new OutputStreamWriter(socket_.getOutputStream(), "UTF-8")));
 
                     isRunning_ = true;
-                    for (LinkBoxClientListener listener : eventListenerList_.getListeners(LinkBoxClientListener.class)) {
+                    for (LinkBoxClientListener listener : eventListenerList_
+                            .getListeners(LinkBoxClientListener.class)) {
                         listener.startLinkBoxClient();
                     }
                     return true;
@@ -1274,12 +1305,14 @@ public final class LinkBoxClient {
                 }
             } else {
                 for (LinkBoxClientListener listener : eventListenerList_.getListeners(LinkBoxClientListener.class)) {
-                    listener.errorLinkBoxClient(LinkBoxEnums.ERROR_WORK_ORDER_PORT_ACQUISITION.getNumber(), CapAiSystemEnums.FAILED_WORK_ORDER_PORT_ACQUISITION.toString());
+                    listener.errorLinkBoxClient(LinkBoxEnums.ERROR_WORK_ORDER_PORT_ACQUISITION.getNumber(),
+                            CapAiSystemEnums.FAILED_WORK_ORDER_PORT_ACQUISITION.toString());
                 }
             }
         } else {
             for (LinkBoxClientListener listener : eventListenerList_.getListeners(LinkBoxClientListener.class)) {
-                listener.errorLinkBoxClient(LinkBoxEnums.ERROR_SET_ADDRESS.getNumber(), CapAiSystemEnums.SET_ADDRESS.toString());
+                listener.errorLinkBoxClient(LinkBoxEnums.ERROR_SET_ADDRESS.getNumber(),
+                        CapAiSystemEnums.SET_ADDRESS.toString());
             }
         }
         isRunning_ = false;
@@ -1333,7 +1366,8 @@ public final class LinkBoxClient {
         }
     }
 
-    synchronized private int sendRequest(String command, String request, int timeout, int wait, Socket sock, BufferedReader br, PrintWriter pw) {
+    synchronized private int sendRequest(String command, String request, int timeout, int wait, Socket sock,
+            BufferedReader br, PrintWriter pw) {
         StringBuilder buffer = new StringBuilder();
         long currentTime;
         int data = 0;
@@ -1364,7 +1398,7 @@ public final class LinkBoxClient {
                             if (timeout > 0) {
                                 currentTime = System.currentTimeMillis() + timeout;
                             }
-                            buffer.append(new String(new byte[]{(byte) data}, "US-ASCII"));
+                            buffer.append(new String(new byte[] { (byte) data }, "US-ASCII"));
                             break;
                     }
                 }
@@ -1659,7 +1693,8 @@ public final class LinkBoxClient {
         }
 
         for (LinkBoxClientListener listener : eventListenerList_.getListeners(LinkBoxClientListener.class)) {
-            listener.responseLinkBoxClient(command, response, errorCode, ipAddress, unitNumber, portNumber, ipAddress1, status);
+            listener.responseLinkBoxClient(command, response, errorCode, ipAddress, unitNumber, portNumber, ipAddress1,
+                    status);
         }
         return errorCode;
     }

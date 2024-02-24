@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.onlineart;
 
 /**
@@ -101,8 +96,10 @@ public class OnlineArtReceivePacket extends OnlineArtPacket {
                     calculationCrc = 0;
                     count = 0;
                     for (i = 1; i < (index_ - 6); i += 2) {
-                        calculationCrc = (CRC16_TABLE[((calculationCrc >>> 8) ^ buffer_[i]) & 0xff] ^ (calculationCrc << 8)) & 0xffff;
-                        calculationCrc = (CRC16_TABLE[((calculationCrc >>> 8) ^ buffer_[i + 1]) & 0xff] ^ (calculationCrc << 8)) & 0xffff;
+                        calculationCrc = (CRC16_TABLE[((calculationCrc >>> 8) ^ buffer_[i]) & 0xff]
+                                ^ (calculationCrc << 8)) & 0xffff;
+                        calculationCrc = (CRC16_TABLE[((calculationCrc >>> 8) ^ buffer_[i + 1]) & 0xff]
+                                ^ (calculationCrc << 8)) & 0xffff;
                         if ((buffer_[i] == ESCAPE_CODE_7D) && (buffer_[i + 1] == ESCAPE_CODE_7D)) {
                             isEscape = true;
                         } else {
@@ -122,7 +119,8 @@ public class OnlineArtReceivePacket extends OnlineArtPacket {
                                             index_ = 0;
                                             return false;
                                         }
-                                        data_[count - 2] = ((buffer_[i] ^ XOR_CODE_20) << 8) | (buffer_[i + 1] ^ XOR_CODE_20);
+                                        data_[count - 2] = ((buffer_[i] ^ XOR_CODE_20) << 8)
+                                                | (buffer_[i + 1] ^ XOR_CODE_20);
                                         break;
                                 }
                             } else {

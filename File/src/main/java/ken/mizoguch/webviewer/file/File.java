@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.file;
 
 import com.google.gson.Gson;
@@ -281,7 +276,8 @@ public class File implements WebViewerPlugin {
         if (charset == null) {
             charset = "UTF-8";
         }
-        try (BufferedReader bufferedReader = new BufferedReader(new InputStreamReader(Files.newInputStream(getStringToPath(path)), charset))) {
+        try (BufferedReader bufferedReader = new BufferedReader(
+                new InputStreamReader(Files.newInputStream(getStringToPath(path)), charset))) {
             StringBuilder stringBuilder = new StringBuilder();
             String line;
             while ((line = bufferedReader.readLine()) != null) {
@@ -306,7 +302,8 @@ public class File implements WebViewerPlugin {
         if (charset == null) {
             charset = "UTF-8";
         }
-        try (OutputStreamWriter outputStreamWriter = new OutputStreamWriter(Files.newOutputStream(getStringToPath(path)), charset);
+        try (OutputStreamWriter outputStreamWriter = new OutputStreamWriter(
+                Files.newOutputStream(getStringToPath(path)), charset);
                 BufferedReader bufferedReader = new BufferedReader(new StringReader(text))) {
             String line;
             while ((line = bufferedReader.readLine()) != null) {

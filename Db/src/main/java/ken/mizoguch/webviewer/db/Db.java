@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.db;
 
 import com.google.gson.Gson;
@@ -69,14 +64,16 @@ public class Db implements WebViewerPlugin {
      * @throws java.lang.ClassNotFoundException
      * @throws java.sql.SQLException
      */
-    public Boolean connect(String libraryPath, String url, String user, String pass) throws MalformedURLException, ClassNotFoundException, SQLException {
+    public Boolean connect(String libraryPath, String url, String user, String pass)
+            throws MalformedURLException, ClassNotFoundException, SQLException {
         if ((libraryPath != null) && (url != null) && (user != null) && (pass != null)) {
             Path path = Paths.get(libraryPath);
             if (Files.exists(path)) {
                 if (Files.isRegularFile(path)) {
-                    URLClassLoader loader = URLClassLoader.newInstance(new URL[]{path.toUri().toURL()}, getClass().getClassLoader());
-                    ServiceLoader srvcLoader = ServiceLoader.load(Driver.class, loader);
-                    for (Iterator it = srvcLoader.iterator(); it.hasNext();) {
+                    URLClassLoader loader = URLClassLoader.newInstance(new URL[] { path.toUri().toURL() },
+                            getClass().getClassLoader());
+                    ServiceLoader<Driver> srvcLoader = ServiceLoader.load(Driver.class, loader);
+                    for (Iterator<Driver> it = srvcLoader.iterator(); it.hasNext();) {
                         Driver driver = (Driver) it.next();
                         Properties prop = new Properties();
                         prop.setProperty("user", user);

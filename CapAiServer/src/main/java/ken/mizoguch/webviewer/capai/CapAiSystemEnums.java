@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.capai;
 
 /**
@@ -16,7 +11,9 @@ public enum CapAiSystemEnums {
     NO_0_ADDRESSING("No. 0 addressing", "0番アドレス指定"),
     WILD_CARD_ADDRESSING("Wild card addressing", "ワイルドカードアドレス指定"),
     SPECIFY_LOCKED_EQUIPMENT("Specify Locked Equipment", "ロックされた機器を指定"),
-    SPECIFY_PART_LOCKED_EQUIPMENT("Specify Part Locked Equipment (lock, unlock, if it already exists in part equipment that is locked)", "一部ロックされた機器を指定(ロック、アンロックで、既にロックされている機器が一部存在する場合)"),
+    SPECIFY_PART_LOCKED_EQUIPMENT(
+            "Specify Part Locked Equipment (lock, unlock, if it already exists in part equipment that is locked)",
+            "一部ロックされた機器を指定(ロック、アンロックで、既にロックされている機器が一部存在する場合)"),
     DISCONNECTED("Disconnected", "未接続"),
     OVERLAPPING_CONNECTION("Overlapping Connection", "重複接続"),
     OVER_CONNECTIONS("Over Connections", "接続数オーバー"),
@@ -29,17 +26,21 @@ public enum CapAiSystemEnums {
     STATUS_ERROR("Status Error", "ステータス異常"),
     ABNORMAL_ADDRESSING("Abnormal Addressing", "アドレス指定異常"),
     LOCAL_COMMUNICATION_RECEIVE_TIMEOUT("Local Communication: Receive Time-out (No response)", "ローカル通信 受信タイムアウト(無応答)"),
-    LOCAL_COMMUNICATION_ERROR_INTERRUPT_OCCURS("Local Communication: Error Interrupt Occurs (Framing, Overrun error)", "ローカル通信 エラー割り込み発生(フレーミング、オーバーランエラー)"),
+    LOCAL_COMMUNICATION_ERROR_INTERRUPT_OCCURS("Local Communication: Error Interrupt Occurs (Framing, Overrun error)",
+            "ローカル通信 エラー割り込み発生(フレーミング、オーバーランエラー)"),
     LOCAL_COMMUNICATION_ABNORMAL_BCC("Local Communication: Abnormal BCC", "ローカル通信 BCC異常"),
-    LOCAL_COMMUNICATION_ABNORMAL_RECEPTION_DENBUN_FORMAT("Local Communication: Abnormal Reception Denbun Format", "ローカル通信 受信伝文フォーマット異常"),
-    LOCAL_COMMUNICATION_ANN_CIRCUIT_STATUS_ERROR("Local Communication: Ann Circuit Etatus Error", "ローカル通信 アンサーキットステータス異常"),
+    LOCAL_COMMUNICATION_ABNORMAL_RECEPTION_DENBUN_FORMAT("Local Communication: Abnormal Reception Denbun Format",
+            "ローカル通信 受信伝文フォーマット異常"),
+    LOCAL_COMMUNICATION_ANN_CIRCUIT_STATUS_ERROR("Local Communication: Ann Circuit Etatus Error",
+            "ローカル通信 アンサーキットステータス異常"),
     HOST_COMMUNICATION_NO_FREE_CONNECTION_PORT("Host Communication: No Free Connection Port", "ホスト通信 接続ポートに空きがない"),
     HOST_COMMUNICATION_DISABLE_COMMAND("Host Communication: Disable Command", "ホスト通信 無効コマンド"),
     HOST_COMMUNICATION_COMMAND_PARAMETER_ERROR("Host Communication: Command Parameter Error", "ホスト通信 コマンドパラメータ異常"),
     HOST_COMMUNICATION_INVALID_HOST_IP("Host Communication: Invalid Host IP", "ホスト通信 無効なホスト IP"),
     HOST_COMMAND_NOT_EXECUTABLE("Host Command Not Executable (During polling)", "ホストコマンド実行不可(ポーリング中)"),
     HOST_COMMUNICATION_AKATT_NOT_ACCEPTED("Host Communication: AKATT Not Accepted", "ホスト通信 AKATT 未受理"),
-    HOST_COMMUNICATION_SOCKET_CONNECTION_ERROR("Host Communication: Socket Connection Error (50021)", "ホスト通信 ソケット接続エラー(50021)"),
+    HOST_COMMUNICATION_SOCKET_CONNECTION_ERROR("Host Communication: Socket Connection Error (50021)",
+            "ホスト通信 ソケット接続エラー(50021)"),
     LOCAL_COMMUNICATION_CH1_OVERCURRENT("Local Communication: ch1 Overcurrent", "ローカル通信 ch1 過電流"),
     LOCAL_COMMUNICATION_CH2_OVERCURRENT("Local Communication: ch2 Overcurrent", "ローカル通信 ch2 過電流"),
     LOCAL_COMMUNICATION_CH3_OVERCURRENT("Local Communication: ch3 Overcurrent", "ローカル通信 ch3 過電流"),
