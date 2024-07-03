@@ -66,7 +66,7 @@ public class Db implements WebViewerPlugin {
      */
     public Boolean connect(String libraryPath, String url, String user, String pass)
             throws MalformedURLException, ClassNotFoundException, SQLException {
-        if ((libraryPath != null) && (url != null) && (user != null) && (pass != null)) {
+        if ((libraryPath != null) && (url != null)) {
             Path path = Paths.get(libraryPath);
             if (Files.exists(path)) {
                 if (Files.isRegularFile(path)) {
@@ -76,8 +76,12 @@ public class Db implements WebViewerPlugin {
                     for (Iterator<Driver> it = srvcLoader.iterator(); it.hasNext();) {
                         Driver driver = (Driver) it.next();
                         Properties prop = new Properties();
-                        prop.setProperty("user", user);
-                        prop.setProperty("password", pass);
+                        if(user != null) {
+                            prop.setProperty("user", user);
+                        }
+                        if(pass != null) {
+                            prop.setProperty("password", pass);
+                        }
                         conn_ = driver.connect(url, prop);
                         if (conn_ != null) {
                             return true;
