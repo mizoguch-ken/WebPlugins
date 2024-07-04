@@ -76,10 +76,10 @@ public class Db implements WebViewerPlugin {
                     for (Iterator<Driver> it = srvcLoader.iterator(); it.hasNext();) {
                         Driver driver = (Driver) it.next();
                         Properties prop = new Properties();
-                        if(user != null) {
+                        if (user != null) {
                             prop.setProperty("user", user);
                         }
-                        if(pass != null) {
+                        if (pass != null) {
                             prop.setProperty("password", pass);
                         }
                         conn_ = driver.connect(url, prop);
@@ -88,7 +88,11 @@ public class Db implements WebViewerPlugin {
                         }
                     }
                     return false;
+                } else {
+                    webViewer_.write(FUNCTION_NAME, "File is not a regular file", true);
                 }
+            } else {
+                webViewer_.write(FUNCTION_NAME, "File not found", true);
             }
         } else {
             webViewer_.write(FUNCTION_NAME, "Incorrect database argument", true);
