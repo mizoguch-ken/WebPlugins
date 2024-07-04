@@ -91,6 +91,7 @@
                                         <Implementation-Vendor-Id>${project.groupId}</Implementation-Vendor-Id>
                                         <Built-By>${project.organization.name}</Built-By>
                                         <Main-Class>${mainClass}</Main-Class>
+                                        <Class-Path>lib/orai18n.jar</Class-Path>
                                     </manifestEntries>
                                 </transformer>
                             </transformers>
