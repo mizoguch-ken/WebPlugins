@@ -8,6 +8,7 @@ import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
+import javafx.application.Platform;
 import javafx.concurrent.Worker;
 import javafx.scene.image.Image;
 import javafx.scene.web.WebEngine;
@@ -72,18 +73,21 @@ public class Dbg implements WebViewerPlugin {
         zipInputStream.closeEntry();
         zipInputStream.close();
 
-        webViewer_.webEngine().executeScript(
-                "if(!document.getElementById('FirebugLite')){"
-                        + "E=document['createElement'+'NS']&&document.documentElement.namespaceURI;"
-                        + "E=E?document['createElement'+'NS'](E,'script'):document['createElement']('script');"
-                        + "E['setAttribute']('id','FirebugLite');"
-                        + "E['setAttribute']('src','" + local.resolve(firebugBaseDir).resolve(firebugBuildDir).toUri()
-                        + "' + 'firebug-lite-beta.js'+'#startOpened');"
-                        + "E['setAttribute']('FirebugLite','4');"
-                        + "(document['getElementsByTagName']('head')[0]||document['getElementsByTagName']('body')[0]).appendChild(E);"
-                        + "E=new Image;"
-                        + "E['setAttribute']('src','" + local.resolve(firebugBaseDir).toUri() + "'+'#startOpened');"
-                        + "}");
+        Platform.runLater(() -> {
+            webViewer_.webEngine().executeScript(
+                    "if(!document.getElementById('FirebugLite')){"
+                            + "E=document['createElement'+'NS']&&document.documentElement.namespaceURI;"
+                            + "E=E?document['createElement'+'NS'](E,'script'):document['createElement']('script');"
+                            + "E['setAttribute']('id','FirebugLite');"
+                            + "E['setAttribute']('src','"
+                            + local.resolve(firebugBaseDir).resolve(firebugBuildDir).toUri()
+                            + "' + 'firebug-lite-beta.js'+'#startOpened');"
+                            + "E['setAttribute']('FirebugLite','4');"
+                            + "(document['getElementsByTagName']('head')[0]||document['getElementsByTagName']('body')[0]).appendChild(E);"
+                            + "E=new Image;"
+                            + "E['setAttribute']('src','" + local.resolve(firebugBaseDir).toUri() + "'+'#startOpened');"
+                            + "}");
+        });
     }
 
     /**
@@ -102,7 +106,9 @@ public class Dbg implements WebViewerPlugin {
         if (isConsoleOut_) {
             write(FUNCTION_NAME, value, false);
         }
-        webViewer_.webEngine().executeScript("console.info(" + value + ")");
+        Platform.runLater(() -> {
+            webViewer_.webEngine().executeScript("console.info(" + value + ")");
+        });
     }
 
     /**
@@ -113,7 +119,9 @@ public class Dbg implements WebViewerPlugin {
         if (isConsoleOut_) {
             write(FUNCTION_NAME, value, false);
         }
-        webViewer_.webEngine().executeScript("console.log(" + value + ")");
+        Platform.runLater(() -> {
+            webViewer_.webEngine().executeScript("console.log(" + value + ")");
+        });
     }
 
     /**
@@ -124,7 +132,9 @@ public class Dbg implements WebViewerPlugin {
         if (isConsoleOut_) {
             write(FUNCTION_NAME, value, true);
         }
-        webViewer_.webEngine().executeScript("console.error(" + value + ")");
+        Platform.runLater(() -> {
+            webViewer_.webEngine().executeScript("console.error(" + value + ")");
+        });
     }
 
     /**
@@ -135,7 +145,9 @@ public class Dbg implements WebViewerPlugin {
         if (isConsoleOut_) {
             write(FUNCTION_NAME, value, false);
         }
-        webViewer_.webEngine().executeScript("console.warn(" + value + ")");
+        Platform.runLater(() -> {
+            webViewer_.webEngine().executeScript("console.warn(" + value + ")");
+        });
     }
 
     @Override
