@@ -107,7 +107,7 @@ public class Dbg implements WebViewerPlugin {
             write(FUNCTION_NAME, value, false);
         }
         Platform.runLater(() -> {
-            webViewer_.webEngine().executeScript("console.info(" + value + ")");
+            webViewer_.webEngine().executeScript("console.info('" + value + "')");
         });
     }
 
@@ -120,7 +120,7 @@ public class Dbg implements WebViewerPlugin {
             write(FUNCTION_NAME, value, false);
         }
         Platform.runLater(() -> {
-            webViewer_.webEngine().executeScript("console.log(" + value + ")");
+            webViewer_.webEngine().executeScript("console.log('" + value + "')");
         });
     }
 
@@ -133,7 +133,7 @@ public class Dbg implements WebViewerPlugin {
             write(FUNCTION_NAME, value, true);
         }
         Platform.runLater(() -> {
-            webViewer_.webEngine().executeScript("console.error(" + value + ")");
+            webViewer_.webEngine().executeScript("console.error('" + value + "')");
         });
     }
 
@@ -146,7 +146,7 @@ public class Dbg implements WebViewerPlugin {
             write(FUNCTION_NAME, value, false);
         }
         Platform.runLater(() -> {
-            webViewer_.webEngine().executeScript("console.warn(" + value + ")");
+            webViewer_.webEngine().executeScript("console.warn('" + value + "')");
         });
     }
 
