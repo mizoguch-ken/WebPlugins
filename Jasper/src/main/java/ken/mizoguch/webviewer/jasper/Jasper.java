@@ -30,7 +30,7 @@ import net.sf.jasperreports.engine.JasperFillManager;
 import net.sf.jasperreports.engine.JasperPrint;
 import net.sf.jasperreports.engine.JasperReport;
 import net.sf.jasperreports.engine.data.JRCsvDataSource;
-import net.sf.jasperreports.engine.data.JsonDataSource;
+import net.sf.jasperreports.engine.data.JsonData;
 import net.sf.jasperreports.engine.design.JasperDesign;
 import net.sf.jasperreports.engine.export.JRPrintServiceExporter;
 import net.sf.jasperreports.engine.util.JRLoader;
@@ -127,7 +127,7 @@ public class Jasper implements WebViewerPlugin {
      * @throws net.sf.jasperreports.engine.JRException
      */
     public void setJsonData(String jsonElement) throws JRException {
-        dataSource_ = new JsonDataSource(new ByteArrayInputStream(jsonElement.getBytes(Charset.forName("UTF-8"))));
+        dataSource_ = new JsonData(new ByteArrayInputStream(jsonElement.getBytes(Charset.forName("UTF-8"))));
     }
 
     /**
