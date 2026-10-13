@@ -1,11 +1,14 @@
 module Jasper {
-    requires jdk.jsobject;
+    requires ken.mizoguch.webviewer.plugin.api;
+    requires ken.mizoguch.webviewer.plugin.kit;
+    requires javafx.base;
+    requires javafx.graphics;
     requires java.desktop;
     requires javafx.web;
 
     requires net.sf.jasperreports.core;
-    requires commons.beanutils;
-    requires commons.collections;
+    requires net.sf.jasperreports.json;
+    requires org.apache.commons.beanutils2;
     requires org.apache.commons.collections4;
     requires com.fasterxml.jackson.core;
     requires com.fasterxml.jackson.databind;

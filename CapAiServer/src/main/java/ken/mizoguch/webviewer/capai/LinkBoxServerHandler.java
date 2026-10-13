@@ -1,16 +1,16 @@
 package ken.mizoguch.webviewer.capai;
 
 import io.netty.buffer.ByteBuf;
-import io.netty.channel.ChannelHandlerAdapter;
 import io.netty.channel.ChannelHandlerContext;
+import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.util.ReferenceCountUtil;
-import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 
 /**
  *
  * @author mizoguch-ken
  */
-public final class LinkBoxServerHandler extends ChannelHandlerAdapter {
+public final class LinkBoxServerHandler extends ChannelInboundHandlerAdapter {
 
     private final LinkBoxServer linkBoxServer_;
 
@@ -24,42 +24,36 @@ public final class LinkBoxServerHandler extends ChannelHandlerAdapter {
 
     @Override
     public void channelRead(ChannelHandlerContext ctx, Object msg) {
+        if (!(msg instanceof ByteBuf)) {
+            ReferenceCountUtil.release(msg);
+            return;
+        }
+
         ByteBuf in = (ByteBuf) msg;
-        ByteBuf out = ctx.alloc().buffer(2);
         StringBuilder buffer = new StringBuilder();
-        String buf;
-        byte data;
 
         try {
             while (in.isReadable()) {
-                data = in.readByte();
-                switch (data) {
-                    case 0x0a:
-                        break;
-                    case 0x0d:
-                        buf = linkBoxServer_.createResponse(buffer.toString());
-                        if (buf != null) {
-                            out.writeBytes(buf.getBytes("US-ASCII"));
-                            ctx.channel().writeAndFlush(out);
-                            out.clear();
-                        }
-                        buffer.delete(0, buffer.length());
-                        break;
-                    default:
-                        buffer.append(new String(new byte[] { data }, "US-ASCII"));
-                        break;
+                byte data = in.readByte();
+                if (data == 0x0d) {
+                    String response = linkBoxServer_.createResponse(buffer.toString());
+                    if (response != null) {
+                        ByteBuf out = ctx.alloc().buffer(response.length());
+                        out.writeBytes(response.getBytes(StandardCharsets.US_ASCII));
+                        ctx.writeAndFlush(out);
+                    }
+                    buffer.setLength(0);
+                } else if (data != 0x0a) {
+                    buffer.append((char) data);
                 }
             }
-        } catch (UnsupportedEncodingException ex) {
-            linkBoxServer_.exceptionCaught(ex);
         } finally {
             ReferenceCountUtil.release(msg);
         }
     }
 
     @Override
-    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) throws Exception {
-        super.exceptionCaught(ctx, cause);
+    public void exceptionCaught(ChannelHandlerContext ctx, Throwable cause) {
         linkBoxServer_.exceptionCaught(cause);
         ctx.close();
     }

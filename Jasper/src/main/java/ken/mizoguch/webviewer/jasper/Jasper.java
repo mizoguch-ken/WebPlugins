@@ -3,12 +3,13 @@ package ken.mizoguch.webviewer.jasper;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 import com.google.gson.JsonSyntaxException;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.Charset;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -22,6 +23,7 @@ import javax.print.PrintServiceLookup;
 import javax.print.attribute.HashPrintServiceAttributeSet;
 import javax.print.attribute.standard.PrinterName;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
 import net.sf.jasperreports.engine.JRDataSource;
 import net.sf.jasperreports.engine.JRException;
 import net.sf.jasperreports.engine.JasperCompileManager;
@@ -30,7 +32,7 @@ import net.sf.jasperreports.engine.JasperFillManager;
 import net.sf.jasperreports.engine.JasperPrint;
 import net.sf.jasperreports.engine.JasperReport;
 import net.sf.jasperreports.engine.data.JRCsvDataSource;
-import net.sf.jasperreports.engine.data.JsonData;
+import net.sf.jasperreports.json.data.JsonDataSource;
 import net.sf.jasperreports.engine.design.JasperDesign;
 import net.sf.jasperreports.engine.export.JRPrintServiceExporter;
 import net.sf.jasperreports.engine.util.JRLoader;
@@ -42,9 +44,8 @@ import net.sf.jasperreports.export.SimplePrintServiceExporterConfiguration;
  *
  * @author mizoguch-ken
  */
-public class Jasper implements WebViewerPlugin {
+public class Jasper extends PluginSupport {
 
-    private WebViewerPlugin webViewer_;
     private static final String FUNCTION_NAME = "jasper";
 
     private JasperReport report_;
@@ -74,7 +75,12 @@ public class Jasper implements WebViewerPlugin {
      * @throws JRException
      */
     public void jasper(String path) throws JRException {
-        report_ = (JasperReport) JRLoader.loadObject(Paths.get(path).toFile());
+        Path file = getPath(path);
+
+        if (file == null) {
+            return;
+        }
+        report_ = (JasperReport) JRLoader.loadObject(file.toFile());
     }
 
     /**
@@ -83,8 +89,35 @@ public class Jasper implements WebViewerPlugin {
      * @throws JRException
      */
     public void jrxml(String path) throws JRException {
-        JasperDesign design = JRXmlLoader.load(Paths.get(path).toFile());
+        Path file = getPath(path);
+
+        if (file == null) {
+            return;
+        }
+        JasperDesign design = JRXmlLoader.load(file.toFile());
         report_ = JasperCompileManager.compileReport(design);
+    }
+
+    /**
+     * path of a file given by the javascript of the page
+     *
+     * @param path
+     * @return the path of the file, null when the path can not be used
+     */
+    private Path getPath(String path) {
+        Path file;
+
+        if (path == null) {
+            write(FUNCTION_NAME, "Incorrect file path", true);
+            return null;
+        }
+        try {
+            file = Paths.get(path);
+        } catch (InvalidPathException ex) {
+            write(FUNCTION_NAME, "Incorrect file path [" + path + "]", true);
+            return null;
+        }
+        return file;
     }
 
     /**
@@ -99,19 +132,35 @@ public class Jasper implements WebViewerPlugin {
      * @param jsonElement
      */
     public void setParameters(String jsonElement) throws JsonSyntaxException {
-        JsonArray buffer = gson_.fromJson(jsonElement, JsonArray.class);
-        JsonObject jsonObject;
+        JsonArray parameters;
 
-        for (JsonElement buff : buffer) {
-            jsonObject = buff.getAsJsonObject();
+        if (jsonElement == null) {
+            write(FUNCTION_NAME, "Incorrect parameter", true);
+            return;
+        }
+        parameters = gson_.fromJson(jsonElement, JsonArray.class);
+        if (parameters == null) {
+            write(FUNCTION_NAME, "Incorrect parameter", true);
+            return;
+        }
+        for (JsonElement element : parameters) {
+            if (!element.isJsonObject()) {
+                // a parameter of a report is an object of names and values
+                continue;
+            }
+            for (Map.Entry<String, JsonElement> entry : element.getAsJsonObject().entrySet()) {
+                JsonElement value = entry.getValue();
 
-            for (Map.Entry<String, JsonElement> entry : jsonObject.entrySet()) {
-                if (entry.getValue().getAsJsonPrimitive().isBoolean()) {
-                    parameters_.put(entry.getKey(), entry.getValue().getAsBoolean());
-                } else if (entry.getValue().getAsJsonPrimitive().isNumber()) {
-                    parameters_.put(entry.getKey(), entry.getValue().getAsNumber());
-                } else if (entry.getValue().getAsJsonPrimitive().isString()) {
-                    parameters_.put(entry.getKey(), entry.getValue().getAsString());
+                if (!value.isJsonPrimitive()) {
+                    // the value of a report parameter is a boolean, a number or a string
+                    continue;
+                }
+                if (value.getAsJsonPrimitive().isBoolean()) {
+                    parameters_.put(entry.getKey(), value.getAsBoolean());
+                } else if (value.getAsJsonPrimitive().isNumber()) {
+                    parameters_.put(entry.getKey(), value.getAsNumber());
+                } else if (value.getAsJsonPrimitive().isString()) {
+                    parameters_.put(entry.getKey(), value.getAsString());
                 }
             }
         }
@@ -127,7 +176,11 @@ public class Jasper implements WebViewerPlugin {
      * @throws net.sf.jasperreports.engine.JRException
      */
     public void setJsonData(String jsonElement) throws JRException {
-        dataSource_ = new JsonData(new ByteArrayInputStream(jsonElement.getBytes(Charset.forName("UTF-8"))));
+        if (jsonElement == null) {
+            write(FUNCTION_NAME, "Incorrect data", true);
+            return;
+        }
+        dataSource_ = new JsonDataSource(new ByteArrayInputStream(jsonElement.getBytes(Charset.forName("UTF-8"))));
     }
 
     /**
@@ -136,6 +189,10 @@ public class Jasper implements WebViewerPlugin {
      * @throws JRException
      */
     public void setCsvData(String csvElement) throws JRException {
+        if (csvElement == null) {
+            write(FUNCTION_NAME, "Incorrect data", true);
+            return;
+        }
         dataSource_ = new JRCsvDataSource(new ByteArrayInputStream(csvElement.getBytes(Charset.forName("UTF-8"))));
     }
 
@@ -145,8 +202,14 @@ public class Jasper implements WebViewerPlugin {
      */
     public String getPrintServices() {
         PrintService[] printServices = PrintServiceLookup.lookupPrintServices(null, null);
+        List<String> names = new ArrayList<>();
 
-        return gson_.toJson(printServices);
+        // the printers of the computer are given by their name : the printers themselves
+        // are not usable in the javascript of the page
+        for (PrintService printService : printServices) {
+            names.add(printService.getName());
+        }
+        return gson_.toJson(names);
     }
 
     /**
@@ -155,6 +218,15 @@ public class Jasper implements WebViewerPlugin {
      * @throws JRException
      */
     public void print(String printerName) throws JRException {
+        if (printerName == null) {
+            write(FUNCTION_NAME, "Incorrect printer name", true);
+            return;
+        }
+        JasperPrint jasperPrint = fillReport();
+
+        if (jasperPrint == null) {
+            return;
+        }
         HashPrintServiceAttributeSet printServiceAttributeSet = new HashPrintServiceAttributeSet();
         printServiceAttributeSet.add(new PrinterName(printerName, Locale.getDefault()));
 
@@ -162,12 +234,6 @@ public class Jasper implements WebViewerPlugin {
         configuration.setPrintServiceAttributeSet(printServiceAttributeSet);
 
         JRPrintServiceExporter exporter = new JRPrintServiceExporter();
-        JasperPrint jasperPrint;
-        if (dataSource_ == null) {
-            jasperPrint = JasperFillManager.fillReport(report_, parameters_);
-        } else {
-            jasperPrint = JasperFillManager.fillReport(report_, parameters_, dataSource_);
-        }
         exporter.setExporterInput(new SimpleExporterInput(jasperPrint));
         exporter.setConfiguration(configuration);
         exporter.exportReport();
@@ -179,13 +245,13 @@ public class Jasper implements WebViewerPlugin {
      * @throws JRException
      */
     public void pdf(String path) throws JRException {
-        JasperPrint jasperPrint;
-        if (dataSource_ == null) {
-            jasperPrint = JasperFillManager.fillReport(report_, parameters_);
-        } else {
-            jasperPrint = JasperFillManager.fillReport(report_, parameters_, dataSource_);
+        Path file = getPath(path);
+        JasperPrint jasperPrint = fillReport();
+
+        if ((file == null) || (jasperPrint == null)) {
+            return;
         }
-        JasperExportManager.exportReportToPdfFile(jasperPrint, path);
+        JasperExportManager.exportReportToPdfFile(jasperPrint, file.toString());
     }
 
     /**
@@ -194,13 +260,13 @@ public class Jasper implements WebViewerPlugin {
      * @throws JRException
      */
     public void html(String path) throws JRException {
-        JasperPrint jasperPrint;
-        if (dataSource_ == null) {
-            jasperPrint = JasperFillManager.fillReport(report_, parameters_);
-        } else {
-            jasperPrint = JasperFillManager.fillReport(report_, parameters_, dataSource_);
+        Path file = getPath(path);
+        JasperPrint jasperPrint = fillReport();
+
+        if ((file == null) || (jasperPrint == null)) {
+            return;
         }
-        JasperExportManager.exportReportToHtmlFile(jasperPrint, path);
+        JasperExportManager.exportReportToHtmlFile(jasperPrint, file.toString());
     }
 
     /**
@@ -209,18 +275,35 @@ public class Jasper implements WebViewerPlugin {
      * @throws JRException
      */
     public void xml(String path) throws JRException {
-        JasperPrint jasperPrint;
-        if (dataSource_ == null) {
-            jasperPrint = JasperFillManager.fillReport(report_, parameters_);
-        } else {
-            jasperPrint = JasperFillManager.fillReport(report_, parameters_, dataSource_);
+        Path file = getPath(path);
+        JasperPrint jasperPrint = fillReport();
+
+        if ((file == null) || (jasperPrint == null)) {
+            return;
         }
-        JasperExportManager.exportReportToXmlFile(jasperPrint, path, true);
+        JasperExportManager.exportReportToXmlFile(jasperPrint, file.toString(), true);
+    }
+
+    /**
+     * fill the report loaded by the page with its parameters and its data
+     *
+     * @return the filled report, null when the page loaded no report
+     * @throws JRException
+     */
+    private JasperPrint fillReport() throws JRException {
+        if (report_ == null) {
+            write(FUNCTION_NAME, "No report", true);
+            return null;
+        }
+        if (dataSource_ == null) {
+            return JasperFillManager.fillReport(report_, parameters_);
+        }
+        return JasperFillManager.fillReport(report_, parameters_, dataSource_);
     }
 
     @Override
     public void initialize(WebViewerPlugin webViewer) {
-        webViewer_ = webViewer;
+        super.initialize(webViewer);
     }
 
     @Override
@@ -238,33 +321,4 @@ public class Jasper implements WebViewerPlugin {
         clearJsonData();
     }
 
-    @Override
-    public Stage stage() {
-        return webViewer_.stage();
-    }
-
-    @Override
-    public List<Image> icons() {
-        return webViewer_.icons();
-    }
-
-    @Override
-    public WebEngine webEngine() {
-        return webViewer_.webEngine();
-    }
-
-    @Override
-    public Path webPath() {
-        return webViewer_.webPath();
-    }
-
-    @Override
-    public void writeStackTrace(String name, Throwable throwable) {
-        webViewer_.writeStackTrace(name, throwable);
-    }
-
-    @Override
-    public void write(String name, String msg, boolean err) {
-        webViewer_.write(name, msg, err);
-    }
 }

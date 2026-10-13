@@ -1,6 +1,7 @@
 package ken.mizoguch.webviewer.capai;
 
 import io.netty.bootstrap.ServerBootstrap;
+import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
@@ -10,6 +11,7 @@ import io.netty.channel.socket.nio.NioServerSocketChannel;
 import javafx.concurrent.Service;
 import javafx.concurrent.Task;
 import javax.swing.event.EventListenerList;
+import ken.mizoguch.webviewer.capai.common.LinkBoxEnums;
 
 /**
  *
@@ -20,8 +22,9 @@ public final class LinkBoxServer extends Service<Void> {
     private final LinkBoxServer self_;
     private final EventListenerList eventListenerList_;
 
-    private final EventLoopGroup bossGroup_;
-    private final EventLoopGroup workerGroup_;
+    private volatile EventLoopGroup bossGroup_;
+    private volatile EventLoopGroup workerGroup_;
+    private volatile Channel serverChannel_;
 
     private int serverPort_;
 
@@ -31,8 +34,6 @@ public final class LinkBoxServer extends Service<Void> {
     public LinkBoxServer() {
         self_ = this;
         eventListenerList_ = new EventListenerList();
-        bossGroup_ = new NioEventLoopGroup();
-        workerGroup_ = new NioEventLoopGroup();
         setListenPort(50021);
     }
 
@@ -79,6 +80,8 @@ public final class LinkBoxServer extends Service<Void> {
                 }
                 if (serverPort_ > 50000) {
                     try {
+                        bossGroup_ = new NioEventLoopGroup(1);
+                        workerGroup_ = new NioEventLoopGroup();
                         ServerBootstrap b = new ServerBootstrap();
                         b.group(bossGroup_, workerGroup_)
                                 .channel(NioServerSocketChannel.class)
@@ -89,11 +92,17 @@ public final class LinkBoxServer extends Service<Void> {
                                     }
                                 });
                         ChannelFuture f = b.bind(serverPort_).sync();
-                        f.channel().closeFuture().sync();
+                        serverChannel_ = f.channel();
+                        try {
+                            serverChannel_.closeFuture().sync();
+                        } finally {
+                            serverChannel_ = null;
+                        }
                     } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
                         exceptionCaught(ex);
                     } finally {
-                        stop();
+                        shutdownGroups();
                     }
                 }
                 for (LinkBoxServerListener listener : eventListenerList_.getListeners(LinkBoxServerListener.class)) {
@@ -108,11 +117,32 @@ public final class LinkBoxServer extends Service<Void> {
      *
      */
     public void stop() {
+        Channel channel = serverChannel_;
+        if (channel != null) {
+            channel.close();
+        }
         if (isRunning()) {
             cancel();
         }
-        workerGroup_.shutdownGracefully();
-        bossGroup_.shutdownGracefully();
+        shutdownGroups();
+    }
+
+    /**
+     * shutdown the event loop groups of the current listening session : the groups are created again
+     * at the next start
+     */
+    private void shutdownGroups() {
+        EventLoopGroup workerGroup = workerGroup_;
+        EventLoopGroup bossGroup = bossGroup_;
+
+        workerGroup_ = null;
+        bossGroup_ = null;
+        if (workerGroup != null) {
+            workerGroup.shutdownGracefully();
+        }
+        if (bossGroup != null) {
+            bossGroup.shutdownGracefully();
+        }
     }
 
     /**
@@ -137,20 +167,30 @@ public final class LinkBoxServer extends Service<Void> {
         Integer status = null;
         String view = null;
 
-        if (request.startsWith("AKATT")) {
+        if ((request != null) && request.startsWith("AKATT")) {
             switch (request.length()) {
                 case 13:
                     buf.append("O");
-                    errorCode = Integer.parseInt(request.substring(5, 7), 16);
-                    unitNumber = Integer.parseInt(request.substring(7, 11), 10);
-                    status = Integer.parseInt(request.substring(11, 13), 16);
+                    try {
+                        errorCode = Integer.parseInt(request.substring(5, 7), 16);
+                        unitNumber = Integer.parseInt(request.substring(7, 11), 10);
+                        status = Integer.parseInt(request.substring(11, 13), 16);
+                    } catch (NumberFormatException ex) {
+                        buf.setLength(0);
+                        buf.append("N");
+                    }
                     break;
                 case 20:
                     buf.append("O");
-                    errorCode = Integer.parseInt(request.substring(5, 7), 16);
-                    unitNumber = Integer.parseInt(request.substring(7, 11), 10);
-                    status = Integer.parseInt(request.substring(11, 13), 16);
-                    view = request.substring(14, 19);
+                    try {
+                        errorCode = Integer.parseInt(request.substring(5, 7), 16);
+                        unitNumber = Integer.parseInt(request.substring(7, 11), 10);
+                        status = Integer.parseInt(request.substring(11, 13), 16);
+                        view = request.substring(14, 19);
+                    } catch (NumberFormatException ex) {
+                        buf.setLength(0);
+                        buf.append("N");
+                    }
                     break;
                 default:
                     buf.append("N");
@@ -160,7 +200,7 @@ public final class LinkBoxServer extends Service<Void> {
                 listener.requestLinkBoxServer("AKATT", request, errorCode, unitNumber, status, view);
                 listener.responseLinkBoxServer("AKATT", buf.toString());
             }
-            buf.append("\n").toString();
+            buf.append("\n");
             return buf.toString();
         }
         return null;

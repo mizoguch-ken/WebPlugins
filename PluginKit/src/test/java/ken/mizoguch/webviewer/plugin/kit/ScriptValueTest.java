@@ -1,0 +1,70 @@
+package ken.mizoguch.webviewer.plugin.kit;
+
+import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
+
+/**
+ * test of the values used in the javascript of the page
+ *
+ * @author mizoguch-ken
+ */
+public class ScriptValueTest {
+
+    @Test
+    public void noValueIsAnEmptyLiteral() {
+        assertEquals("", ScriptValue.quote(null));
+        assertEquals("''", ScriptValue.literal(null));
+    }
+
+    @Test
+    public void theQuotesOfTheLiteralAreEscaped() {
+        assertEquals("a\\'b", ScriptValue.quote("a'b"));
+        assertEquals("a\\\"b", ScriptValue.quote("a\"b"));
+        assertEquals("a\\\\b", ScriptValue.quote("a\\b"));
+    }
+
+    @Test
+    public void aMessageCanNotEndTheLiteralOfThePage() {
+        String message = "'); ken.mizoguch.evil();//";
+        String quoted = ScriptValue.quote(message);
+
+        // the escaped message holds no single quote which is not escaped
+        for (int index = 0; index < quoted.length(); index++) {
+            if (quoted.charAt(index) == '\'') {
+                assertTrue((index > 0) && (quoted.charAt(index - 1) == '\\'), "unescaped quote at " + index);
+            }
+        }
+        assertEquals("\\'); ken.mizoguch.evil();//", quoted);
+    }
+
+    @Test
+    public void theEndsOfALineAreEscaped() {
+        assertEquals("a\\rb", ScriptValue.quote("a\rb"));
+        assertEquals("a\\nb", ScriptValue.quote("a\nb"));
+        assertEquals("a\\tb", ScriptValue.quote("a\tb"));
+        // the line separator and the paragraph separator end a javascript literal
+        assertEquals("a\\u2028b", ScriptValue.quote("a\u2028b"));
+        assertEquals("a\\u2029b", ScriptValue.quote("a\u2029b"));
+        assertEquals("a\\u0001b", ScriptValue.quote("a\u0001b"));
+    }
+
+    @Test
+    public void theCasesOfTheConsoleOfThePageAreEscaped() {
+        assertEquals("", ScriptValue.quote(""));
+        assertEquals("a\\\\b", ScriptValue.quote("a\\b"));
+        assertEquals("it\\'s", ScriptValue.quote("it's"));
+        assertEquals("say \\\"hi\\\"", ScriptValue.quote("say \"hi\""));
+        assertEquals("\\');alert(1);(\\'", ScriptValue.quote("');alert(1);('"));
+        assertEquals("a\\u0000b", ScriptValue.quote("a\u0000b"));
+        assertEquals(3, ScriptValue.quote("abc").length());
+    }
+
+    @Test
+    public void anAbnormalLengthIsCut() {
+        StringBuilder value = new StringBuilder();
+        for (int index = 0; index < (ScriptValue.MAX_LENGTH + 10); index++) {
+            value.append('x');
+        }
+        assertEquals(ScriptValue.MAX_LENGTH, ScriptValue.quote(value.toString()).length());
+    }
+}

@@ -9,7 +9,7 @@
 
 ## 関数
 
- * void void capaiclient.licenses()
+ * void capaiclient.licenses()
  * void capaiclient.setNotifyClientStart(String func)
  * void capaiclient.setNotifyClientStop(String func)
  * void capaiclient.setNotifyClientRequest(String func)

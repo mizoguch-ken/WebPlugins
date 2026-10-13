@@ -1,0 +1,237 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>ken.mizoguch</groupId>
+    <artifactId>webviewer-plugins</artifactId>
+    <version>2026.10.11</version>
+    <packaging>pom</packaging>
+
+    <name>WebViewer plugins</name>
+    <description>parent and aggregator of the WebViewer plug-ins</description>
+
+    <organization>
+        <name>mizoguch-ken</name>
+    </organization>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- the JavaFX modules come from the JDK of the build : maven.compiler.release can not be
+        used, the release option of the compiler restricts the compilation to the signatures of
+        the standard JDK and javafx is not one of them -->
+        <maven.compiler.source>17</maven.compiler.source>
+        <maven.compiler.target>17</maven.compiler.target>
+
+        <!-- modules given to surefire : the JavaFX modules are not resolved by default -->
+        <javafx.modules>javafx.base,javafx.graphics,javafx.web</javafx.modules>
+
+        <!-- the shaded jar is the deliverable of a plug-in only : the api and the kit are plain
+        libraries and are not shaded -->
+        <shade.skip>true</shade.skip>
+
+        <gson.version>2.14.0</gson.version>
+        <slf4j.version>2.0.19</slf4j.version>
+        <junit.version>5.14.4</junit.version>
+        <commons-net.version>3.13.0</commons-net.version>
+        <nrjavaserial.version>5.2.1</nrjavaserial.version>
+        <netty.version>4.2.18.Final</netty.version>
+        <jasperreports.version>7.0.8</jasperreports.version>
+        <javacv.version>1.5.14</javacv.version>
+        <opencv.version>4.14.0-1.5.14</opencv.version>
+        <ffmpeg.version>8.1.2-1.5.14</ffmpeg.version>
+    </properties>
+
+    <modules>
+        <module>PluginApi</module>
+        <module>PluginKit</module>
+        <module>CapAiCommon</module>
+        <module>CapAiClient</module>
+        <module>CapAiClient2</module>
+        <module>CapAiClient3</module>
+        <module>CapAiServer</module>
+        <module>Db</module>
+        <module>Dbg</module>
+        <module>File</module>
+        <module>Ftp</module>
+        <module>Jasper</module>
+        <module>OnlineArt</module>
+        <module>Serial</module>
+        <module>WebCam</module>
+    </modules>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>ken.mizoguch</groupId>
+                <artifactId>webviewer-plugin-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ken.mizoguch</groupId>
+                <artifactId>webviewer-plugin-kit</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ken.mizoguch</groupId>
+                <artifactId>capai-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.code.gson</groupId>
+                <artifactId>gson</artifactId>
+                <version>${gson.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>${slf4j.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-net</groupId>
+                <artifactId>commons-net</artifactId>
+                <version>${commons-net.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.neuronrobotics</groupId>
+                <artifactId>nrjavaserial</artifactId>
+                <version>${nrjavaserial.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-common</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-buffer</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty-transport</artifactId>
+                <version>${netty.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.sf.jasperreports</groupId>
+                <artifactId>jasperreports</artifactId>
+                <version>${jasperreports.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>net.sf.jasperreports</groupId>
+                <artifactId>jasperreports-json</artifactId>
+                <version>${jasperreports.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bytedeco</groupId>
+                <artifactId>javacv-platform</artifactId>
+                <version>${javacv.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bytedeco</groupId>
+                <artifactId>opencv-platform</artifactId>
+                <version>${opencv.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.bytedeco</groupId>
+                <artifactId>ffmpeg-platform</artifactId>
+                <version>${ffmpeg.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.junit.jupiter</groupId>
+                <artifactId>junit-jupiter</artifactId>
+                <version>${junit.version}</version>
+                <scope>test</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.16.0</version>
+                    <configuration>
+                        <source>${maven.compiler.source}</source>
+                        <target>${maven.compiler.target}</target>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>3.5.4</version>
+                    <configuration>
+                        <!-- JavaFX comes from the JDK modules : they are not resolved by default -->
+                        <argLine>--add-modules ${javafx.modules}</argLine>
+                        <!-- keep everything in the unnamed module : the tests use the plugin classes -->
+                        <useModulePath>false</useModulePath>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-shade-plugin</artifactId>
+                    <version>3.6.2</version>
+                    <!-- the deliverable of a plug-in is the shaded jar alone : target/[name].jar,
+                    the plug-in jar keeps the module name without a version -->
+                    <configuration>
+                        <skip>${shade.skip}</skip>
+                        <shadedArtifactAttached>false</shadedArtifactAttached>
+                        <createDependencyReducedPom>false</createDependencyReducedPom>
+                        <finalName>${project.name}</finalName>
+                        <filters>
+                            <filter>
+                                <artifact>*:*</artifact>
+                                <excludes>
+                                    <exclude>org/datanucleus/**</exclude>
+                                    <exclude>META-INF/*.SF</exclude>
+                                    <exclude>META-INF/*.DSA</exclude>
+                                    <exclude>META-INF/*.RSA</exclude>
+                                    <!-- the WebViewer gives the interface of its plug-ins and
+                                    loads the plug-in jars with itself as the parent loader :
+                                    a plug-in which shades its own copy of the interface would
+                                    not implement the interface of the loader which reads it -->
+                                    <exclude>ken/mizoguch/webviewer/plugin/WebViewerPlugin.class</exclude>
+                                    <exclude>META-INF/maven/ken.mizoguch/webviewer-plugin-api/**</exclude>
+                                </excludes>
+                            </filter>
+                        </filters>
+                    </configuration>
+
+                    <executions>
+                        <execution>
+                            <phase>package</phase>
+                            <goals>
+                                <goal>shade</goal>
+                            </goals>
+                            <configuration>
+                                <transformers>
+                                    <transformer
+                                        implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                        <resource>reference.conf</resource>
+                                    </transformer>
+                                    <transformer
+                                        implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
+                                    <transformer
+                                        implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                        <manifestEntries>
+                                            <Implementation-Title>${project.name}</Implementation-Title>
+                                            <Implementation-Version>${project.version}</Implementation-Version>
+                                            <Implementation-Vendor>${project.organization.name}</Implementation-Vendor>
+                                            <Implementation-Vendor-Id>${project.groupId}</Implementation-Vendor-Id>
+                                            <Built-By>${project.organization.name}</Built-By>
+                                            <Main-Class>${mainClass}</Main-Class>
+                                        </manifestEntries>
+                                    </transformer>
+                                </transformers>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>

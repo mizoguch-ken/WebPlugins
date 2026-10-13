@@ -9,49 +9,39 @@ import java.net.SocketException;
 import java.nio.file.Path;
 import java.util.Enumeration;
 import java.util.List;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.LinkedBlockingQueue;
-import javafx.application.Platform;
-import javafx.concurrent.Worker;
 import javafx.concurrent.Worker.State;
-import javafx.scene.image.Image;
-import javafx.scene.web.WebEngine;
-import javafx.stage.Stage;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
-import netscape.javascript.JSException;
+import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
+import ken.mizoguch.webviewer.plugin.kit.ScriptNotifier;
+import ken.mizoguch.webviewer.plugin.kit.ScriptValue;
 
 /**
  *
  * @author mizoguch-ken
  */
-public class CapAiServer implements WebViewerPlugin, LinkBoxServerListener {
+public class CapAiServer extends PluginSupport implements LinkBoxServerListener {
 
-    private WebViewerPlugin webViewer_;
     private static final String FUNCTION_NAME = "capaiserver";
 
-    private WebEngine webEngine_;
-    private State state_;
     private final LinkBoxServer linkBoxServer_;
 
-    private String funcServerStart_, funcServerStop_, funcServerRequest_, funcServerResponse_, funcServerError_;
-    private final BlockingQueue<String> serverRequest_, serverResponse_, serverError_;
+    private final ScriptNotifier serverStart_;
+    private final ScriptNotifier serverStop_;
+    private final ScriptNotifier serverRequest_;
+    private final ScriptNotifier serverResponse_;
+    private final ScriptNotifier serverError_;
     private final Gson gson_;
 
     /**
-     *
+     * a CapAi server which reports the traffic of its Link Box to the page
      */
     public CapAiServer() {
-        webEngine_ = null;
-        state_ = Worker.State.READY;
         linkBoxServer_ = new LinkBoxServer();
-        funcServerStart_ = null;
-        funcServerStop_ = null;
-        funcServerRequest_ = null;
-        funcServerResponse_ = null;
-        funcServerError_ = null;
-        serverRequest_ = new LinkedBlockingQueue<>();
-        serverResponse_ = new LinkedBlockingQueue<>();
-        serverError_ = new LinkedBlockingQueue<>();
+        serverStart_ = new ScriptNotifier(this, "Notification of the start is dropped");
+        serverStop_ = new ScriptNotifier(this, "Notification of the stop is dropped");
+        serverRequest_ = new ScriptNotifier(this, "Notification of a request is dropped");
+        serverResponse_ = new ScriptNotifier(this, "Notification of a response is dropped");
+        serverError_ = new ScriptNotifier(this, "Notification of an error is dropped");
         gson_ = new Gson();
     }
 
@@ -63,69 +53,64 @@ public class CapAiServer implements WebViewerPlugin, LinkBoxServerListener {
     }
 
     /**
+     * the function of the page which reads the notification of the start of the server
      *
-     * @param func
+     * @param func name of the function, null when the page does not want the notification
      */
     public void setNotifyServerStart(String func) {
-        funcServerStart_ = func;
-        if ((funcServerStart_ == null) && (funcServerStop_ == null) && (funcServerRequest_ == null)
-                && (funcServerResponse_ == null) && (funcServerError_ == null)) {
-            linkBoxServer_.removeLinkBoxServerListener(this);
-        } else {
-            linkBoxServer_.addLinkBoxServerListener(this);
-        }
+        setNotify(serverStart_, func);
     }
 
     /**
+     * the function of the page which reads the notification of the stop of the server
      *
-     * @param func
+     * @param func name of the function, null when the page does not want the notification
      */
     public void setNotifyServerStop(String func) {
-        funcServerStop_ = func;
-        if ((funcServerStart_ == null) && (funcServerStop_ == null) && (funcServerRequest_ == null)
-                && (funcServerResponse_ == null) && (funcServerError_ == null)) {
-            linkBoxServer_.removeLinkBoxServerListener(this);
-        } else {
-            linkBoxServer_.addLinkBoxServerListener(this);
-        }
+        setNotify(serverStop_, func);
     }
 
     /**
+     * the function of the page which reads the notification of a request of the server
      *
-     * @param func
+     * @param func name of the function, null when the page does not want the notification
      */
     public void setNotifyServerRequest(String func) {
-        funcServerRequest_ = func;
-        if ((funcServerStart_ == null) && (funcServerStop_ == null) && (funcServerRequest_ == null)
-                && (funcServerResponse_ == null) && (funcServerError_ == null)) {
-            linkBoxServer_.removeLinkBoxServerListener(this);
-        } else {
-            linkBoxServer_.addLinkBoxServerListener(this);
-        }
+        setNotify(serverRequest_, func);
     }
 
     /**
+     * the function of the page which reads the notification of a response of the server
      *
-     * @param func
+     * @param func name of the function, null when the page does not want the notification
      */
     public void setNotifyServerResponse(String func) {
-        funcServerResponse_ = func;
-        if ((funcServerStart_ == null) && (funcServerStop_ == null) && (funcServerRequest_ == null)
-                && (funcServerResponse_ == null) && (funcServerError_ == null)) {
-            linkBoxServer_.removeLinkBoxServerListener(this);
-        } else {
-            linkBoxServer_.addLinkBoxServerListener(this);
-        }
+        setNotify(serverResponse_, func);
     }
 
     /**
+     * the function of the page which reads the notification of an error of the server
      *
-     * @param func
+     * @param func name of the function, null when the page does not want the notification
      */
     public void setNotifyServerError(String func) {
-        funcServerError_ = func;
-        if ((funcServerStart_ == null) && (funcServerStop_ == null) && (funcServerRequest_ == null)
-                && (funcServerResponse_ == null) && (funcServerError_ == null)) {
+        setNotify(serverError_, func);
+    }
+
+    /**
+     * the function of the page of one of the notifications : the server of the Link Box is
+     * listened only while the page wants at least one notification, so the server of a page
+     * which wants none stops reporting.
+     *
+     * @param notifier the notification of the server
+     * @param func name of the function of the page, null when the page does not want it
+     */
+    private void setNotify(ScriptNotifier notifier, String func) {
+        notifier.setFunction(scriptFunction(func));
+
+        if ((serverStart_.function() == null) && (serverStop_.function() == null)
+                && (serverRequest_.function() == null) && (serverResponse_.function() == null)
+                && (serverError_.function() == null)) {
             linkBoxServer_.removeLinkBoxServerListener(this);
         } else {
             linkBoxServer_.addLinkBoxServerListener(this);
@@ -147,7 +132,7 @@ public class CapAiServer implements WebViewerPlugin, LinkBoxServerListener {
     public Boolean openLinkBoxServer() {
         if (!linkBoxServer_.isRunning()) {
             linkBoxServer_.setListenPort(50021);
-            if (linkBoxServer_.getState() == Worker.State.READY) {
+            if (linkBoxServer_.getState() == State.READY) {
                 linkBoxServer_.start();
             } else {
                 linkBoxServer_.restart();
@@ -196,110 +181,54 @@ public class CapAiServer implements WebViewerPlugin, LinkBoxServerListener {
             }
             return gson_.toJson(localAddress);
         } catch (SocketException ex) {
-            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+            writeStackTrace(FUNCTION_NAME, ex);
         }
         return null;
     }
 
     @Override
     public void startLinkBoxServer() {
-        if (funcServerStart_ != null) {
-            Platform.runLater(() -> {
-                if (funcServerStart_ != null) {
-                    if (state_ == State.SUCCEEDED) {
-                        try {
-                            webEngine_.executeScript(funcServerStart_ + "();");
-                        } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
-                        }
-                    }
-                }
-            });
-        }
+        serverStart_.send();
     }
 
     @Override
     public void stopLinkBoxServer() {
-        if (funcServerStop_ != null) {
-            Platform.runLater(() -> {
-                if (funcServerStop_ != null) {
-                    if (state_ == State.SUCCEEDED) {
-                        try {
-                            webEngine_.executeScript(funcServerStop_ + "();");
-                        } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
-                        }
-                    }
-                }
-            });
-        }
+        serverStop_.send();
     }
 
     @Override
     public void requestLinkBoxServer(String command, String request, Integer errorCode, Integer unitNumber,
             Integer status, String view) {
-        if (funcServerRequest_ != null) {
-            JsonObject jsonElement = new JsonObject();
+        JsonObject jsonElement = new JsonObject();
 
-            jsonElement.addProperty("errorCode", errorCode);
-            jsonElement.addProperty("unitNumber", unitNumber);
-            jsonElement.addProperty("status", status);
-            jsonElement.addProperty("view", view);
-            serverRequest_.offer("'" + command + "','" + request + "','" + gson_.toJson(jsonElement) + "'");
-            Platform.runLater(() -> {
-                if ((funcServerRequest_ != null) && !serverRequest_.isEmpty()) {
-                    if (state_ == State.SUCCEEDED) {
-                        try {
-                            webEngine_.executeScript(funcServerRequest_ + "(" + serverRequest_.poll() + ");");
-                        } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
-                        }
-                    }
-                }
-            });
-        }
+        jsonElement.addProperty("errorCode", errorCode);
+        jsonElement.addProperty("unitNumber", unitNumber);
+        jsonElement.addProperty("status", status);
+        jsonElement.addProperty("view", view);
+
+        serverRequest_.send(ScriptValue.literal(command) + "," + ScriptValue.literal(request)
+                + "," + ScriptValue.literal(gson_.toJson(jsonElement)));
     }
 
     @Override
     public void responseLinkBoxServer(String command, String response) {
-        if (funcServerResponse_ != null) {
-            serverResponse_.offer("'" + command + "','" + response + "'");
-            Platform.runLater(() -> {
-                if ((funcServerResponse_ != null) && !serverResponse_.isEmpty()) {
-                    if (state_ == State.SUCCEEDED) {
-                        try {
-                            webEngine_.executeScript(funcServerResponse_ + "(" + serverResponse_.poll() + ");");
-                        } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
-                        }
-                    }
-                }
-            });
-        }
+        serverResponse_.send(ScriptValue.literal(command) + "," + ScriptValue.literal(response));
     }
 
     @Override
     public void errorLinkBoxServer(int errorCode, String message) {
-        if (funcServerError_ != null) {
-            serverError_.offer(errorCode + ",'" + message + "'");
-            Platform.runLater(() -> {
-                if ((funcServerError_ != null) && !serverError_.isEmpty()) {
-                    if (state_ == State.SUCCEEDED) {
-                        try {
-                            webEngine_.executeScript(funcServerError_ + "(" + serverError_.poll() + ");");
-                        } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
-                        }
-                    }
-                }
-            });
-        }
+        serverError_.send(errorCode + "," + ScriptValue.literal(message));
     }
 
     @Override
     public void initialize(WebViewerPlugin webViewer) {
-        webViewer_ = webViewer;
-        webEngine_ = webViewer_.webEngine();
+        super.initialize(webViewer);
+
+        serverStart_.setEngine(webEngine());
+        serverStop_.setEngine(webEngine());
+        serverRequest_.setEngine(webEngine());
+        serverResponse_.setEngine(webEngine());
+        serverError_.setEngine(webEngine());
     }
 
     @Override
@@ -309,7 +238,11 @@ public class CapAiServer implements WebViewerPlugin, LinkBoxServerListener {
 
     @Override
     public void state(State state) {
-        state_ = state;
+        serverStart_.setState(state);
+        serverStop_.setState(state);
+        serverRequest_.setState(state);
+        serverResponse_.setState(state);
+        serverError_.setState(state);
     }
 
     @Override
@@ -319,38 +252,11 @@ public class CapAiServer implements WebViewerPlugin, LinkBoxServerListener {
         }
         linkBoxServer_.removeLinkBoxServerListener(this);
 
+        serverStart_.clear();
+        serverStop_.clear();
         serverRequest_.clear();
         serverResponse_.clear();
         serverError_.clear();
     }
 
-    @Override
-    public Stage stage() {
-        return webViewer_.stage();
-    }
-
-    @Override
-    public List<Image> icons() {
-        return webViewer_.icons();
-    }
-
-    @Override
-    public WebEngine webEngine() {
-        return webViewer_.webEngine();
-    }
-
-    @Override
-    public Path webPath() {
-        return webViewer_.webPath();
-    }
-
-    @Override
-    public void writeStackTrace(String name, Throwable throwable) {
-        webViewer_.writeStackTrace(name, throwable);
-    }
-
-    @Override
-    public void write(String name, String msg, boolean err) {
-        webViewer_.write(name, msg, err);
-    }
 }

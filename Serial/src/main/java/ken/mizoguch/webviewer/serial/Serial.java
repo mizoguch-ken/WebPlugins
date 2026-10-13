@@ -29,15 +29,16 @@ import javafx.scene.image.Image;
 import javafx.scene.web.WebEngine;
 import javafx.stage.Stage;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
+import ken.mizoguch.webviewer.plugin.kit.ScriptFunction;
 import netscape.javascript.JSException;
 
 /**
  *
  * @author mizoguch-ken
  */
-public class Serial implements WebViewerPlugin, SerialPortEventListener {
+public class Serial extends PluginSupport implements SerialPortEventListener {
 
-    private WebViewerPlugin webViewer_;
     private static final String FUNCTION_NAME = "serial";
 
     private WebEngine webEngine_;
@@ -112,7 +113,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
                 bufferedWriter_.close();
                 bufferedWriter_ = null;
             } catch (IOException ex) {
-                webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                writeStackTrace(FUNCTION_NAME, ex);
             }
         }
 
@@ -121,7 +122,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
                 bufferedReader_.close();
                 bufferedReader_ = null;
             } catch (IOException ex) {
-                webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                writeStackTrace(FUNCTION_NAME, ex);
             }
         }
 
@@ -393,7 +394,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
      * @param func
      */
     public void setNotifyDataAvailable(String func) {
-        funcDataAvailable_ = func;
+        funcDataAvailable_ = scriptFunction(func);
     }
 
     /**
@@ -401,9 +402,9 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
      * @param func
      */
     public void setNotifyOutputEmpty(String func) {
-        funcOutputEmpty_ = func;
+        funcOutputEmpty_ = scriptFunction(func);
         if (owner_) {
-            port_.notifyOnOutputEmpty(func != null);
+            port_.notifyOnOutputEmpty(funcOutputEmpty_ != null);
         }
     }
 
@@ -412,9 +413,9 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
      * @param func
      */
     public void setNotifyBreakInterrupt(String func) {
-        funcBreakInterrupt_ = func;
+        funcBreakInterrupt_ = scriptFunction(func);
         if (owner_) {
-            port_.notifyOnBreakInterrupt(func != null);
+            port_.notifyOnBreakInterrupt(funcBreakInterrupt_ != null);
         }
     }
 
@@ -423,9 +424,9 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
      * @param func
      */
     public void setNotifyCarrierDetect(String func) {
-        funcCarrierDetect_ = func;
+        funcCarrierDetect_ = scriptFunction(func);
         if (owner_) {
-            port_.notifyOnCarrierDetect(func != null);
+            port_.notifyOnCarrierDetect(funcCarrierDetect_ != null);
         }
     }
 
@@ -434,9 +435,9 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
      * @param func
      */
     public void setNotifyCTS(String func) {
-        funcCTS_ = func;
+        funcCTS_ = scriptFunction(func);
         if (owner_) {
-            port_.notifyOnCTS(func != null);
+            port_.notifyOnCTS(funcCTS_ != null);
         }
     }
 
@@ -445,9 +446,9 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
      * @param func
      */
     public void setNotifyDSR(String func) {
-        funcDSR_ = func;
+        funcDSR_ = scriptFunction(func);
         if (owner_) {
-            port_.notifyOnDSR(func != null);
+            port_.notifyOnDSR(funcDSR_ != null);
         }
     }
 
@@ -456,9 +457,9 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
      * @param func
      */
     public void setNotifyFramingError(String func) {
-        funcFramingError_ = func;
+        funcFramingError_ = scriptFunction(func);
         if (owner_) {
-            port_.notifyOnFramingError(func != null);
+            port_.notifyOnFramingError(funcFramingError_ != null);
         }
     }
 
@@ -467,9 +468,9 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
      * @param func
      */
     public void setNotifyOverrunError(String func) {
-        funcOverrunError_ = func;
+        funcOverrunError_ = scriptFunction(func);
         if (owner_) {
-            port_.notifyOnOverrunError(func != null);
+            port_.notifyOnOverrunError(funcOverrunError_ != null);
         }
     }
 
@@ -478,9 +479,9 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
      * @param func
      */
     public void setNotifyParityError(String func) {
-        funcParityError_ = func;
+        funcParityError_ = scriptFunction(func);
         if (owner_) {
-            port_.notifyOnParityError(func != null);
+            port_.notifyOnParityError(funcParityError_ != null);
         }
     }
 
@@ -489,10 +490,22 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
      * @param func
      */
     public void setNotifyRingIndicator(String func) {
-        funcRingIndicator_ = func;
+        funcRingIndicator_ = scriptFunction(func);
         if (owner_) {
-            port_.notifyOnRingIndicator(func != null);
+            port_.notifyOnRingIndicator(funcRingIndicator_ != null);
         }
+    }
+
+    /**
+     * check the name of a js function : the name is used with the arguments of a
+     * notification to build the script of the web page, so a name which comes from a page
+     * can not carry an other javascript
+     *
+     * @param func js function name
+     * @return true when the name can be used to build a script
+     */
+    static boolean isScriptFunction(String func) {
+        return (func != null) && ScriptFunction.isValid(func);
     }
 
     /**
@@ -603,14 +616,14 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
                     owner_ = true;
                     return true;
                 } else {
-                    webViewer_.write(FUNCTION_NAME, "Incorrect serial argument", true);
+                    write(FUNCTION_NAME, "Incorrect serial argument", true);
                 }
             } else {
-                webViewer_.write(FUNCTION_NAME, "Incorrect serial argument", true);
+                write(FUNCTION_NAME, "Incorrect serial argument", true);
             }
             return false;
         } else {
-            webViewer_.write(FUNCTION_NAME, "Serial is already open", true);
+            write(FUNCTION_NAME, "Serial is already open", true);
             return false;
         }
     }
@@ -731,7 +744,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
                     }
                 }
             } catch (IOException ex) {
-                webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                writeStackTrace(FUNCTION_NAME, ex);
             }
         }
 
@@ -742,7 +755,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
                         try {
                             webEngine_.executeScript(funcDataAvailable_ + "();");
                         } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                            writeStackTrace(FUNCTION_NAME, ex);
                         }
                     }
                 }
@@ -763,7 +776,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
                         try {
                             webEngine_.executeScript(funcOutputEmpty_ + "();");
                         } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                            writeStackTrace(FUNCTION_NAME, ex);
                         }
                     }
                 }
@@ -784,7 +797,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
                         try {
                             webEngine_.executeScript(funcBreakInterrupt_ + "();");
                         } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                            writeStackTrace(FUNCTION_NAME, ex);
                         }
                     }
                 }
@@ -805,7 +818,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
                         try {
                             webEngine_.executeScript(funcCarrierDetect_ + "(" + port_.isCD() + ");");
                         } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                            writeStackTrace(FUNCTION_NAME, ex);
                         }
                     }
                 }
@@ -826,7 +839,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
                         try {
                             webEngine_.executeScript(funcCTS_ + "(" + port_.isCTS() + ");");
                         } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                            writeStackTrace(FUNCTION_NAME, ex);
                         }
                     }
                 }
@@ -847,7 +860,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
                         try {
                             webEngine_.executeScript(funcDSR_ + "(" + port_.isDSR() + ");");
                         } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                            writeStackTrace(FUNCTION_NAME, ex);
                         }
                     }
                 }
@@ -868,7 +881,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
                         try {
                             webEngine_.executeScript(funcFramingError_ + "();");
                         } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                            writeStackTrace(FUNCTION_NAME, ex);
                         }
                     }
                 }
@@ -889,7 +902,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
                         try {
                             webEngine_.executeScript(funcOverrunError_ + "();");
                         } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                            writeStackTrace(FUNCTION_NAME, ex);
                         }
                     }
                 }
@@ -910,7 +923,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
                         try {
                             webEngine_.executeScript(funcParityError_ + "();");
                         } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                            writeStackTrace(FUNCTION_NAME, ex);
                         }
                     }
                 }
@@ -931,7 +944,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
                         try {
                             webEngine_.executeScript(funcRingIndicator_ + "(" + port_.isRI() + ");");
                         } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                            writeStackTrace(FUNCTION_NAME, ex);
                         }
                     }
                 }
@@ -945,8 +958,8 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
      */
     @Override
     public void initialize(WebViewerPlugin webViewer) {
-        webViewer_ = webViewer;
-        webEngine_ = webViewer_.webEngine();
+        super.initialize(webViewer);
+        webEngine_ = webEngine();
     }
 
     /**
@@ -983,7 +996,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
             try {
                 bufferedWriter_.close();
             } catch (IOException ex) {
-                webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                writeStackTrace(FUNCTION_NAME, ex);
             }
             bufferedWriter_ = null;
         }
@@ -992,7 +1005,7 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
             try {
                 bufferedReader_.close();
             } catch (IOException ex) {
-                webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                writeStackTrace(FUNCTION_NAME, ex);
             }
             bufferedReader_ = null;
         }
@@ -1017,60 +1030,4 @@ public class Serial implements WebViewerPlugin, SerialPortEventListener {
         }
     }
 
-    /**
-     *
-     * @return
-     */
-    @Override
-    public Stage stage() {
-        return webViewer_.stage();
-    }
-
-    /**
-     *
-     * @return
-     */
-    @Override
-    public List<Image> icons() {
-        return webViewer_.icons();
-    }
-
-    /**
-     *
-     * @return
-     */
-    @Override
-    public WebEngine webEngine() {
-        return webViewer_.webEngine();
-    }
-
-    /**
-     *
-     * @return
-     */
-    @Override
-    public Path webPath() {
-        return webViewer_.webPath();
-    }
-
-    /**
-     *
-     * @param name
-     * @param throwable
-     */
-    @Override
-    public void writeStackTrace(String name, Throwable throwable) {
-        webViewer_.writeStackTrace(name, throwable);
-    }
-
-    /**
-     *
-     * @param name
-     * @param msg
-     * @param err
-     */
-    @Override
-    public void write(String name, String msg, boolean err) {
-        webViewer_.write(name, msg, err);
-    }
 }

@@ -1,4 +1,4 @@
-# WebPlugins Webcam
+# WebPlugins WebCam
 ## Overview
 
 ## 概要
@@ -109,4 +109,36 @@ e.g.
 webcam.open(0);
 webcam.save('./image.jpg');
 ```
+
+
+## Build
+
+## ビルド
+
+ * mvn -B -f pom.xml package
+ * The deliverable is the shaded jar `target/WebCam.jar` : dependencies bundled, no version in the name
+ * 成果物は shaded jar の `target/WebCam.jar` です（依存を内包し、名前にバージョンを含めない）
+ * `target/WebCam.jar` is about 1.2 GB because javacv bundles every platform preset (android, ios, linux, macosx, windows, gpl variants included)
+ * `target/WebCam.jar` は javacv が全プラットフォームの preset（android, ios, linux, macosx, windows, gpl 版）を同梱するため約 1.2 GB あります
+
+## Test
+
+## テスト
+
+ * mvn -B -f pom.xml test
+ * the real capture test runs only with a device index : mvn -B -f pom.xml test -Dwebcam.device=0
+ * 実機での撮影テストはデバイス番号を与えたときだけ実行されます（mvn -B -f pom.xml test -Dwebcam.device=0）
+ * Surefire runs the tests with `--add-modules javafx.base,javafx.graphics,javafx.web,javafx.swing` and with the plugin on the classpath
+ * Surefire は `--add-modules javafx.base,javafx.graphics,javafx.web,javafx.swing` を付け、プラグインを classpath 上にして実行します
+
+## Notes
+
+## 注意
+
+ * `open()` assigns the grabber only after a successful `start()` : a failed `open()` closes it, `isOpened()` stays false and the next `open()` is not refused with "Camera device is already open"
+ * `open()` は `start()` が成功した後にグラバーを代入します。失敗した場合はグラバーを閉じ、`isOpened()` は false のままなので、次の `open()` が "Camera device is already open" で拒否されることはありません
+ * `stop()` ends the capture but its return value carries no information, because the capture loop is cleared before JavaFX `Service.cancel()` is asked : check `isPlaying()`
+ * `stop()` は撮影を終了しますが戻り値に意味はありません（撮影ループを止めた後に JavaFX の `cancel()` を呼ぶため）。`isPlaying()` で確認してください
+ * the "Versions of org.bytedeco:javacpp:1.5.14 and org.bytedeco:videoinput:0.200-1.5.9 do not match" warning is harmless here
+ * "Versions of org.bytedeco:javacpp:1.5.14 and org.bytedeco:videoinput:0.200-1.5.9 do not match" の警告はこの構成では実害がありません
 

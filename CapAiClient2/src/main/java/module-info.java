@@ -1,7 +1,7 @@
+/**
+ * the CapAi client of the second Link Box
+ */
 module CapAiClient2 {
-    requires jdk.jsobject;
-    requires java.desktop;
-    requires javafx.web;
-
-    requires com.google.gson;
+    requires ken.mizoguch.webviewer.capai.common;
 }
+

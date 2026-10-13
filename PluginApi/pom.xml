@@ -1,0 +1,25 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>ken.mizoguch</groupId>
+        <artifactId>webviewer-plugins</artifactId>
+        <version>2026.10.11</version>
+    </parent>
+
+    <artifactId>webviewer-plugin-api</artifactId>
+
+    <name>webviewer-plugin-api</name>
+    <description>interface between the WebViewer and its plug-ins : the WebViewer holds it and
+    the plug-ins are compiled against it without shading it</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

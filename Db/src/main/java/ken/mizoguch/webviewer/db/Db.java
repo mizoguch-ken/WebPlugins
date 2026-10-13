@@ -1,12 +1,12 @@
 package ken.mizoguch.webviewer.db;
 
 import com.google.gson.Gson;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.sql.Connection;
 import java.sql.Driver;
 import java.sql.ResultSet;
@@ -19,23 +19,21 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
+import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
-import javafx.concurrent.Worker;
-import javafx.scene.image.Image;
-import javafx.scene.web.WebEngine;
-import javafx.stage.Stage;
-import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
+import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
 
 /**
  *
  * @author mizoguch-ken
  */
-public class Db implements WebViewerPlugin {
+public class Db extends PluginSupport {
 
-    private WebViewerPlugin webViewer_;
     private static final String FUNCTION_NAME = "db";
 
     private Connection conn_;
+    private URLClassLoader loader_;
     private final Gson gson_ = new Gson();
 
     /**
@@ -44,6 +42,7 @@ public class Db implements WebViewerPlugin {
      */
     public Db() throws ClassNotFoundException {
         conn_ = null;
+        loader_ = null;
     }
 
     /**
@@ -66,38 +65,84 @@ public class Db implements WebViewerPlugin {
      */
     public Boolean connect(String libraryPath, String url, String user, String pass)
             throws MalformedURLException, ClassNotFoundException, SQLException {
+        Path path;
+
         if ((libraryPath != null) && (url != null)) {
-            Path path = Paths.get(libraryPath);
+            // the library of the driver is taken from the directory of the page : a library
+            // given from an other directory is refused, because the WebViewer would run the
+            // code of any file of the computer
+            path = SandboxPath.resolve(webPath(), null, libraryPath);
+            if (path == null) {
+                write(FUNCTION_NAME, "Incorrect database argument", true);
+                return null;
+            }
             if (Files.exists(path)) {
                 if (Files.isRegularFile(path)) {
-                    URLClassLoader loader = URLClassLoader.newInstance(new URL[] { path.toUri().toURL() },
+                    // the connection and the class loader of the previous library are
+                    // closed before the new connection : the loader is kept while the
+                    // connection uses the driver it loaded
+                    closeConnection();
+                    loader_ = URLClassLoader.newInstance(new URL[] { path.toUri().toURL() },
                             getClass().getClassLoader());
-                    ServiceLoader<Driver> srvcLoader = ServiceLoader.load(Driver.class, loader);
-                    for (Iterator<Driver> it = srvcLoader.iterator(); it.hasNext();) {
-                        Driver driver = (Driver) it.next();
-                        Properties prop = new Properties();
-                        if (user != null) {
-                            prop.setProperty("user", user);
+                    ServiceLoader<Driver> srvcLoader = ServiceLoader.load(Driver.class, loader_);
+                    try {
+                        for (Iterator<Driver> it = srvcLoader.iterator(); it.hasNext();) {
+                            Driver driver = it.next();
+                            Properties prop = new Properties();
+                            if (user != null) {
+                                prop.setProperty("user", user);
+                            }
+                            if (pass != null) {
+                                prop.setProperty("password", pass);
+                            }
+                            conn_ = driver.connect(url, prop);
+                            if (conn_ != null) {
+                                return true;
+                            }
                         }
-                        if (pass != null) {
-                            prop.setProperty("password", pass);
-                        }
-                        conn_ = driver.connect(url, prop);
-                        if (conn_ != null) {
-                            return true;
-                        }
+                    } catch (ServiceConfigurationError ex) {
+                        // the library is not usable as a set of drivers
+                        writeStackTrace(FUNCTION_NAME, ex);
+                        closeConnection();
+                        return null;
                     }
+                    // no driver of the library answers the url of the database
+                    closeConnection();
                     return false;
                 } else {
-                    webViewer_.write(FUNCTION_NAME, "File is not a regular file", true);
+                    write(FUNCTION_NAME, "File is not a regular file", true);
                 }
             } else {
-                webViewer_.write(FUNCTION_NAME, "File not found", true);
+                write(FUNCTION_NAME, "File not found", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "Incorrect database argument", true);
+            write(FUNCTION_NAME, "Incorrect database argument", true);
         }
         return null;
+    }
+
+    /**
+     * close the connection of the database and the class loader which loaded the driver :
+     * the loader is closed only when the connection is closed, because the classes of the
+     * driver are loaded by it
+     */
+    private void closeConnection() {
+        if (conn_ != null) {
+            try {
+                conn_.close();
+            } catch (SQLException ex) {
+                writeStackTrace(FUNCTION_NAME, ex);
+            }
+            conn_ = null;
+        }
+        if (loader_ != null) {
+            try {
+                loader_.close();
+            } catch (IOException ex) {
+                writeStackTrace(FUNCTION_NAME, ex);
+            }
+            loader_ = null;
+        }
     }
 
     /**
@@ -128,10 +173,10 @@ public class Db implements WebViewerPlugin {
                     return gson_.toJson(table);
                 }
             } else {
-                webViewer_.write(FUNCTION_NAME, "Incorrect database argument", true);
+                write(FUNCTION_NAME, "Incorrect database argument", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "Not connected", true);
+            write(FUNCTION_NAME, "Not connected", true);
         }
         return null;
     }
@@ -151,17 +196,12 @@ public class Db implements WebViewerPlugin {
                     return ret;
                 }
             } else {
-                webViewer_.write(FUNCTION_NAME, "Incorrect database argument", true);
+                write(FUNCTION_NAME, "Incorrect database argument", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "Not connected", true);
+            write(FUNCTION_NAME, "Not connected", true);
         }
         return null;
-    }
-
-    @Override
-    public void initialize(WebViewerPlugin webViewer) {
-        webViewer_ = webViewer;
     }
 
     @Override
@@ -170,47 +210,7 @@ public class Db implements WebViewerPlugin {
     }
 
     @Override
-    public void state(Worker.State state) {
-    }
-
-    @Override
     public void close() {
-        if (conn_ != null) {
-            try {
-                conn_.close();
-            } catch (SQLException ex) {
-            }
-            conn_ = null;
-        }
-    }
-
-    @Override
-    public Stage stage() {
-        return webViewer_.stage();
-    }
-
-    @Override
-    public List<Image> icons() {
-        return webViewer_.icons();
-    }
-
-    @Override
-    public WebEngine webEngine() {
-        return webViewer_.webEngine();
-    }
-
-    @Override
-    public Path webPath() {
-        return webViewer_.webPath();
-    }
-
-    @Override
-    public void writeStackTrace(String name, Throwable throwable) {
-        webViewer_.writeStackTrace(name, throwable);
-    }
-
-    @Override
-    public void write(String name, String msg, boolean err) {
-        webViewer_.write(name, msg, err);
+        closeConnection();
     }
 }

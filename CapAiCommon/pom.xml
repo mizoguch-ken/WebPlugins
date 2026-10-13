@@ -1,0 +1,43 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>ken.mizoguch</groupId>
+        <artifactId>webviewer-plugins</artifactId>
+        <version>2026.10.11</version>
+    </parent>
+
+    <artifactId>capai-common</artifactId>
+
+    <name>capai-common</name>
+    <description>common part of the CapAi plug-ins : the LinkBox protocol of the client and of the
+    server and the base class of the CapAi client plug-ins. It is a plain library : the plug-in
+    which uses it shades it in its own jar, only the interface of the WebViewer is left out</description>
+
+    <dependencies>
+        <!-- the WebViewer holds the interface of its plug-ins and loads the plug-in jar with
+        itself as the parent of the class loader : the interface is not shaded -->
+        <dependency>
+            <groupId>ken.mizoguch</groupId>
+            <artifactId>webviewer-plugin-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>ken.mizoguch</groupId>
+            <artifactId>webviewer-plugin-kit</artifactId>
+        </dependency>
+        <!-- the WebViewer which loads the plug-in holds gson : the plug-in does not shade it -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

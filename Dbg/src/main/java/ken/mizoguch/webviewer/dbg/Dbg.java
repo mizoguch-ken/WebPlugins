@@ -3,34 +3,35 @@ package ken.mizoguch.webviewer.dbg;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
-import java.util.List;
+import java.util.Comparator;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import javafx.application.Platform;
-import javafx.concurrent.Worker;
-import javafx.scene.image.Image;
 import javafx.scene.web.WebEngine;
-import javafx.stage.Stage;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
+import ken.mizoguch.webviewer.plugin.kit.ScriptFunction;
+import ken.mizoguch.webviewer.plugin.kit.ScriptValue;
 
 /**
  *
  * @author mizoguch-ken
  */
-public class Dbg implements WebViewerPlugin {
+public class Dbg extends PluginSupport {
 
-    private WebViewerPlugin webViewer_;
     private static final String FUNCTION_NAME = "dbg";
 
     private boolean isConsoleOut_;
+    private Path firebugDir_;
 
     /**
      *
      */
     public Dbg() {
         isConsoleOut_ = false;
+        firebugDir_ = null;
     }
 
     /**
@@ -41,40 +42,48 @@ public class Dbg implements WebViewerPlugin {
     }
 
     public void firebug() throws IOException {
-        ZipInputStream zipInputStream;
-        ZipEntry zipEntry;
-        Path local, file;
-
         String firebugBaseDir = "firebug-lite";
         String firebugBuildDir = "build";
 
-        local = Paths.get(System.getProperty("java.io.tmpdir"), FUNCTION_NAME + "_" + System.getProperty("user.name"));
+        // the files of the debugger are written in a directory created for the run of the
+        // WebViewer : an other user of the computer can not read the files of the page
+        final Path local = firebugDirectory();
 
         // copy file
-        zipInputStream = new ZipInputStream(Dbg.class.getProtectionDomain().getCodeSource().getLocation().openStream());
-        zipEntry = zipInputStream.getNextEntry();
-        while (zipEntry != null) {
-            if (zipEntry.getName().startsWith(firebugBaseDir)) {
-                file = local.resolve(zipEntry.getName());
-                if (zipEntry.isDirectory()) {
-                    if (!Files.exists(file)) {
-                        Files.createDirectories(file);
+        try (ZipInputStream zipInputStream = new ZipInputStream(
+                Dbg.class.getProtectionDomain().getCodeSource().getLocation().openStream())) {
+            ZipEntry zipEntry;
+
+            while ((zipEntry = zipInputStream.getNextEntry()) != null) {
+                if (zipEntry.getName().startsWith(firebugBaseDir)) {
+                    Path file = local.resolve(zipEntry.getName()).normalize();
+                    // an entry of an other archive must not write outside the directory of
+                    // the plug-in
+                    if (!file.startsWith(local)) {
+                        write(FUNCTION_NAME, "Incorrect file in the archive [" + zipEntry.getName() + "]", true);
+                        continue;
                     }
-                } else {
-                    if (!Files.exists(file.getParent())) {
-                        Files.createDirectories(file.getParent());
+                    if (zipEntry.isDirectory()) {
+                        if (!Files.exists(file)) {
+                            Files.createDirectories(file);
+                        }
+                    } else {
+                        if (!Files.exists(file.getParent())) {
+                            Files.createDirectories(file.getParent());
+                        }
+                        Files.copy(zipInputStream, file, StandardCopyOption.REPLACE_EXISTING);
                     }
-                    Files.copy(zipInputStream, file, StandardCopyOption.REPLACE_EXISTING);
                 }
             }
-            zipInputStream.closeEntry();
-            zipEntry = zipInputStream.getNextEntry();
         }
-        zipInputStream.closeEntry();
-        zipInputStream.close();
 
         Platform.runLater(() -> {
-            webViewer_.webEngine().executeScript(
+            WebEngine webEngine = webEngine();
+
+            if (webEngine == null) {
+                return;
+            }
+            webEngine.executeScript(
                     "if(!document.getElementById('FirebugLite')){"
                             + "E=document['createElement'+'NS']&&document.documentElement.namespaceURI;"
                             + "E=E?document['createElement'+'NS'](E,'script'):document['createElement']('script');"
@@ -103,12 +112,7 @@ public class Dbg implements WebViewerPlugin {
      * @param value
      */
     public void info(String value) {
-        if (isConsoleOut_) {
-            write(FUNCTION_NAME, value, false);
-        }
-        Platform.runLater(() -> {
-            webViewer_.webEngine().executeScript("console.info('" + value + "')");
-        });
+        console("console.info", value, false);
     }
 
     /**
@@ -116,12 +120,7 @@ public class Dbg implements WebViewerPlugin {
      * @param value
      */
     public void log(String value) {
-        if (isConsoleOut_) {
-            write(FUNCTION_NAME, value, false);
-        }
-        Platform.runLater(() -> {
-            webViewer_.webEngine().executeScript("console.log('" + value + "')");
-        });
+        console("console.log", value, false);
     }
 
     /**
@@ -129,12 +128,7 @@ public class Dbg implements WebViewerPlugin {
      * @param value
      */
     public void error(String value) {
-        if (isConsoleOut_) {
-            write(FUNCTION_NAME, value, true);
-        }
-        Platform.runLater(() -> {
-            webViewer_.webEngine().executeScript("console.error('" + value + "')");
-        });
+        console("console.error", value, true);
     }
 
     /**
@@ -142,17 +136,48 @@ public class Dbg implements WebViewerPlugin {
      * @param value
      */
     public void warn(String value) {
+        console("console.warn", value, false);
+    }
+
+    /**
+     * write a message on the console of the web page and on the console of the application
+     *
+     * @param console javascript name of the console function of the web page
+     * @param value message of the page
+     * @param err error flag of the console of the application
+     */
+    private void console(String console, String value, boolean err) {
         if (isConsoleOut_) {
-            write(FUNCTION_NAME, value, false);
+            write(FUNCTION_NAME, value, err);
+        }
+        // the name of the function of the page is written in the javascript of the plug-in
+        if (!ScriptFunction.isValid(console)) {
+            write(FUNCTION_NAME, "Incorrect console function [" + console + "]", true);
+            return;
         }
         Platform.runLater(() -> {
-            webViewer_.webEngine().executeScript("console.warn('" + value + "')");
+            WebEngine webEngine = webEngine();
+
+            if (webEngine != null) {
+                // the message of the page is escaped : it can not carry an other javascript
+                webEngine.executeScript(console + "(" + ScriptValue.literal(value) + ")");
+            }
         });
     }
 
-    @Override
-    public void initialize(WebViewerPlugin webViewer) {
-        webViewer_ = webViewer;
+    /**
+     * directory of the temporary files of the plug-in : the directory is created for the run of
+     * the WebViewer and removed when the WebViewer closes the plug-in, so an other user of the
+     * computer can not read the files of the page
+     *
+     * @return the path of the directory
+     * @throws java.io.IOException when the directory can not be created
+     */
+    private Path firebugDirectory() throws IOException {
+        if (firebugDir_ == null) {
+            firebugDir_ = Files.createTempDirectory(FUNCTION_NAME + "_");
+        }
+        return firebugDir_;
     }
 
     @Override
@@ -161,40 +186,25 @@ public class Dbg implements WebViewerPlugin {
     }
 
     @Override
-    public void state(Worker.State state) {
-    }
-
-    @Override
     public void close() {
-    }
+        // the temporary files of the page are removed when the WebViewer closes the plug-in
+        Path local;
 
-    @Override
-    public Stage stage() {
-        return webViewer_.stage();
-    }
-
-    @Override
-    public List<Image> icons() {
-        return webViewer_.icons();
-    }
-
-    @Override
-    public WebEngine webEngine() {
-        return webViewer_.webEngine();
-    }
-
-    @Override
-    public Path webPath() {
-        return webViewer_.webPath();
-    }
-
-    @Override
-    public void writeStackTrace(String name, Throwable throwable) {
-        webViewer_.writeStackTrace(name, throwable);
-    }
-
-    @Override
-    public void write(String name, String msg, boolean err) {
-        webViewer_.write(name, msg, err);
+        local = firebugDir_;
+        firebugDir_ = null;
+        if (local == null) {
+            return;
+        }
+        try (Stream<Path> tree = Files.walk(local)) {
+            tree.sorted(Comparator.reverseOrder()).forEach(file -> {
+                try {
+                    Files.deleteIfExists(file);
+                } catch (IOException ex) {
+                    writeStackTrace(FUNCTION_NAME, ex);
+                }
+            });
+        } catch (IOException ex) {
+            writeStackTrace(FUNCTION_NAME, ex);
+        }
     }
 }

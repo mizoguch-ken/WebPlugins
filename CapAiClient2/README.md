@@ -1,4 +1,4 @@
-# WebPlugins CapAiClient
+# WebPlugins CapAiClient2
 ## Overview
 
 ## 概要
@@ -9,39 +9,39 @@
 
 ## 関数
 
- * void void capaiclient.licenses()
- * void capaiclient.setNotifyClientStart(String func)
- * void capaiclient.setNotifyClientStop(String func)
- * void capaiclient.setNotifyClientRequest(String func)
- * void capaiclient.setNotifyClientResponse(String func)
- * void capaiclient.setNotifyClientError(String func)
- * Boolean capaiclient.isLinkBoxClientRunning()
- * Boolean capaiclient.setLinkBoxClientConfig(String address, int timeout)
- * Boolean capaiclient.openLinkBoxClient()
- * Boolean capaiclient.closeLinkBoxClient()
- * String capaiclient.getLocalAddress()
- * Integer capaiclient.getConnectionPort()
- * Boolean capaiclient.portClose(int port)
- * Boolean capaiclient.getPortInfo(int port)
- * Boolean capaiclient.initAK()
- * Boolean capaiclient.mnt(int ch)
- * Boolean capaiclient.addrAK(int unit)
- * Boolean capaiclient.setAutoATT()
- * Boolean capaiclient.clearAutoATT()
- * Boolean capaiclient.setL1(int accNumber, String normalDirection, String normalLed, String normalSeg, String normalBuz, String answerDirection, String answerLed, String answerSeg, String answerBuz, String jsonElement)
- * Boolean capaiclient.getAK()
- * Boolean capaiclient.startDev(String jsonElement)
- * Boolean capaiclient.demoAK(int unit, String view)
- * Boolean capaiclient.clearAK(String jsonElement)
- * Boolean capaiclient.lock(int unit)
- * Boolean capaiclient.unLock(int unit)
- * Boolean capaiclient.getLock(int unit)
- * Boolean capaiclient.clearLock(int unit)
- * Boolean capaiclient.getErrorCode()
- * Boolean capaiclient.clearErrorCode()
- * Boolean capaiclient.setIPAddr(String address, String mask, String gateway)
- * Boolean capaiclient.setHostAddr(String jsonElement)
- * Boolean capaiclient.reboot()
+ * void capaiclient2.licenses()
+ * void capaiclient2.setNotifyClientStart(String func)
+ * void capaiclient2.setNotifyClientStop(String func)
+ * void capaiclient2.setNotifyClientRequest(String func)
+ * void capaiclient2.setNotifyClientResponse(String func)
+ * void capaiclient2.setNotifyClientError(String func)
+ * Boolean capaiclient2.isLinkBoxClientRunning()
+ * Boolean capaiclient2.setLinkBoxClientConfig(String address, int timeout)
+ * Boolean capaiclient2.openLinkBoxClient()
+ * Boolean capaiclient2.closeLinkBoxClient()
+ * String capaiclient2.getLocalAddress()
+ * Integer capaiclient2.getConnectionPort()
+ * Boolean capaiclient2.portClose(int port)
+ * Boolean capaiclient2.getPortInfo(int port)
+ * Boolean capaiclient2.initAK()
+ * Boolean capaiclient2.mnt(int ch)
+ * Boolean capaiclient2.addrAK(int unit)
+ * Boolean capaiclient2.setAutoATT()
+ * Boolean capaiclient2.clearAutoATT()
+ * Boolean capaiclient2.setL1(int accNumber, String normalDirection, String normalLed, String normalSeg, String normalBuz, String answerDirection, String answerLed, String answerSeg, String answerBuz, String jsonElement)
+ * Boolean capaiclient2.getAK()
+ * Boolean capaiclient2.startDev(String jsonElement)
+ * Boolean capaiclient2.demoAK(int unit, String view)
+ * Boolean capaiclient2.clearAK(String jsonElement)
+ * Boolean capaiclient2.lock(int unit)
+ * Boolean capaiclient2.unLock(int unit)
+ * Boolean capaiclient2.getLock(int unit)
+ * Boolean capaiclient2.clearLock(int unit)
+ * Boolean capaiclient2.getErrorCode()
+ * Boolean capaiclient2.clearErrorCode()
+ * Boolean capaiclient2.setIPAddr(String address, String mask, String gateway)
+ * Boolean capaiclient2.setHostAddr(String jsonElement)
+ * Boolean capaiclient2.reboot()
 ## Usage
 
 ## 使い方
@@ -51,9 +51,9 @@
 
 e.g.
 ```
-if(!capaiclient.isLinkBoxClientRunning()) {
-  capaiclient.setLinkBoxClientConfig('192.168.10.51', 30000);
-  capaiclient.openLinkBoxClient();
+if(!capaiclient2.isLinkBoxClientRunning()) {
+  capaiclient2.setLinkBoxClientConfig('192.168.10.51', 30000);
+  capaiclient2.openLinkBoxClient();
 }
-capaiclient.setL1(1, 'DOWN', 'GREEN', 'LIGHT', 'OFF', 'NONE', 'OFF', 'OFF', 'OFF', JSON.stringify([{unit: 2001, view: '3'}]));
+capaiclient2.setL1(1, 'DOWN', 'GREEN', 'LIGHT', 'OFF', 'NONE', 'OFF', 'OFF', 'OFF', JSON.stringify([{unit: 2001, view: '3'}]));
 ```

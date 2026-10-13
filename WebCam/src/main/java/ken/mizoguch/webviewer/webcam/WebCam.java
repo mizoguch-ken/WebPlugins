@@ -28,6 +28,7 @@ import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javax.imageio.ImageIO;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.ServiceSupport;
 import netscape.javascript.JSException;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.FrameGrabber;
@@ -42,14 +43,15 @@ import org.bytedeco.opencv.opencv_core.Mat;
 import org.bytedeco.opencv.opencv_core.Scalar;
 import org.bytedeco.opencv.opencv_core.Size;
 import org.bytedeco.videoinput.videoInput;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  *
  * @author mizoguch_ken
  */
-public class WebCam extends Service<Void> implements WebViewerPlugin {
+public class WebCam extends ServiceSupport<Void> {
 
-    private WebViewerPlugin webViewer_;
     private static final String FUNCTION_NAME = "webcam";
 
     private WebEngine webEngine_;
@@ -87,7 +89,18 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
     private String resultBlob_;
     private BlobInfo blobInfo_;
 
-    private boolean isPlay_;
+    private volatile boolean isPlay_;
+
+    /**
+     * the capture tasks which read the grabber of the camera : the device is freed only when no
+     * task reads it anymore, so the grabber of a task which is running is not closed under it
+     */
+    private final AtomicInteger runningTasks_ = new AtomicInteger();
+
+    /**
+     * maximum time the cleanup waits a capture task which does not end
+     */
+    private static final int TASK_TERMINATION_MILLIS = 3000;
     private boolean isUpdateWebcamView_;
     private boolean isUpdateFuncResultImage_;
     private boolean isUpdateFuncResultBlob_;
@@ -958,7 +971,19 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
     public Boolean open(int deviceNumber) throws FrameGrabber.Exception {
         if (webcam_ == null) {
             webcam_ = new OpenCVFrameGrabber(deviceNumber);
-            webcam_.start();
+            try {
+                webcam_.start();
+            } catch (FrameGrabber.Exception ex) {
+                // the grabber of a device which can not be used is released and forgotten : the
+                // next open() is not refused with the already open message
+                try {
+                    webcam_.close();
+                } catch (FrameGrabber.Exception closeEx) {
+                    writeStackTrace(FUNCTION_NAME, closeEx);
+                }
+                webcam_ = null;
+                throw ex;
+            }
 
             if (webcamImageSize_ == null) {
                 webcamImageSize_ = new Size();
@@ -971,7 +996,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
             isPlay_ = false;
             return true;
         } else {
-            webViewer_.write(FUNCTION_NAME, "Camera device is already open", true);
+            write(FUNCTION_NAME, "Camera device is already open", true);
         }
         return false;
     }
@@ -984,7 +1009,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
         if (webcam_ != null) {
             return isPlay_;
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return false;
     }
 
@@ -1003,7 +1028,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
             }
             return true;
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return false;
     }
 
@@ -1064,7 +1089,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
         if (webcam_ != null) {
             return webcamStage_.isShowing();
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return false;
     }
 
@@ -1077,7 +1102,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
             webcamStage_.show();
             return true;
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return false;
     }
 
@@ -1090,7 +1115,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
             webcamStage_.hide();
             return true;
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return false;
     }
 
@@ -1102,7 +1127,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
         if (webcam_ != null) {
             return webcamStage_.getWidth();
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return null;
     }
 
@@ -1114,7 +1139,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
         if (webcam_ != null) {
             return webcamStage_.getHeight();
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return null;
     }
 
@@ -1127,7 +1152,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
             webcamStage_.isFocused();
             return true;
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return false;
     }
 
@@ -1140,7 +1165,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
             webcamStage_.requestFocus();
             return true;
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return false;
     }
 
@@ -1152,7 +1177,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
         if (webcam_ != null) {
             return webcamStage_.getOpacity();
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return null;
     }
 
@@ -1166,7 +1191,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
             webcamStage_.setOpacity(value);
             return true;
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return false;
     }
 
@@ -1178,7 +1203,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
         if (webcam_ != null) {
             return webcamStage_.isAlwaysOnTop();
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return false;
     }
 
@@ -1192,7 +1217,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
             webcamStage_.setAlwaysOnTop(state);
             return true;
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return false;
     }
 
@@ -1204,7 +1229,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
         if (webcam_ != null) {
             return webcamStage_.getX();
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return null;
     }
 
@@ -1218,7 +1243,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
             webcamStage_.setX(x);
             return true;
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return false;
     }
 
@@ -1230,7 +1255,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
         if (webcam_ != null) {
             return webcamStage_.getY();
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return null;
     }
 
@@ -1244,7 +1269,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
             webcamStage_.setY(y);
             return true;
         }
-        webViewer_.write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, "Camera device is not open", true);
         return false;
     }
 
@@ -1253,6 +1278,22 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
         return new Task<Void>() {
             @Override
             protected Void call() {
+                // the task of the capture is counted while it runs : close() waits it before it
+                // frees the camera
+                runningTasks_.incrementAndGet();
+                try {
+                    return capture();
+                } finally {
+                    runningTasks_.decrementAndGet();
+                }
+            }
+
+            /**
+             * the capture loop of the camera
+             *
+             * @return null
+             */
+            private Void capture() {
                 Frame frame;
                 try (OpenCVFrameConverter.ToMat openCVFrameConverter = new OpenCVFrameConverter.ToMat()) {
                     Mat matImage, matBlob;
@@ -1311,7 +1352,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
                                                                                             + resultImage_ + "', '"
                                                                                             + webcamImageType_ + "');");
                                                                         } catch (JSException ex) {
-                                                                            webViewer_.writeStackTrace(FUNCTION_NAME,
+                                                                            writeStackTrace(FUNCTION_NAME,
                                                                                     ex);
                                                                         }
                                                                     }
@@ -1344,7 +1385,7 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
                                                                 webEngine_.executeScript(
                                                                         funcResultBlob_ + "('" + resultBlob_ + "');");
                                                             } catch (JSException ex) {
-                                                                webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                                                                writeStackTrace(FUNCTION_NAME, ex);
                                                             }
                                                         }
                                                     }
@@ -1361,14 +1402,14 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
                                     }
                                 }
                             } catch (FrameGrabber.Exception ex) {
-                                webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                                writeStackTrace(FUNCTION_NAME, ex);
                             } catch (IOException ex) {
-                                webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                                writeStackTrace(FUNCTION_NAME, ex);
                             } finally {
                                 try {
                                     byteArrayImage.close();
                                 } catch (IOException ex) {
-                                    webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                                    writeStackTrace(FUNCTION_NAME, ex);
                                 }
                             }
                         }
@@ -1385,8 +1426,8 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
      */
     @Override
     public void initialize(WebViewerPlugin webViewer) {
-        webViewer_ = webViewer;
-        webEngine_ = webViewer_.webEngine();
+        super.initialize(webViewer);
+        webEngine_ = webEngine();
     }
 
     /**
@@ -1408,78 +1449,55 @@ public class WebCam extends Service<Void> implements WebViewerPlugin {
     }
 
     /**
+     * wait the end of the capture tasks of the camera
+     *
+     * @param millis maximum time to wait in milliseconds
+     * @return true when no task runs anymore, false when the time is out
+     */
+    public boolean awaitTermination(int millis) {
+        long deadline = System.currentTimeMillis() + millis;
+
+        while (runningTasks_.get() != 0) {
+            if (System.currentTimeMillis() >= deadline) {
+                return false;
+            }
+            try {
+                TimeUnit.MILLISECONDS.sleep(10L);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
      *
      */
     @Override
     public void close() {
+        // the capture loop ends when isPlay_ is cleared : it is cleared and the task is cancelled
+        // before the wait, so close() can free the camera when no task reads it anymore
+        isPlay_ = false;
+        cancel();
+
+        // the camera is freed only when no capture task reads it anymore : a task which never
+        // ends keeps the device open, so the task does not read a freed grabber
+        if (!awaitTermination(TASK_TERMINATION_MILLIS)) {
+            write(FUNCTION_NAME, "WebCam is still running : the webcam is not closed", true);
+            return;
+        }
         if (webcam_ != null) {
             try {
                 webcam_.close();
             } catch (FrameGrabber.Exception ex) {
-                webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                writeStackTrace(FUNCTION_NAME, ex);
             }
             webcam_ = null;
         }
         webcamStage_.close();
         resultImage_ = null;
         resultBlob_ = null;
-        this.cancel();
     }
 
-    /**
-     *
-     * @return
-     */
-    @Override
-    public Stage stage() {
-        return webViewer_.stage();
-    }
-
-    /**
-     *
-     * @return
-     */
-    @Override
-    public List<Image> icons() {
-        return webViewer_.icons();
-    }
-
-    /**
-     *
-     * @return
-     */
-    @Override
-    public WebEngine webEngine() {
-        return webViewer_.webEngine();
-    }
-
-    /**
-     *
-     * @return
-     */
-    @Override
-    public Path webPath() {
-        return webViewer_.webPath();
-    }
-
-    /**
-     *
-     * @param name
-     * @param throwable
-     */
-    @Override
-    public void writeStackTrace(String name, Throwable throwable) {
-        webViewer_.writeStackTrace(name, throwable);
-    }
-
-    /**
-     *
-     * @param name
-     * @param msg
-     * @param err
-     */
-    @Override
-    public void write(String name, String msg, boolean err) {
-        webViewer_.write(name, msg, err);
-    }
 }

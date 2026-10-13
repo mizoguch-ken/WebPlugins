@@ -18,7 +18,10 @@ import javafx.scene.web.WebEngine;
 import javafx.stage.Stage;
 import javax.swing.event.EventListenerList;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.ServiceSupport;
 import netscape.javascript.JSException;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * Online Art<br>
@@ -109,10 +112,20 @@ import netscape.javascript.JSException;
  *
  * @author mizoguch-ken
  */
-public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineArtListener {
+public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener {
 
-    private WebViewerPlugin webViewer_;
     private static final String FUNCTION_NAME = "onlineArt";
+
+    /**
+     * the link tasks which read the streams and the packets of the unit : the resources are freed
+     * only when no task reads them anymore, so a task is not left with a freed stream
+     */
+    private final AtomicInteger runningTasks_ = new AtomicInteger();
+
+    /**
+     * maximum time the cleanup waits a link task which does not end
+     */
+    private static final int TASK_TERMINATION_MILLIS = 3000;
 
     private WebEngine webEngine_;
     private Worker.State state_;
@@ -140,7 +153,7 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
     private int[] relay_;
     private int[] register_;
 
-    private boolean isExit_;
+    private volatile boolean isExit_;
 
     /**
      *
@@ -322,7 +335,7 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
             }
             return true;
         } else {
-            webViewer_.write(FUNCTION_NAME, "OnlineArt is already running", true);
+            write(FUNCTION_NAME, "OnlineArt is already running", true);
         }
         return false;
     }
@@ -335,7 +348,7 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
         if (isRunning()) {
             return gson_.toJson(getRelay());
         }
-        webViewer_.write(FUNCTION_NAME, "OnlineArt is not running", true);
+        write(FUNCTION_NAME, "OnlineArt is not running", true);
         return null;
     }
 
@@ -349,10 +362,10 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
             if (setRelay(gson_.fromJson(data, int[].class))) {
                 return true;
             } else {
-                webViewer_.write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, "Data is out of range", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, "OnlineArt is not running", true);
         }
         return false;
     }
@@ -369,10 +382,10 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
             if (ret >= 0) {
                 return (ret == 0x0001);
             } else {
-                webViewer_.write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, "Data is out of range", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, "OnlineArt is not running", true);
         }
         return null;
     }
@@ -389,10 +402,10 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
             if (setRelay(data, position, bit)) {
                 return true;
             } else {
-                webViewer_.write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, "Data is out of range", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, "OnlineArt is not running", true);
         }
         return false;
     }
@@ -408,10 +421,10 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
             if (ret >= 0) {
                 return ret;
             } else {
-                webViewer_.write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, "Data is out of range", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, "OnlineArt is not running", true);
         }
         return null;
     }
@@ -427,10 +440,10 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
             if (setData(data, relay_, position)) {
                 return true;
             } else {
-                webViewer_.write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, "Data is out of range", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, "OnlineArt is not running", true);
         }
         return false;
     }
@@ -443,7 +456,7 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
         if (isRunning()) {
             return gson_.toJson(getRegister());
         }
-        webViewer_.write(FUNCTION_NAME, "OnlineArt is not running", true);
+        write(FUNCTION_NAME, "OnlineArt is not running", true);
         return null;
     }
 
@@ -457,10 +470,10 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
             if (setRegister(gson_.fromJson(data, int[].class))) {
                 return true;
             } else {
-                webViewer_.write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, "Data is out of range", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, "OnlineArt is not running", true);
         }
         return false;
     }
@@ -477,10 +490,10 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
             if (ret >= 0) {
                 return (ret == 0x0001);
             } else {
-                webViewer_.write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, "Data is out of range", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, "OnlineArt is not running", true);
         }
         return null;
     }
@@ -497,10 +510,10 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
             if (setRegister(data, position, bit)) {
                 return true;
             } else {
-                webViewer_.write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, "Data is out of range", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, "OnlineArt is not running", true);
         }
         return false;
     }
@@ -516,10 +529,10 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
             if (ret >= 0) {
                 return ret;
             } else {
-                webViewer_.write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, "Data is out of range", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, "OnlineArt is not running", true);
         }
         return null;
     }
@@ -535,10 +548,10 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
             if (setData(data, register_, position)) {
                 return true;
             } else {
-                webViewer_.write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, "Data is out of range", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, "OnlineArt is not running", true);
         }
         return false;
     }
@@ -557,7 +570,7 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
         if (setReadRelay(destination, startAddress, receiveAddressOffset, sendAddressOffset, registerNumber)) {
             return true;
         }
-        webViewer_.write(FUNCTION_NAME, "Send data exists", true);
+        write(FUNCTION_NAME, "Send data exists", true);
         return false;
     }
 
@@ -575,7 +588,7 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
         if (setReadRegister(destination, startAddress, receiveAddressOffset, sendAddressOffset, registerNumber)) {
             return true;
         }
-        webViewer_.write(FUNCTION_NAME, "Send data exists", true);
+        write(FUNCTION_NAME, "Send data exists", true);
         return false;
     }
 
@@ -593,7 +606,7 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
         if (setWriteRelay(destination, startAddress, receiveAddressOffset, sendAddressOffset, registerNumber)) {
             return true;
         }
-        webViewer_.write(FUNCTION_NAME, "Send data exists", true);
+        write(FUNCTION_NAME, "Send data exists", true);
         return false;
     }
 
@@ -611,7 +624,7 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
         if (setWriteRegister(destination, startAddress, receiveAddressOffset, sendAddressOffset, registerNumber)) {
             return true;
         }
-        webViewer_.write(FUNCTION_NAME, "Send data exists", true);
+        write(FUNCTION_NAME, "Send data exists", true);
         return false;
     }
 
@@ -1027,6 +1040,22 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
         return new Task<Void>() {
             @Override
             protected Void call() {
+                // the task of the link reads the streams and the packets of the unit : it is
+                // counted, so close() waits it before it frees them
+                runningTasks_.incrementAndGet();
+                try {
+                    return link();
+                } finally {
+                    runningTasks_.decrementAndGet();
+                }
+            }
+
+            /**
+             * the link loop with the Online Art units
+             *
+             * @return null
+             */
+            private Void link() {
 
                 long currentTimeNanos;
                 int connectionUnits, connectionUnitsLast, retryNumber, startAddress, registerNumber, i;
@@ -1383,7 +1412,7 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                             webEngine_.executeScript(funcReceiveRequest_ + "(" + destination + "," + source + ","
                                     + dataType + "," + command + ");");
                         } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                            writeStackTrace(FUNCTION_NAME, ex);
                         }
                     }
                 }
@@ -1401,7 +1430,7 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                             webEngine_.executeScript(funcReceiveResponse_ + "(" + destination + "," + source + ","
                                     + dataType + "," + command + ");");
                         } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                            writeStackTrace(FUNCTION_NAME, ex);
                         }
                     }
                 }
@@ -1419,7 +1448,7 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                             webEngine_.executeScript(funcSendRequest_ + "(" + destination + "," + source + ","
                                     + dataType + "," + command + ");");
                         } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                            writeStackTrace(FUNCTION_NAME, ex);
                         }
                     }
                 }
@@ -1437,7 +1466,7 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                             webEngine_.executeScript(funcSendResponse_ + "(" + destination + "," + source + ","
                                     + dataType + "," + command + ");");
                         } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                            writeStackTrace(FUNCTION_NAME, ex);
                         }
                     }
                 }
@@ -1455,7 +1484,7 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
                             webEngine_.executeScript(funcSendRetry_ + "(" + destination + "," + source + "," + dataType
                                     + "," + command + ");");
                         } catch (JSException ex) {
-                            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
+                            writeStackTrace(FUNCTION_NAME, ex);
                         }
                     }
                 }
@@ -1465,8 +1494,8 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
 
     @Override
     public void initialize(WebViewerPlugin webViewer) {
-        webViewer_ = webViewer;
-        webEngine_ = webViewer_.webEngine();
+        super.initialize(webViewer);
+        webEngine_ = webEngine();
     }
 
     @Override
@@ -1482,36 +1511,41 @@ public class OnlineArt extends Service<Void> implements WebViewerPlugin, OnlineA
     @Override
     public void close() {
         cancel();
+
+        // the link loop ends when isExit_ is set : it is set here and not by cleanUp(), so close()
+        // can wait the end of the task before it frees the streams and the packets
+        isExit_ = true;
+
+        // the streams and the packets of the unit are freed only when no link task reads them
+        // anymore : a task which never ends keeps them and the WebViewer reports it
+        if (!awaitTermination(TASK_TERMINATION_MILLIS)) {
+            write(FUNCTION_NAME, "OnlineArt is still running : the resources are not freed", true);
+            return;
+        }
         cleanUp();
     }
 
-    @Override
-    public Stage stage() {
-        return webViewer_.stage();
+    /**
+     * wait the end of the link tasks with the Online Art units
+     *
+     * @param millis maximum time to wait in milliseconds
+     * @return true when no task runs anymore, false when the time is out
+     */
+    public boolean awaitTermination(int millis) {
+        long deadline = System.currentTimeMillis() + millis;
+
+        while (runningTasks_.get() != 0) {
+            if (System.currentTimeMillis() >= deadline) {
+                return false;
+            }
+            try {
+                TimeUnit.MILLISECONDS.sleep(10L);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                return false;
+            }
+        }
+        return true;
     }
 
-    @Override
-    public List<Image> icons() {
-        return webViewer_.icons();
-    }
-
-    @Override
-    public WebEngine webEngine() {
-        return webViewer_.webEngine();
-    }
-
-    @Override
-    public Path webPath() {
-        return webViewer_.webPath();
-    }
-
-    @Override
-    public void writeStackTrace(String name, Throwable throwable) {
-        webViewer_.writeStackTrace(name, throwable);
-    }
-
-    @Override
-    public void write(String name, String msg, boolean err) {
-        webViewer_.write(name, msg, err);
-    }
 }

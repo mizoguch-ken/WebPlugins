@@ -12,20 +12,19 @@ import java.nio.file.Path;
 import java.nio.file.attribute.FileTime;
 import java.util.ArrayList;
 import java.util.List;
-import javafx.concurrent.Worker;
-import javafx.scene.image.Image;
-import javafx.scene.web.WebEngine;
+import java.util.stream.Stream;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
+import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
 
 /**
  *
  * @author mizoguch-ken
  */
-public class File implements WebViewerPlugin {
+public class File extends PluginSupport {
 
-    private WebViewerPlugin webViewer_;
     private static final String FUNCTION_NAME = "file";
 
     private Stage stage_;
@@ -78,7 +77,7 @@ public class File implements WebViewerPlugin {
      * @throws java.io.IOException
      */
     public Boolean createNewFile(String path) throws IOException {
-        Files.createFile(getStringToPath(path));
+        Files.createFile(getPath(path));
         return true;
     }
 
@@ -88,7 +87,9 @@ public class File implements WebViewerPlugin {
      * @return
      */
     public Boolean exists(String path) {
-        return Files.exists(getStringToPath(path));
+        Path file = getStringToPath(path);
+
+        return (file != null) && Files.exists(file);
     }
 
     /**
@@ -98,9 +99,14 @@ public class File implements WebViewerPlugin {
     public String ls() throws IOException {
         List<String> files = new ArrayList<>();
 
-        Files.list(directory_).forEach(lst -> {
-            files.add(lst.getFileName().toString());
-        });
+        if (directory_ == null) {
+            return gson_.toJson(files);
+        }
+        // the list of the directory is closed when it is read : the handle of the directory is
+        // not left open by the plug-in
+        try (Stream<Path> list = Files.list(directory_)) {
+            list.forEach(file -> files.add(file.getFileName().toString()));
+        }
         return gson_.toJson(files);
     }
 
@@ -112,7 +118,7 @@ public class File implements WebViewerPlugin {
      * @throws java.io.IOException
      */
     public String mv(String src, String dst) throws IOException {
-        return Files.move(getStringToPath(src), getStringToPath(dst)).toString();
+        return Files.move(getPath(src), getPath(dst)).toString();
     }
 
     /**
@@ -121,8 +127,12 @@ public class File implements WebViewerPlugin {
      * @return
      */
     public String cd(String path) {
-        directory_ = getStringToPath(path);
-        return directory_.toString();
+        Path file = getStringToPath(path);
+
+        if (file != null) {
+            directory_ = file;
+        }
+        return (directory_ != null) ? directory_.toString() : null;
     }
 
     /**
@@ -133,7 +143,7 @@ public class File implements WebViewerPlugin {
      * @throws java.io.IOException
      */
     public String touch(String path, long time) throws IOException {
-        return Files.setLastModifiedTime(getStringToPath(path), FileTime.fromMillis(time)).toString();
+        return Files.setLastModifiedTime(getPath(path), FileTime.fromMillis(time)).toString();
     }
 
     /**
@@ -143,7 +153,7 @@ public class File implements WebViewerPlugin {
      * @throws java.io.IOException
      */
     public String mkdir(String path) throws IOException {
-        return Files.createDirectories(getStringToPath(path)).toString();
+        return Files.createDirectories(getPath(path)).toString();
     }
 
     /**
@@ -153,11 +163,15 @@ public class File implements WebViewerPlugin {
      * @throws java.io.IOException
      */
     public Boolean rm(String path) throws IOException {
-        Path file = getStringToPath(path);
+        Path file = getPath(path);
 
         if (Files.deleteIfExists(file)) {
-            while (!Files.exists(directory_)) {
+            // the deleted file can be the current directory of the plug-in
+            while ((directory_ != null) && !Files.exists(directory_)) {
                 directory_ = directory_.getParent();
+            }
+            if (directory_ == null) {
+                directory_ = webPath_;
             }
             return true;
         }
@@ -171,7 +185,7 @@ public class File implements WebViewerPlugin {
      * @throws java.io.IOException
      */
     public Long lastModifiedDate(String path) throws IOException {
-        return Files.getLastModifiedTime(getStringToPath(path)).toMillis();
+        return Files.getLastModifiedTime(getPath(path)).toMillis();
     }
 
     /**
@@ -180,7 +194,10 @@ public class File implements WebViewerPlugin {
      * @return
      */
     public String name(String path) {
-        return getStringToPath(path).getFileName().toString();
+        Path file = getStringToPath(path);
+
+        // the name of a path which can not be used is empty for the page
+        return (file != null) ? file.getFileName().toString() : "";
     }
 
     /**
@@ -189,7 +206,12 @@ public class File implements WebViewerPlugin {
      * @return
      */
     public String path(String path) {
-        return getStringToPath(path).toString();
+        Path file = getStringToPath(path);
+
+        if (file == null) {
+            return null;
+        }
+        return file.toString();
     }
 
     /**
@@ -198,7 +220,12 @@ public class File implements WebViewerPlugin {
      * @return
      */
     public String type(String path) {
-        return URLConnection.guessContentTypeFromName(getStringToPath(path).getFileName().toString());
+        Path file = getStringToPath(path);
+
+        if (file == null) {
+            return null;
+        }
+        return URLConnection.guessContentTypeFromName(file.getFileName().toString());
     }
 
     /**
@@ -208,7 +235,7 @@ public class File implements WebViewerPlugin {
      * @throws java.io.IOException
      */
     public Long size(String path) throws IOException {
-        return Files.size(getStringToPath(path));
+        return Files.size(getPath(path));
     }
 
     /**
@@ -273,17 +300,29 @@ public class File implements WebViewerPlugin {
      * @throws java.io.IOException
      */
     public String readAsText(String path, String charset) throws IOException {
+        Path file = getPath(path);
+
         if (charset == null) {
             charset = "UTF-8";
         }
         try (BufferedReader bufferedReader = new BufferedReader(
-                new InputStreamReader(Files.newInputStream(getStringToPath(path)), charset))) {
+                new InputStreamReader(Files.newInputStream(file), charset))) {
             StringBuilder stringBuilder = new StringBuilder();
             String line;
+            boolean first = true;
             while ((line = bufferedReader.readLine()) != null) {
-                stringBuilder.append(line);
-                if (bufferedReader.ready()) {
+                if (!first) {
+                    // the lines of the file are separated by the character of the page : the
+                    // reader is not asked if it is ready, which does not tell where a line ends
                     stringBuilder.append(newLineCharacter_);
+                }
+                first = false;
+                stringBuilder.append(line);
+                if (stringBuilder.length() > TEXT_MAX_LENGTH) {
+                    // the text of a page is used in the javascript of the page : an
+                    // abnormal length is refused instead of filling the memory
+                    write(FUNCTION_NAME, "Text is too long [" + path + "]", true);
+                    return null;
                 }
             }
             return stringBuilder.toString();
@@ -299,19 +338,34 @@ public class File implements WebViewerPlugin {
      * @throws java.io.IOException
      */
     public Boolean writeAsText(String path, String text, String charset) throws IOException {
+        Path file = getPath(path);
+
+        if (text == null) {
+            write(FUNCTION_NAME, "Incorrect file content [" + path + "]", true);
+            return false;
+        }
+        if (text.length() > TEXT_MAX_LENGTH) {
+            write(FUNCTION_NAME, "Text is too long [" + path + "]", true);
+            return false;
+        }
         if (charset == null) {
             charset = "UTF-8";
         }
         try (OutputStreamWriter outputStreamWriter = new OutputStreamWriter(
-                Files.newOutputStream(getStringToPath(path)), charset);
+                Files.newOutputStream(file), charset);
                 BufferedReader bufferedReader = new BufferedReader(new StringReader(text))) {
             String line;
+            boolean first = true;
             while ((line = bufferedReader.readLine()) != null) {
-                outputStreamWriter.write(line);
-                if (bufferedReader.ready()) {
+                if (!first) {
+                    // the lines of the file are separated by the character of the page : the
+                    // reader is not asked if it is ready, which does not tell where a line ends
                     outputStreamWriter.write(newLineCharacter_);
                 }
+                first = false;
+                outputStreamWriter.write(line);
             }
+            outputStreamWriter.flush();
             return true;
         }
     }
@@ -324,13 +378,13 @@ public class File implements WebViewerPlugin {
      * @throws java.io.IOException
      */
     public Boolean reader(String path, String charset) throws IOException {
+        Path file = getPath(path);
+
         if (charset == null) {
             charset = "UTF-8";
         }
-        if (reader_ != null) {
-            reader_.close();
-        }
-        reader_ = new BufferedReader(new InputStreamReader(Files.newInputStream(getStringToPath(path)), charset));
+        closeReader();
+        reader_ = new BufferedReader(new InputStreamReader(Files.newInputStream(file), charset));
         return true;
     }
 
@@ -342,8 +396,7 @@ public class File implements WebViewerPlugin {
         if (reader_ != null) {
             String line = reader_.readLine();
             if (line == null) {
-                reader_.close();
-                reader_ = null;
+                closeReader();
             }
             return line;
         }
@@ -358,13 +411,13 @@ public class File implements WebViewerPlugin {
      * @throws java.io.IOException
      */
     public Boolean writer(String path, String charset) throws IOException {
+        Path file = getPath(path);
+
         if (charset == null) {
             charset = "UTF-8";
         }
-        if (writer_ != null) {
-            writer_.close();
-        }
-        writer_ = new OutputStreamWriter(Files.newOutputStream(getStringToPath(path)), charset);
+        closeWriter();
+        writer_ = new OutputStreamWriter(Files.newOutputStream(file), charset);
         return true;
     }
 
@@ -376,34 +429,87 @@ public class File implements WebViewerPlugin {
      */
     public Boolean writerWriteLine(String text) throws IOException {
         if (writer_ != null) {
-            writer_.write(text);
+            writer_.write((text != null) ? text : "");
             writer_.write(newLineCharacter_);
+            // the page reads what it writes : the buffer is flushed at every line
+            writer_.flush();
             return true;
         }
         return false;
     }
 
-    private Path getStringToPath(String path) {
-        Path file = null;
+    /**
+     * maximum length of the text read or written by the page
+     */
+    private static final int TEXT_MAX_LENGTH = 8 * 1024 * 1024;
 
-        if (path != null) {
-            path = path.trim();
-            if (!path.isEmpty()) {
-                if (path.startsWith("~")) {
-                    file = webPath_.resolve(path.substring(1));
-                } else {
-                    file = directory_.resolve(path);
-                }
+    /**
+     * path used by a file operation of the page
+     *
+     * @param path
+     * @return the path to use
+     * @throws java.io.IOException when the path can not be used
+     */
+    private Path getPath(String path) throws IOException {
+        Path file = getStringToPath(path);
+
+        if (file == null) {
+            throw new IOException("Incorrect file path [" + path + "]");
+        }
+        return file;
+    }
+
+    /**
+     * close the reader of a file : the reader is left null when it is closed
+     */
+    private void closeReader() {
+        if (reader_ != null) {
+            try {
+                reader_.close();
+            } catch (IOException ex) {
+                writeStackTrace(FUNCTION_NAME, ex);
             }
+            reader_ = null;
+        }
+    }
+
+    /**
+     * close the writer of a file : the writer is left null when it is closed
+     */
+    private void closeWriter() {
+        if (writer_ != null) {
+            try {
+                writer_.close();
+            } catch (IOException ex) {
+                writeStackTrace(FUNCTION_NAME, ex);
+            }
+            writer_ = null;
+        }
+    }
+
+    /**
+     * path of a file given by the javascript of the page : a path which starts with "~" is
+     * used from the directory of the web page, an other path is used from the current
+     * directory of the plug-in. A path which leaves these directories is refused, so that
+     * the page can not reach the other files of the computer
+     *
+     * @param path
+     * @return the path to use, null when the path can not be used
+     */
+    private Path getStringToPath(String path) {
+        Path file = SandboxPath.resolve(directory_, webPath_, path);
+
+        if (file == null) {
+            write(FUNCTION_NAME, "Incorrect file path [" + path + "]", true);
         }
         return file;
     }
 
     @Override
     public void initialize(WebViewerPlugin webViewer) {
-        webViewer_ = webViewer;
-        stage_ = webViewer_.stage();
-        webPath_ = webViewer_.webPath();
+        super.initialize(webViewer);
+        stage_ = stage();
+        webPath_ = webPath();
         directory_ = webPath_;
     }
 
@@ -413,56 +519,8 @@ public class File implements WebViewerPlugin {
     }
 
     @Override
-    public void state(Worker.State state) {
-    }
-
-    @Override
     public void close() {
-        if (reader_ != null) {
-            try {
-                reader_.close();
-                reader_ = null;
-            } catch (IOException ex) {
-                webViewer_.writeStackTrace(FUNCTION_NAME, ex);
-            }
-        }
-        if (writer_ != null) {
-            try {
-                writer_.close();
-                writer_ = null;
-            } catch (IOException ex) {
-                webViewer_.writeStackTrace(FUNCTION_NAME, ex);
-            }
-        }
-    }
-
-    @Override
-    public Stage stage() {
-        return webViewer_.stage();
-    }
-
-    @Override
-    public List<Image> icons() {
-        return webViewer_.icons();
-    }
-
-    @Override
-    public WebEngine webEngine() {
-        return webViewer_.webEngine();
-    }
-
-    @Override
-    public Path webPath() {
-        return webViewer_.webPath();
-    }
-
-    @Override
-    public void writeStackTrace(String name, Throwable throwable) {
-        webViewer_.writeStackTrace(name, throwable);
-    }
-
-    @Override
-    public void write(String name, String msg, boolean err) {
-        webViewer_.write(name, msg, err);
+        closeReader();
+        closeWriter();
     }
 }

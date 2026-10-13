@@ -3,18 +3,17 @@ package ken.mizoguch.webviewer.ftp;
 import com.google.gson.Gson;
 import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 import java.io.StringReader;
 import java.io.UnsupportedEncodingException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
-import javafx.concurrent.Worker;
-import javafx.scene.image.Image;
-import javafx.scene.web.WebEngine;
-import javafx.stage.Stage;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
+import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
 import org.apache.commons.net.ftp.FTP;
 import org.apache.commons.net.ftp.FTPClient;
 import org.apache.commons.net.ftp.FTPFile;
@@ -24,10 +23,10 @@ import org.apache.commons.net.ftp.FTPReply;
  *
  * @author mizoguch-ken
  */
-public class Ftp implements WebViewerPlugin {
+public class Ftp extends PluginSupport {
 
-    private WebViewerPlugin webViewer_;
     private static final String FUNCTION_NAME = "ftp";
+    private static final int FTP_TIMEOUT_MILLIS = 30000;
 
     private Path webPath_;
     private final FTPClient ftpClient_;
@@ -56,6 +55,17 @@ public class Ftp implements WebViewerPlugin {
      * @param charset
      */
     public void charset(String charset) {
+        if ((charset == null) || charset.isEmpty()) {
+            write(FUNCTION_NAME, "Incorrect FTP argument", true);
+            return;
+        }
+        if (ftpClient_.isConnected()) {
+            // the encoding of the control connection is used when the client connects : it can
+            // not be changed while the client is connected, the connection has to be opened
+            // again
+            write(FUNCTION_NAME, "Failed to change the FTP charset", true);
+            return;
+        }
         ftpClient_.setControlEncoding(charset);
     }
 
@@ -67,7 +77,7 @@ public class Ftp implements WebViewerPlugin {
         if (ftpClient_.setFileType(FTP.BINARY_FILE_TYPE)) {
             return true;
         }
-        webViewer_.write(FUNCTION_NAME, "Failed to change the FTP file type", true);
+        write(FUNCTION_NAME, "Failed to change the FTP file type", true);
         return false;
     }
 
@@ -79,11 +89,13 @@ public class Ftp implements WebViewerPlugin {
         if (ftpClient_.setFileType(FTP.ASCII_FILE_TYPE)) {
             return true;
         }
-        webViewer_.write(FUNCTION_NAME, "Failed to change the FTP file type", true);
+        write(FUNCTION_NAME, "Failed to change the FTP file type", true);
         return false;
     }
 
     /**
+     * open the FTP connection.<br>
+     * A missing host is reported like a null one : open() never fails silently.
      *
      * @param host
      * @param username
@@ -92,31 +104,42 @@ public class Ftp implements WebViewerPlugin {
      * @throws java.io.IOException
      */
     public Boolean open(String host, String username, String password) throws IOException {
-        if ((host != null)) {
-            if (!host.isEmpty()) {
-                if (username == null) {
-                    username = "";
-                }
-                if (password == null) {
-                    password = "";
-                }
-                ftpClient_.connect(host);
-                int replay = ftpClient_.getReplyCode();
-                if (FTPReply.isPositiveCompletion(replay)) {
-                    if (ftpClient_.login(username, password)) {
-                        ftpClient_.setBufferSize(1024 * 1024);
-                        return true;
-                    } else {
-                        ftpClient_.disconnect();
-                        webViewer_.write(FUNCTION_NAME, "Failed in the FTP login", true);
-                    }
-                } else {
-                    ftpClient_.disconnect();
-                    webViewer_.write(FUNCTION_NAME, "Failed to FTP connection", true);
-                }
+        if ((host == null) || host.isEmpty()) {
+            write(FUNCTION_NAME, "Incorrect FTP argument", true);
+            return false;
+        }
+
+        if (username == null) {
+            username = "";
+        }
+        if (password == null) {
+            password = "";
+        }
+        ftpClient_.setDefaultTimeout(FTP_TIMEOUT_MILLIS);
+        ftpClient_.setConnectTimeout(FTP_TIMEOUT_MILLIS);
+        ftpClient_.setDataTimeout(FTP_TIMEOUT_MILLIS);
+        if (ftpClient_.isConnected()) {
+            ftpClient_.disconnect();
+        }
+        try {
+            ftpClient_.connect(host);
+        } catch (IOException ex) {
+            // commons-net may leave the socket open when it refuses the greeting of the server
+            disconnectQuietly();
+            throw ex;
+        }
+        int replay = ftpClient_.getReplyCode();
+        if (FTPReply.isPositiveCompletion(replay)) {
+            if (ftpClient_.login(username, password)) {
+                ftpClient_.setBufferSize(1024 * 1024);
+                return true;
+            } else {
+                ftpClient_.disconnect();
+                write(FUNCTION_NAME, "Failed in the FTP login", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "Incorrect FTP argument", true);
+            ftpClient_.disconnect();
+            write(FUNCTION_NAME, "Failed to FTP connection", true);
         }
         return false;
     }
@@ -146,7 +169,7 @@ public class Ftp implements WebViewerPlugin {
             ftpClient_.enterLocalPassiveMode();
             return true;
         }
-        webViewer_.write(FUNCTION_NAME, "Not FTP connection", true);
+        write(FUNCTION_NAME, "Not FTP connection", true);
         return false;
     }
 
@@ -159,7 +182,7 @@ public class Ftp implements WebViewerPlugin {
             FTPFile[] files = ftpClient_.listFiles();
             return gson_.toJson(files);
         } else {
-            webViewer_.write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, "Not FTP connection", true);
         }
         return null;
     }
@@ -173,7 +196,7 @@ public class Ftp implements WebViewerPlugin {
             String dir = ftpClient_.printWorkingDirectory();
             return dir;
         } else {
-            webViewer_.write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, "Not FTP connection", true);
         }
         return null;
     }
@@ -189,10 +212,10 @@ public class Ftp implements WebViewerPlugin {
             if (ftpClient_.changeWorkingDirectory(path)) {
                 return true;
             } else {
-                webViewer_.write(FUNCTION_NAME, "Failed to change the FTP directory", true);
+                write(FUNCTION_NAME, "Failed to change the FTP directory", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, "Not FTP connection", true);
         }
         return false;
     }
@@ -208,10 +231,10 @@ public class Ftp implements WebViewerPlugin {
             if (ftpClient_.makeDirectory(path)) {
                 return true;
             } else {
-                webViewer_.write(FUNCTION_NAME, "Failed to create the FTP directory", true);
+                write(FUNCTION_NAME, "Failed to create the FTP directory", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, "Not FTP connection", true);
         }
         return false;
     }
@@ -227,10 +250,10 @@ public class Ftp implements WebViewerPlugin {
             if (ftpClient_.deleteFile(path)) {
                 return true;
             } else {
-                webViewer_.write(FUNCTION_NAME, "Failed to FTP Delete", true);
+                write(FUNCTION_NAME, "Failed to FTP Delete", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, "Not FTP connection", true);
         }
         return false;
     }
@@ -247,10 +270,10 @@ public class Ftp implements WebViewerPlugin {
             if (ftpClient_.rename(from, to)) {
                 return true;
             } else {
-                webViewer_.write(FUNCTION_NAME, "Failed to change the FTP name", true);
+                write(FUNCTION_NAME, "Failed to change the FTP name", true);
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, "Not FTP connection", true);
         }
         return false;
     }
@@ -264,14 +287,23 @@ public class Ftp implements WebViewerPlugin {
      */
     public Boolean get(String from, String to) throws IOException {
         if (ftpClient_.isConnected()) {
-            Path file = webPath_.resolve(to);
-            if (ftpClient_.retrieveFile(from, Files.newOutputStream(file))) {
-                return true;
-            } else {
-                webViewer_.write(FUNCTION_NAME, "Failed to FTPget", true);
+            // the file of the computer is written in the directory of the page : a path which
+            // leaves the directory is refused, so the page can not write an other file
+            Path file = SandboxPath.resolve(webPath_, null, to);
+
+            if (file == null) {
+                write(FUNCTION_NAME, "Incorrect file path [" + to + "]", true);
+                return null;
+            }
+            try (OutputStream outputStream = Files.newOutputStream(file)) {
+                if (ftpClient_.retrieveFile(from, outputStream)) {
+                    return true;
+                } else {
+                    write(FUNCTION_NAME, "Failed to FTPget", true);
+                }
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, "Not FTP connection", true);
         }
         return null;
     }
@@ -285,14 +317,23 @@ public class Ftp implements WebViewerPlugin {
      */
     public Boolean put(String from, String to) throws IOException {
         if (ftpClient_.isConnected()) {
-            Path file = webPath_.resolve(from);
-            if (ftpClient_.storeFile(to, Files.newInputStream(file))) {
-                return true;
-            } else {
-                webViewer_.write(FUNCTION_NAME, "Failed to FTPput", true);
+            // the file of the computer is read in the directory of the page : a path which
+            // leaves the directory is refused, so the page can not read an other file
+            Path file = SandboxPath.resolve(webPath_, null, from);
+
+            if (file == null) {
+                write(FUNCTION_NAME, "Incorrect file path [" + from + "]", true);
+                return null;
+            }
+            try (InputStream inputStream = Files.newInputStream(file)) {
+                if (ftpClient_.storeFile(to, inputStream)) {
+                    return true;
+                } else {
+                    write(FUNCTION_NAME, "Failed to FTPput", true);
+                }
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, "Not FTP connection", true);
         }
         return null;
     }
@@ -313,16 +354,20 @@ public class Ftp implements WebViewerPlugin {
                     new InputStreamReader(ftpClient_.retrieveFileStream(path), charset))) {
                 StringBuilder stringBuilder = new StringBuilder();
                 String line;
+                boolean first = true;
                 while ((line = bufferedReader.readLine()) != null) {
-                    stringBuilder.append(line);
-                    if (bufferedReader.ready()) {
+                    if (!first) {
+                        // the lines are separated by the character of the page : the reader is
+                        // not asked if it is ready, which does not tell where a line ends
                         stringBuilder.append(newLineCharacter_);
                     }
+                    first = false;
+                    stringBuilder.append(line);
                 }
                 return stringBuilder.toString();
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, "Not FTP connection", true);
         }
         return null;
     }
@@ -344,24 +389,28 @@ public class Ftp implements WebViewerPlugin {
                     charset);
                     BufferedReader bufferedReader = new BufferedReader(new StringReader(text))) {
                 String line;
+                boolean first = true;
                 while ((line = bufferedReader.readLine()) != null) {
-                    outputStreamWriter.write(line);
-                    if (bufferedReader.ready()) {
+                    if (!first) {
+                        // the lines are separated by the character of the page : the reader is
+                        // not asked if it is ready, which does not tell where a line ends
                         outputStreamWriter.write(newLineCharacter_);
                     }
+                    first = false;
+                    outputStreamWriter.write(line);
                 }
                 return true;
             }
         } else {
-            webViewer_.write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, "Not FTP connection", true);
         }
         return false;
     }
 
     @Override
     public void initialize(WebViewerPlugin webViewer) {
-        webViewer_ = webViewer;
-        webPath_ = webViewer_.webPath();
+        super.initialize(webViewer);
+        webPath_ = webPath();
     }
 
     @Override
@@ -369,53 +418,32 @@ public class Ftp implements WebViewerPlugin {
         return FUNCTION_NAME;
     }
 
-    @Override
-    public void state(Worker.State state) {
-    }
-
-    @Override
-    public void close() {
+    /**
+     * free the client without reporting the errors of its own teardown
+     */
+    private void disconnectQuietly() {
         try {
-            if (ftpClient_.isConnected()) {
-                ftpClient_.noop();
-                if (ftpClient_.logout()) {
-                    ftpClient_.disconnect();
-                } else {
-                    webViewer_.write(FUNCTION_NAME, "Failed in the FTP log out", true);
-                }
-            }
+            ftpClient_.disconnect();
         } catch (IOException ex) {
-            webViewer_.writeStackTrace(FUNCTION_NAME, ex);
         }
     }
 
     @Override
-    public Stage stage() {
-        return webViewer_.stage();
-    }
-
-    @Override
-    public List<Image> icons() {
-        return webViewer_.icons();
-    }
-
-    @Override
-    public WebEngine webEngine() {
-        return webViewer_.webEngine();
-    }
-
-    @Override
-    public Path webPath() {
-        return webViewer_.webPath();
-    }
-
-    @Override
-    public void writeStackTrace(String name, Throwable throwable) {
-        webViewer_.writeStackTrace(name, throwable);
-    }
-
-    @Override
-    public void write(String name, String msg, boolean err) {
-        webViewer_.write(name, msg, err);
+    public void close() {
+        if (ftpClient_.isConnected()) {
+            try {
+                if (!ftpClient_.logout()) {
+                    write(FUNCTION_NAME, "Failed in the FTP log out", true);
+                }
+            } catch (IOException ex) {
+                writeStackTrace(FUNCTION_NAME, ex);
+            } finally {
+                try {
+                    ftpClient_.disconnect();
+                } catch (IOException ex) {
+                    writeStackTrace(FUNCTION_NAME, ex);
+                }
+            }
+        }
     }
 }
