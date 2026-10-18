@@ -1,0 +1,26 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>ken.mizoguch</groupId>
+        <artifactId>webviewer-plugins</artifactId>
+        <version>2026.10.11</version>
+    </parent>
+
+    <artifactId>llm-core</artifactId>
+
+    <name>llm-core</name>
+    <description>transformer of the Llm plug-in : a small language model built, trained and run
+    with the java language only. It holds no dependency of its own and no javafx, so it is tested
+    as a plain library ; the plug-in which uses it shades it in its own jar</description>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>

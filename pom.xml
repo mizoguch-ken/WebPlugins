@@ -55,6 +55,8 @@
         <module>File</module>
         <module>Ftp</module>
         <module>Jasper</module>
+        <module>Llm</module>
+        <module>LlmCore</module>
         <module>OnlineArt</module>
         <module>Serial</module>
         <module>WebCam</module>
@@ -75,6 +77,11 @@
             <dependency>
                 <groupId>ken.mizoguch</groupId>
                 <artifactId>capai-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>ken.mizoguch</groupId>
+                <artifactId>llm-core</artifactId>
                 <version>${project.version}</version>
             </dependency>
             <dependency>

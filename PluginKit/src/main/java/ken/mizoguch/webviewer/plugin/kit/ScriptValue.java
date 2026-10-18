@@ -19,17 +19,34 @@ public final class ScriptValue {
 
     /**
      * use a message of the plug-in or of the network in a javascript literal : the characters
-     * which end the literal are escaped, so a message can not carry an other javascript
+     * which end the literal are escaped, so a message can not carry an other javascript.<br>
+     * The value is cut at {@link #MAX_LENGTH}.
      *
      * @param value message to use
      * @return the value of the literal, without the quotes
      */
     public static String quote(String value) {
+        return quote(value, MAX_LENGTH);
+    }
+
+    /**
+     * use a long message of the plug-in or of the network in a javascript literal, cut at the
+     * length the plug-in asks for : a plug-in which reports an answer of its own longer than
+     * {@link #MAX_LENGTH} gives the length it needs, so the default limit of the kit is not
+     * raised for the other plug-ins.<br>
+     * A negative length is read as {@link #MAX_LENGTH}.
+     *
+     * @param value message to use
+     * @param maxLength maximum length of the value, negative to read the default limit
+     * @return the value of the literal, without the quotes
+     */
+    public static String quote(String value, int maxLength) {
         if (value == null) {
             return "";
         }
-        if (value.length() > MAX_LENGTH) {
-            value = value.substring(0, MAX_LENGTH);
+        int limit = (maxLength < 0) ? MAX_LENGTH : maxLength;
+        if (value.length() > limit) {
+            value = value.substring(0, limit);
         }
 
         StringBuilder script = new StringBuilder(value.length() + 16);
@@ -77,6 +94,18 @@ public final class ScriptValue {
      */
     public static String literal(String value) {
         return "'" + quote(value) + "'";
+    }
+
+    /**
+     * use a long message of the plug-in or of the network in a javascript literal, cut at the
+     * length the plug-in asks for
+     *
+     * @param value message to use
+     * @param maxLength maximum length of the value, negative to read the default limit
+     * @return the literal of the value, between single quotes
+     */
+    public static String literal(String value, int maxLength) {
+        return "'" + quote(value, maxLength) + "'";
     }
 
     private ScriptValue() {

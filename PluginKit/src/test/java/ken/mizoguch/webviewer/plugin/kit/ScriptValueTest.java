@@ -67,4 +67,36 @@ public class ScriptValueTest {
         }
         assertEquals(ScriptValue.MAX_LENGTH, ScriptValue.quote(value.toString()).length());
     }
+
+    @Test
+    public void aPlugInWhichNeedsALongerValueAsksItsOwnLength() {
+        StringBuilder value = new StringBuilder();
+        for (int index = 0; index < (ScriptValue.MAX_LENGTH + 10); index++) {
+            value.append('x');
+        }
+        String answer = value.toString();
+
+        assertEquals(ScriptValue.MAX_LENGTH + 10, ScriptValue.quote(answer, answer.length()).length(),
+                "the value of a plug-in is not cut at the default limit of the kit");
+        assertEquals(10, ScriptValue.quote(answer, 10).length(), "the length asked is the length used");
+        assertEquals(ScriptValue.MAX_LENGTH, ScriptValue.quote(answer, -1).length(),
+                "a negative length reads the default limit of the kit");
+        assertEquals("''", ScriptValue.literal(null, 10));
+    }
+
+    @Test
+    public void aLongValueOfAPlugInCanNotEndTheLiteralOfThePage() {
+        StringBuilder value = new StringBuilder("');alert(1);('");
+        for (int index = 0; index < (ScriptValue.MAX_LENGTH * 2); index++) {
+            value.append('x');
+        }
+        String quoted = ScriptValue.quote(value.toString(), value.length());
+
+        // the escaped message holds no single quote which is not escaped
+        for (int index = 0; index < quoted.length(); index++) {
+            if (quoted.charAt(index) == '\'') {
+                assertTrue((index > 0) && (quoted.charAt(index - 1) == '\\'), "unescaped quote at " + index);
+            }
+        }
+    }
 }

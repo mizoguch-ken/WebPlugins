@@ -1,0 +1,11 @@
+*** Third Party Licenses ***
+
+The jar of the Llm plug-in holds the transformer of llm-core and the kit of the WebViewer
+plug-ins, which are both written for the WebViewer project : no library of an other project is
+shaded in the jar, and the transformer uses no native library.
+
+The plug-in asks a model of an other computer with the http client of the java language, which the
+java language holds : no library of an other project is needed for that.
+
+gson is not shaded either : the WebViewer which loads the plug-in holds gson, and shows its
+licenses with its own plug-ins.

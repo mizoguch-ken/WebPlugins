@@ -1,0 +1,65 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>ken.mizoguch</groupId>
+        <artifactId>webviewer-plugins</artifactId>
+        <version>2026.10.11</version>
+    </parent>
+
+    <artifactId>Llm</artifactId>
+
+    <name>Llm</name>
+    <description>language model of the page : the plug-in builds, trains, saves, reads and asks a
+    small transformer of its own, and it asks a model of an other computer with the json of the
+    Openai application programming interface, which the http client of the java language keeps : the
+    chats, the texts to continue, the newer answers, the numbers of a text and the calls of the tools
+    of the page. The transformer of llm-core is shaded in the jar of the plug-in, as the kit of the
+    plug-ins</description>
+
+    <properties>
+        <mainClass>ken.mizoguch.webviewer.llm.Llm</mainClass>
+        <shade.skip>false</shade.skip>
+    </properties>
+
+    <dependencies>
+        <!-- the WebViewer holds the interface of its plug-ins and loads the plug-in jar with
+        itself as the parent of the class loader : the interface is not shaded -->
+        <dependency>
+            <groupId>ken.mizoguch</groupId>
+            <artifactId>webviewer-plugin-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>ken.mizoguch</groupId>
+            <artifactId>webviewer-plugin-kit</artifactId>
+        </dependency>
+        <!-- the transformer is a plain library : only the plug-in jar carries it -->
+        <dependency>
+            <groupId>ken.mizoguch</groupId>
+            <artifactId>llm-core</artifactId>
+        </dependency>
+        <!-- the WebViewer which loads the plug-in holds gson : the plug-in does not shade it -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
