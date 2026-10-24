@@ -1,0 +1,58 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>ken.mizoguch</groupId>
+        <artifactId>webviewer-plugins</artifactId>
+        <version>2026.10.11</version>
+    </parent>
+
+    <artifactId>Printer</artifactId>
+
+    <name>Printer</name>
+    <description>paper of the page : the plug-in prints the page as it is displayed, a text of the
+    page and an image of the page on a printer of the computer, which the page chooses by its name
+    with the papers, the orientation, the copies, the sides, the color and the margins of the
+    printer, as the print dialog of the computer leaves them</description>
+
+    <properties>
+        <mainClass>ken.mizoguch.webviewer.printer.Printer</mainClass>
+        <shade.skip>false</shade.skip>
+    </properties>
+
+    <dependencies>
+        <!-- the WebViewer holds the interface of its plug-ins and loads the plug-in jar with
+        itself as the parent of the class loader : the interface is not shaded -->
+        <dependency>
+            <groupId>ken.mizoguch</groupId>
+            <artifactId>webviewer-plugin-api</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>ken.mizoguch</groupId>
+            <artifactId>webviewer-plugin-kit</artifactId>
+        </dependency>
+        <!-- the WebViewer which loads the plug-in holds gson : the plug-in does not shade it -->
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

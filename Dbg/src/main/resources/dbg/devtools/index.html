@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="utf-8">
+        <title>DevTools</title>
+        <link rel="stylesheet" href="devtools.css">
+    </head>
+    <body>
+        <div id="bar">
+            <div id="tabs">
+                <button class="tab on" id="tab-console">Console</button>
+                <button class="tab" id="tab-elements">Elements</button>
+                <button class="tab" id="tab-sources">Sources</button>
+                <button class="tab" id="tab-network">Network</button>
+                <button class="tab" id="tab-storage">Storage</button>
+                <button class="tab" id="tab-about">About</button>
+            </div>
+            <div id="state">...</div>
+        </div>
+
+        <div class="panel" id="panel-console">
+            <div class="tools">
+                <input type="text" id="filter" class="grow" placeholder="filter">
+                <select id="level">
+                    <option value="">all</option>
+                    <option value="log">log</option>
+                    <option value="info">info</option>
+                    <option value="warn">warn</option>
+                    <option value="error">error</option>
+                </select>
+                <label><input type="checkbox" id="stamp"> time</label>
+                <button id="clear">Clear</button>
+            </div>
+            <div class="list" id="log"></div>
+            <div id="repl">
+                <span class="prompt">&gt;</span>
+                <input type="text" id="ask" placeholder="an expression of the page">
+            </div>
+        </div>
+
+        <div class="panel hidden" id="panel-elements">
+            <div class="tools">
+                <button id="point">Inspect</button>
+                <button id="reload">Reload</button>
+                <input type="text" id="query" class="grow" placeholder="a selector of the page">
+                <button id="find">Find</button>
+            </div>
+            <div id="crumbs"></div>
+            <div id="split">
+                <div class="list" id="tree"></div>
+                <div class="list" id="props"></div>
+            </div>
+        </div>
+
+        <div class="panel hidden" id="panel-sources">
+            <div class="tools">
+                <button id="srcReload">Reload</button>
+                <input type="text" id="srcFilter" class="grow" placeholder="filter">
+            </div>
+            <div id="split">
+                <div class="list" id="srclist"></div>
+                <pre id="srccode"></pre>
+            </div>
+        </div>
+
+        <div class="panel hidden" id="panel-network">
+            <div class="tools">
+                <input type="text" id="netFilter" class="grow" placeholder="filter">
+                <button id="netClear">Clear</button>
+            </div>
+            <div class="list" id="netlist">
+                <table class="grid">
+                    <thead>
+                        <tr><th>Time</th><th>Method</th><th>URL</th><th>Status</th><th>Kind</th><th>ms</th><th>Size</th></tr>
+                    </thead>
+                    <tbody id="netbody"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="panel hidden" id="panel-storage">
+            <div class="tools">
+                <select id="area">
+                    <option value="local">localStorage</option>
+                    <option value="session">sessionStorage</option>
+                </select>
+                <button id="stReload">Reload</button>
+                <button id="stClear">Clear</button>
+                <span id="stNote"></span>
+            </div>
+            <div class="list" id="stlist">
+                <table class="grid">
+                    <thead>
+                        <tr><th>Key</th><th>Value</th><th></th></tr>
+                    </thead>
+                    <tbody id="stbody"></tbody>
+                </table>
+            </div>
+            <div class="tools">
+                <input type="text" id="stKey" class="grow" placeholder="key">
+                <input type="text" id="stValue" class="grow" placeholder="value">
+                <button id="stSet">Set</button>
+            </div>
+        </div>
+
+        <div class="panel hidden" id="panel-about">
+            <div class="list" id="about"></div>
+        </div>
+
+        <script src="devtools.js"></script>
+    </body>
+</html>

@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="utf-8">
+        <title>the page of the test of the plug-in</title>
+        <style>
+            body { font-family: "Segoe UI", "Yu Gothic UI", sans-serif; margin: 14px; }
+            h1 { font-size: 17px; }
+            .box { border: 1px solid #b0b0b0; padding: 8px; margin: 8px 0; }
+            #deep { color: #345; }
+            button { margin-right: 6px; }
+        </style>
+    </head>
+    <body>
+        <h1>the page of the test of the Dbg plug-in</h1>
+        <p>
+            The page of the test writes messages on its console, asks for files, reads an error and
+            holds elements the panel of the plug-in may read. The panel of the plug-in is opened with
+            <code>dbg.devtools()</code>.
+        </p>
+
+        <div class="box">
+            <button id="say">write messages</button>
+            <button id="ask">ask a file</button>
+            <button id="bad">read an error</button>
+            <button id="keep">keep a value in the storage</button>
+        </div>
+
+        <div class="box" id="deep">
+            <p id="deep-text">an element of the page with elements inside it</p>
+            <ul class="list">
+                <li class="one">the first element of the page</li>
+                <li class="two">the second element of the page</li>
+                <li class="three">the third element of the page</li>
+            </ul>
+            <table>
+                <tr><th>name</th><th>value</th></tr>
+                <tr><td>the plug-in</td><td id="cell">dbg</td></tr>
+            </table>
+        </div>
+
+        <div class="box" id="answer">the answer of the file the page asked for</div>
+
+        <script>
+            /* the page of the test : the messages of the page are read by the agent of the plug-in */
+            function say() {
+                console.log('a message of the page of the test');
+                console.info('the plug-in is read at', new Date().toString());
+                console.warn('a warning of the page of the test');
+                console.error('an error of the page of the test');
+                console.log('a value of the page', { name: 'the page', parts: [1, 2, 3], deep: { held: 'a value' } });
+                console.log('an element of the page', document.getElementById('deep'));
+                console.log('a function of the page', say);
+            }
+
+            function ask() {
+                var holder = document.getElementById('answer');
+
+                holder.textContent = 'the page asks a file ...';
+                try {
+                    var request = new XMLHttpRequest();
+
+                    request.open('GET', 'probe.html', true);
+                    request.onreadystatechange = function () {
+                        if (request.readyState === 4) {
+                            holder.textContent = 'the file answers [' + request.status + '] '
+                                    + String(request.responseText || '').length + ' characters';
+                        }
+                    };
+                    request.send(null);
+                } catch (e) {
+                    holder.textContent = 'the page refuses the file : ' + e;
+                }
+            }
+
+            function bad() {
+                /* an error of the page, which the agent of the plug-in reads */
+                window.setTimeout(function () {
+                    var nothing = null;
+
+                    return nothing.read();
+                }, 30);
+            }
+
+            function keep() {
+                var name = 'dbg-test';
+                var held = window.localStorage ? window.localStorage.getItem(name) : null;
+                var value = 'written ' + ((held ? Number(held) : 0) + 1);
+
+                if (window.localStorage) {
+                    window.localStorage.setItem(name, value);
+                }
+                console.log('the page keeps [' + value + '] in the storage of the page');
+            }
+
+            document.getElementById('say').onclick = say;
+            document.getElementById('ask').onclick = ask;
+            document.getElementById('bad').onclick = bad;
+            document.getElementById('keep').onclick = keep;
+
+            say();
+            console.log('the page of the test is read : the panel of the plug-in opens with dbg.devtools()');
+        </script>
+    </body>
+</html>

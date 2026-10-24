@@ -29,6 +29,7 @@ plug-ins : shaded with their dependencies, the name of their jar carries no vers
 | Jasper | Jasper.jar | jasper | [Jasper](Jasper/README.md) |
 | Llm | Llm.jar | llm | [Llm](Llm/README.md) |
 | OnlineArt | OnlineArt.jar | onlineArt | [OnlineArt](OnlineArt/README.md) |
+| Printer | Printer.jar | printer | [Printer](Printer/README.md) |
 | Serial | Serial.jar | serial | [Serial](Serial/README.md) |
 | WebCam | WebCam.jar | webcam | [WebCam](WebCam/README.md) |
 
@@ -48,8 +49,8 @@ libraries : a plain jar which is not shaded and is not put in the [plugins] fold
 
  * Create a [plugins] folder in the [web] folder and store the plug-in jar file
  * [web]フォルダーの中に[plugins]フォルダを作成し、プラグインのjarファイルを格納する
- * the jar of a plug-in keeps the module name without a version : CapAiClient.jar, CapAiClient2.jar, CapAiClient3.jar, CapAiServer.jar, Db.jar, Dbg.jar, File.jar, Ftp.jar, Jasper.jar, Llm.jar, OnlineArt.jar, Serial.jar, WebCam.jar
- * プラグインの jar はバージョンを含まないモジュール名のみです（CapAiClient.jar, CapAiClient2.jar, CapAiClient3.jar, CapAiServer.jar, Db.jar, Dbg.jar, File.jar, Ftp.jar, Jasper.jar, Llm.jar, OnlineArt.jar, Serial.jar, WebCam.jar）
+ * the jar of a plug-in keeps the module name without a version : CapAiClient.jar, CapAiClient2.jar, CapAiClient3.jar, CapAiServer.jar, Db.jar, Dbg.jar, File.jar, Ftp.jar, Jasper.jar, Llm.jar, OnlineArt.jar, Printer.jar, Serial.jar, WebCam.jar
+ * プラグインの jar はバージョンを含まないモジュール名のみです（CapAiClient.jar, CapAiClient2.jar, CapAiClient3.jar, CapAiServer.jar, Db.jar, Dbg.jar, File.jar, Ftp.jar, Jasper.jar, Llm.jar, OnlineArt.jar, Printer.jar, Serial.jar, WebCam.jar）
  * the libraries are not put in the [plugins] folder : the WebViewer holds the interface webviewer-plugin-api, and each plug-in shades the kit and the other libraries it reads
  * ライブラリは [plugins]フォルダーには置きません。WebViewer はインターフェース webviewer-plugin-api を保持し、各プラグインは読む kit と他のライブラリを自身の jar に shade します
  * a jar of a service which a plug-in reads is put in the web/plugins/lib folder : the JDBC driver of Db, the font file jasperfonts.jar of Jasper

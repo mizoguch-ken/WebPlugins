@@ -58,6 +58,7 @@
         <module>Llm</module>
         <module>LlmCore</module>
         <module>OnlineArt</module>
+        <module>Printer</module>
         <module>Serial</module>
         <module>WebCam</module>
     </modules>

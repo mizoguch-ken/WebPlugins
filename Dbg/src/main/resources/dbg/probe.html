@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="utf-8">
+        <title>the page which probes the engine of the page</title>
+        <style>
+            body { font-family: Consolas, "EMDOT", monospace; margin: 14px; font-size: 13px; }
+            table { border-collapse: collapse; }
+            td { padding: 2px 12px 2px 0; }
+            .yes { color: #157a34; }
+            .no { color: #a02020; }
+            .k { color: #555555; }
+        </style>
+    </head>
+    <body>
+        <h3>what the engine of the page reads</h3>
+        <p>
+            The panel of the Dbg plug-in is written in the older javascript of the page, because the
+            web engine of the WebViewer is an older webkit. The page below tells what the engine of
+            the page reads, so the panel of the plug-in is tested with the page.
+        </p>
+        <table id="held"></table>
+        <script>
+            /* the page of the test of the engine of the page : no modern javascript here */
+            function has(name) {
+                try {
+                    if (name.indexOf('.') < 0) {
+                        return typeof window[name] !== 'undefined';
+                    }
+                    var way = name.split('.');
+                    var held = window;
+
+                    for (var index = 0; index < way.length; index++) {
+                        if (held === null) {
+                            return false;
+                        }
+                        held = held[way[index]];
+                    }
+                    return typeof held !== 'undefined';
+                } catch (e) {
+                    return false;
+                }
+            }
+
+            var names = [
+                ['JSON', 'JSON'],
+                ['Object.keys', 'Object.keys'],
+                ['document.querySelectorAll', 'document.querySelectorAll'],
+                ['window.getComputedStyle', 'window.getComputedStyle'],
+                ['window.addEventListener', 'window.addEventListener'],
+                ['XMLHttpRequest', 'XMLHttpRequest'],
+                ['window.fetch', 'window.fetch'],
+                ['window.Promise', 'window.Promise'],
+                ['window.localStorage', 'window.localStorage'],
+                ['Element.prototype.scrollIntoView', 'Element.prototype.scrollIntoView'],
+                ['Element.prototype.webkitMatchesSelector', 'Element.prototype.webkitMatchesSelector'],
+                ['window.requestAnimationFrame', 'window.requestAnimationFrame'],
+                ['document.styleSheets', 'document.styleSheets'],
+                ['Array.prototype.indexOf', 'Array.prototype.indexOf'],
+                ['String.prototype.trim', 'String.prototype.trim']
+            ];
+
+            var table = document.getElementById('held');
+
+            for (var index = 0; index < names.length; index++) {
+                var read = false;
+
+                if (names[index][1] === 'window.localStorage') {
+                    try {
+                        read = !!window.localStorage;
+                    } catch (e) {
+                        read = false;
+                    }
+                } else if (names[index][1].indexOf('prototype') >= 0) {
+                    var way = names[index][1].split('.');
+                    var held = window[way[0]];
+
+                    read = !!(held && held.prototype && (typeof held.prototype[way[2]] !== 'undefined'));
+                } else {
+                    read = has(names[index][1]);
+                }
+                var row = document.createElement('tr');
+                var key = document.createElement('td');
+
+                key.className = 'k';
+                key.textContent = names[index][0];
+                var value = document.createElement('td');
+
+                value.className = read ? 'yes' : 'no';
+                value.textContent = read ? 'read' : 'not read';
+                row.appendChild(key);
+                row.appendChild(value);
+                table.appendChild(row);
+            }
+
+            var style = document.createElement('tr');
+            var name = document.createElement('td');
+
+            name.className = 'k';
+            name.textContent = 'user agent';
+            var agent = document.createElement('td');
+
+            agent.textContent = navigator.userAgent || '';
+            style.appendChild(name);
+            style.appendChild(agent);
+            table.appendChild(style);
+
+            /* the rules of the styles of the page, which the panel of the plug-in reads */
+            try {
+                var rules = document.styleSheets[0];
+                var held = rules.cssRules || rules.rules;
+
+                console.log('the engine of the page reads ' + (held ? held.length : 'no') + ' rules of the styles of the page');
+            } catch (e) {
+                console.error('the engine of the page refuses the rules of the styles of the page : ' + e);
+            }
+        </script>
+    </body>
+</html>
