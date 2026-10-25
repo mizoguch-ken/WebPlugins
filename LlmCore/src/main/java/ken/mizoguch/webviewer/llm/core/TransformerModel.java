@@ -220,6 +220,10 @@ public final class TransformerModel {
      * A step of a training keeps the values of every layer and the probabilities of the attention of
      * every head, which is the largest part of the memory of a step : a sequence of 256 tokens of a
      * model of 4 layers of 128 values keeps about four million values.
+     *
+     * The class is kept inside the module with the methods which read it, because only the core of
+     * the module trains a model : the page reads the model through {@link #logits} and {@link #next},
+     * and through the methods of the same name of the core.
      */
     final class Step {
 
@@ -338,7 +342,7 @@ public final class TransformerModel {
      * @param step the buffers of the step, kept by the caller for a backward step
      * @return the values of every token of the sequence, length rows of the vocabulary values
      */
-    public float[] forward(int[] tokens, int length, Step step) {
+    float[] forward(int[] tokens, int length, Step step) {
         int d = width_;
         int f = feed_;
         int v = vocabulary_;
@@ -430,7 +434,7 @@ public final class TransformerModel {
      * @param backward true to keep the values a backward step reads
      * @return the buffers
      */
-    public Step newStep(int length, boolean backward) {
+    Step newStep(int length, boolean backward) {
         return new Step(length, backward);
     }
 
@@ -447,7 +451,7 @@ public final class TransformerModel {
      * @param step the buffers of the read, of a training
      * @return the loss of the step
      */
-    public double backward(int[] tokens, int length, Step step) {
+    double backward(int[] tokens, int length, Step step) {
         int d = width_;
         int f = feed_;
         int v = vocabulary_;

@@ -60,8 +60,8 @@ libraries : a plain jar which is not shaded and is not put in the [plugins] fold
 
 ## ビルド
 
- * Java 17 or later and maven : mvn -B package builds every module, mvn -B test runs the tests
- * Java 17 以上と maven です。mvn -B package が全モジュールをビルドし、mvn -B test がテストを実行します
+ * Java 21 or later and maven : mvn -B package builds every module, mvn -B test runs the tests
+ * Java 21 以上と maven です。mvn -B package が全モジュールをビルドし、mvn -B test がテストを実行します
  * mvn -B -pl <Module> package builds one module : mvn -B -pl Db package for example ; the reactor reads the libraries before the plug-ins which shade them
  * mvn -B -pl <Module> package は 1 つのモジュールをビルドします（例は mvn -B -pl Db package）。reactor は shade するプラグインの前にライブラリを読みます
  * the deliverable of a plug-in is the shaded jar target/<Module>.jar ; the thin target/<Module>-<version>.jar beside it is the unshaded artifact, not the deliverable

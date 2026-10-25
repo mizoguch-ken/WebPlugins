@@ -93,6 +93,8 @@ function close() {
  * stop() は撮影を終えますが答えに情報はありません。ページは isPlaying() を読んでください
  * the warning "Versions of org.bytedeco:javacpp:1.5.14 and org.bytedeco:videoinput:0.200-1.5.9 do not match" is harmless in this build
  * 「Versions of org.bytedeco:javacpp:1.5.14 and org.bytedeco:videoinput:0.200-1.5.9 do not match」の警告はこの構成では実害がありません
+ * getWebcams() asks the library of the camera to keep quiet : the library writes the list of the devices it found in the stream of the virtual machine of the WebViewer when it is not asked to
+ * getWebcams() はカメラのライブラリに静かに列挙を依頼します。依頼しない場合、ライブラリは見たデバイス一覧を WebViewer の仮想マシンのストリームに書き込みます
  * the window of the image is a window of its own : the page can place it, keep it before the other windows and make it transparent ; the plug-in shows no image unless the page asks show()
  * 画像のウィンドウは自身のウィンドウです。ページはその位置を変え、他のウィンドウより前に保ち、不透明度を変えられます。show() を依頼しない限りプラグインは画像を表示しません
 

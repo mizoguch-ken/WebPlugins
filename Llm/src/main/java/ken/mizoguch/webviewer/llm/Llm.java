@@ -15,6 +15,7 @@ import java.util.Random;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ThreadFactory;
 import javafx.concurrent.Worker.State;
 import ken.mizoguch.webviewer.llm.core.LlmCore;
 import ken.mizoguch.webviewer.llm.core.LlmCoreException;
@@ -612,8 +613,15 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
         ExecutorService work = worker_;
 
         if (work == null) {
-            work = Executors.newSingleThreadExecutor(
-                    runnable -> new Thread(runnable, FUNCTION_NAME + "_" + kind));
+            // the thread of a work tells the page what the plug-in reads : a work which asks a model
+            // of an other computer spends its time waiting the answer of that computer, so it is
+            // written on a virtual thread, while the work of a model of the plug-in reads the weights
+            // of the model on a thread of its own
+            ThreadFactory threads = remote
+                    ? Thread.ofVirtual().name(FUNCTION_NAME + "_" + kind, 0).factory()
+                    : Thread.ofPlatform().name(FUNCTION_NAME + "_" + kind, 0).factory();
+
+            work = Executors.newThreadPerTaskExecutor(threads);
             worker_ = work;
         }
         remoteWork_ = remote;
@@ -655,19 +663,19 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
         working_ = true;
         return start(kind, true, () -> {
             try {
-                String answer;
+                String answer = switch (kind) {
+                    case OpenAiClient.MODELS ->
+                        remote_.models();
+                    case OpenAiClient.CHAT ->
+                        remote_.chat(given, this);
+                    case OpenAiClient.RESPONSES ->
+                        remote_.response(given, this);
+                    case OpenAiClient.EMBEDDINGS ->
+                        remote_.embeddings(given);
+                    default ->
+                        remote_.completions(given, this);
+                };
 
-                if (OpenAiClient.MODELS.equals(kind)) {
-                    answer = remote_.models();
-                } else if (OpenAiClient.CHAT.equals(kind)) {
-                    answer = remote_.chat(given, this);
-                } else if (OpenAiClient.RESPONSES.equals(kind)) {
-                    answer = remote_.response(given, this);
-                } else if (OpenAiClient.EMBEDDINGS.equals(kind)) {
-                    answer = remote_.embeddings(given);
-                } else {
-                    answer = remote_.completions(given, this);
-                }
                 result_ = answer;
                 done_.send("'" + kind + "'," + ScriptValue.literal(result_, REPORT_MAX_LENGTH));
             } catch (OpenAiException ex) {

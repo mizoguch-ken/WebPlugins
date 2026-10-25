@@ -1058,8 +1058,8 @@ public class Printer extends PluginSupport {
         if (node instanceof WebView) {
             return node;
         }
-        if (node instanceof Parent) {
-            for (Node child : ((Parent) node).getChildrenUnmodifiable()) {
+        if (node instanceof Parent parent) {
+            for (Node child : parent.getChildrenUnmodifiable()) {
                 Node web = webNode(child);
 
                 if (web != null) {

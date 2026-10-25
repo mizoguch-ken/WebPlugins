@@ -10,6 +10,10 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class ScriptValueTest {
 
+    /* the constructor of the test, so the module of the kit gives no default one away */
+    public ScriptValueTest() {
+    }
+
     @Test
     public void noValueIsAnEmptyLiteral() {
         assertEquals("", ScriptValue.quote(null));

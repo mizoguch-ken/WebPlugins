@@ -10,6 +10,8 @@
  * 自身の依存を持ちません。他のプロジェクトのライブラリも、native ライブラリも、javafx も、ネットワークも使いません。
  * It is a plain library : it is not put in the [plugins] folder, the Llm plug-in shades it in its own jar.
  * 通常のライブラリです。[plugins]フォルダーには置かず、Llm プラグインが自身の jar に shade します。
+ * the matrices of a training and of an answer are read by the threads the language shares, when the work is large enough : the system property webviewer.llm.threads gives the number of the threads the module may use, and zero or one leaves every operation on the thread which asked it. The parts of a matrix never overlap and the values of a part are read in their own order, so the answer of a training keeps the same bits whatever the number of the threads.
+ * 学習と回答の行列は、仕事が大きい時は言語が共有するスレッドで読みます。システムプロパティ webviewer.llm.threads がモジュールの使えるスレッド数で、0 または 1 の時は依頼したスレッドだけで演算します。行列の区分は重ならず、区分の値は決まった順で読むので、スレッド数が変わっても学習の結果は同じビットのままです。
 
 ## Classes
 
@@ -25,8 +27,8 @@
  * LlmCoreListener : 仕事の通知です。onProgress(int epoch, int epochs, long steps, double loss, double seconds) 、onToken(String piece) 、onLog(String message)
  * ModelConfig : the sizes of a model, with their limits : vocabType (VOCAB_BYTE or VOCAB_CHAR) , vocabSize (8..20000) , dModel (16..512) , heads (1..16) , layers (1..16) , context (16..512) , seed ; MAX_PARAMETERS (24000000) is the largest number of weights a model may carry
  * ModelConfig : モデルのサイズとその上限です。vocabType（VOCAB_BYTE または VOCAB_CHAR） 、vocabSize（8〜20000） 、dModel（16〜512） 、heads（1〜16） 、layers（1〜16） 、context（16〜512） 、seed 。MAX_PARAMETERS（24000000）がモデルが持てる重みの数の上限です
- * TransformerModel : the model itself : forward(...) , newStep(...) , backward(...) , logits(...) , next(...) , weights() , gradients()
- * TransformerModel : モデルその物です。forward(...) 、newStep(...) 、backward(...) 、logits(...) 、next(...) 、weights() 、gradients()
+ * TransformerModel : the model itself : logits(...) , next(...) , weights() , gradients() ; the read of a sequence and the difference which goes back (forward, newStep, backward) are kept inside the module with the buffers of a step, because only the core of the module trains a model
+ * TransformerModel : モデルその物です。logits(...) 、next(...) 、weights() 、gradients() 。配列の読みと逆方向の演算（forward、newStep、backward）とステップの領域はモジュールの内側に留めます。モデルを学習するのはモジュールの core だけだからです
  * Tokenizer , CharTokenizer , ByteTokenizer : a text and the numbers of a model ; the char tokenizer learns the characters it reads, the byte tokenizer needs no learning and holds 257 values
  * Tokenizer 、CharTokenizer 、ByteTokenizer : テキストとモデルの数値の変換です。char は読む文字を学習し、byte は学習が要らず 257 の値を持ちます
  * Dataset : the texts a training reads, kept as numbers of the tokenizer

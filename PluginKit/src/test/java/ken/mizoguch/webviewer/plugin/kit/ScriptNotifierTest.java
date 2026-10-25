@@ -14,6 +14,10 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class ScriptNotifierTest {
 
+    /* the constructor of the test, so the module of the kit gives no default one away */
+    public ScriptNotifierTest() {
+    }
+
     /**
      * a plug-in which only gives its name and counts the messages written in the console of the
      * WebViewer, so the test reads the message of a dropped notification

@@ -10,6 +10,10 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class PluginSupportTest {
 
+    /* the constructor of the test, so the module of the kit gives no default one away */
+    public PluginSupportTest() {
+    }
+
     /**
      * a plug-in which only gives its name : the plug-in is not initialized, so nothing is
      * written in the console of the WebViewer when a name is refused

@@ -13,6 +13,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class CapAiSystemEnumsTest {
 
+    /* the constructor of the test, so the module of the common gives no default one away */
+    public CapAiSystemEnumsTest() {
+    }
+
     @AfterEach
     public void restoreLanguage() {
         for (CapAiSystemEnums value : CapAiSystemEnums.values()) {

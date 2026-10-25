@@ -10,6 +10,7 @@ import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import javax.swing.event.EventListenerList;
@@ -167,9 +168,10 @@ public final class LinkBoxClient {
         try {
             inetSocketAddress = new InetSocketAddress(serverAddress_, 50099);
             socket.connect(inetSocketAddress, 5000);
-            bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
+            bufferedReader = new BufferedReader(
+                    new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
             printWriter = new PrintWriter(
-                    new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8")));
+                    new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8)));
 
             request.append("PortClose");
             if (port > 50000) {
@@ -219,9 +221,10 @@ public final class LinkBoxClient {
         try {
             inetSocketAddress = new InetSocketAddress(serverAddress_, 50099);
             socket.connect(inetSocketAddress, 5000);
-            bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
+            bufferedReader = new BufferedReader(
+                    new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
             printWriter = new PrintWriter(
-                    new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), "UTF-8")));
+                    new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8)));
 
             request.append("GetPortInfo").append(Integer.toString(port));
             result = checkErrorCode(sendRequest("GetPortInfo", request.toString(), clientTimeout_, 0, socket,
@@ -265,7 +268,8 @@ public final class LinkBoxClient {
         try {
             inetSocketAddress = new InetSocketAddress(serverAddress_, 50001);
             socket.connect(inetSocketAddress, 30000);
-            bufferedReader = new BufferedReader(new InputStreamReader(socket.getInputStream(), "UTF-8"));
+            bufferedReader = new BufferedReader(
+                    new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
 
             result = checkErrorCode(sendRequest("Connect", null, clientTimeout_, 1000, socket, bufferedReader, null));
         } catch (IOException ex) {
@@ -1290,9 +1294,10 @@ public final class LinkBoxClient {
                         exceptionCaught(ex);
                     }
 
-                    bufferedReader_ = new BufferedReader(new InputStreamReader(socket_.getInputStream(), "UTF-8"));
+                    bufferedReader_ = new BufferedReader(
+                            new InputStreamReader(socket_.getInputStream(), StandardCharsets.UTF_8));
                     printWriter_ = new PrintWriter(
-                            new BufferedWriter(new OutputStreamWriter(socket_.getOutputStream(), "UTF-8")));
+                            new BufferedWriter(new OutputStreamWriter(socket_.getOutputStream(), StandardCharsets.UTF_8)));
 
                     isRunning_ = true;
                     for (LinkBoxClientListener listener : eventListenerList_
@@ -1398,7 +1403,7 @@ public final class LinkBoxClient {
                             if (timeout > 0) {
                                 currentTime = System.currentTimeMillis() + timeout;
                             }
-                            buffer.append(new String(new byte[] { (byte) data }, "US-ASCII"));
+                            buffer.append((char) data);
                             break;
                     }
                 }

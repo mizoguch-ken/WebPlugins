@@ -10,6 +10,10 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class LicenseDialogTest {
 
+    /* the constructor of the test, so the module of the kit gives no default one away */
+    public LicenseDialogTest() {
+    }
+
     @Test
     public void theTextOfTheLicensesIsTheOneGiven() {
         LicenseDialog dialog = new LicenseDialog("the text of the licenses");

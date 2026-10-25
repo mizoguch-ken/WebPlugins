@@ -36,6 +36,15 @@
         <dependency>
             <groupId>org.bytedeco</groupId>
             <artifactId>javacv-platform</artifactId>
+            <exclusions>
+                <!-- the package of javacv asks for the javafx of the running jdk : the WebViewer
+                holds the javafx of its own jdk and the plug-in does not read the window of the
+                images of javacv, which is written in javafx -->
+                <exclusion>
+                    <groupId>org.openjfx</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
         </dependency>
         <dependency>
             <groupId>org.bytedeco</groupId>
@@ -60,6 +69,16 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <!-- the natives of the camera read and write in the stream of the virtual
+                    machine of the test : the answers of the tests are kept in a file of the
+                    reports, so the stream of the machine is not read for them -->
+                    <redirectTestOutputToFile>true</redirectTestOutputToFile>
+                </configuration>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>

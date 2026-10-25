@@ -564,7 +564,7 @@ public final class LlmCore {
             ready();
             busy();
 
-            int limit = Math.min(Math.max(maxTokens, 1), MAX_TOKENS);
+            int limit = Math.clamp(maxTokens, 1, MAX_TOKENS);
             LlmCoreListener told = (listener == null) ? NONE : listener;
             Sampler chosen = (sampler == null) ? new Sampler() : sampler;
 

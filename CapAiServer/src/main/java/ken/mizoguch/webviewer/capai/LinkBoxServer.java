@@ -5,7 +5,8 @@ import io.netty.channel.Channel;
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelInitializer;
 import io.netty.channel.EventLoopGroup;
-import io.netty.channel.nio.NioEventLoopGroup;
+import io.netty.channel.MultiThreadIoEventLoopGroup;
+import io.netty.channel.nio.NioIoHandler;
 import io.netty.channel.socket.SocketChannel;
 import io.netty.channel.socket.nio.NioServerSocketChannel;
 import javafx.concurrent.Service;
@@ -80,8 +81,8 @@ public final class LinkBoxServer extends Service<Void> {
                 }
                 if (serverPort_ > 50000) {
                     try {
-                        bossGroup_ = new NioEventLoopGroup(1);
-                        workerGroup_ = new NioEventLoopGroup();
+                        bossGroup_ = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
+                        workerGroup_ = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
                         ServerBootstrap b = new ServerBootstrap();
                         b.group(bossGroup_, workerGroup_)
                                 .channel(NioServerSocketChannel.class)

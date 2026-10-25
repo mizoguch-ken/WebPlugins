@@ -14,6 +14,7 @@ import java.io.BufferedWriter;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Enumeration;
@@ -138,28 +139,16 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @return
      */
     public String getPortNames() {
-        String portName;
-        boolean portOwned;
-
         List<String> retPortName = new ArrayList<>();
-        Enumeration<?> enm = CommPortIdentifier.getPortIdentifiers();
-        CommPortIdentifier cpi;
 
-        while (enm.hasMoreElements()) {
-            Object element = enm.nextElement();
-            if (element instanceof CommPortIdentifier) {
+        for (Enumeration<?> enm = CommPortIdentifier.getPortIdentifiers();
+                enm.hasMoreElements();) {
+            if (enm.nextElement() instanceof CommPortIdentifier identifier) {
                 // get port of list
-                cpi = (CommPortIdentifier) element;
-
-                // get port name
-                portName = cpi.getName();
-
                 // true = used / false = unused
-                portOwned = cpi.isCurrentlyOwned();
-
                 // add port
-                if (!portOwned) {
-                    retPortName.add(portName);
+                if (!identifier.isCurrentlyOwned()) {
+                    retPortName.add(identifier.getName());
                 }
             }
         }
@@ -592,8 +581,10 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
                             param[2],
                             param[3]);
                     port_.setFlowControlMode(SerialPort.FLOWCONTROL_NONE);
-                    bufferedReader_ = new BufferedReader(new InputStreamReader(port_.getInputStream(), "UTF-8"));
-                    bufferedWriter_ = new BufferedWriter(new OutputStreamWriter(port_.getOutputStream(), "UTF-8"));
+                    bufferedReader_ = new BufferedReader(
+                            new InputStreamReader(port_.getInputStream(), StandardCharsets.UTF_8));
+                    bufferedWriter_ = new BufferedWriter(
+                            new OutputStreamWriter(port_.getOutputStream(), StandardCharsets.UTF_8));
                     // input buffer clear
                     while (bufferedReader_.ready()) {
                         bufferedReader_.read();

@@ -4,6 +4,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import javafx.concurrent.Worker;
 import javafx.scene.image.Image;
@@ -63,6 +64,8 @@ class DbTest {
 
         // a valid archive without the services of a driver
         try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(library))) {
+            zip.putNextEntry(new ZipEntry("readme.txt"));
+            zip.closeEntry();
         }
         // no driver of the library answers the url of the database
         assertFalse(db.connect(library.toString(), "jdbc:no-such-db:x", null, null));

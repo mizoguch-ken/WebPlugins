@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.plugin.kit;
 
 import java.nio.file.Path;
@@ -27,7 +22,15 @@ import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
  */
 public abstract class ServiceSupport<V> extends Service<V> implements WebViewerPlugin {
 
-    private final HostRef host_ = new HostRef();
+    private final HostRef host_;
+
+    /**
+     * a plug-in which holds no WebViewer yet : the WebViewer gives itself with initialize().<br>
+     * The class extends a javafx Service, so it is built on the thread of the page.
+     */
+    protected ServiceSupport() {
+        host_ = new HostRef();
+    }
 
     /**
      * the WebViewer which loads the plug-in

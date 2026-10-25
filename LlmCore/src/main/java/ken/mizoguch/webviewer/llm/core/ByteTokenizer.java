@@ -28,6 +28,12 @@ public final class ByteTokenizer implements Tokenizer {
      */
     public static final int END = 256;
 
+    /**
+     * a tokenizer which reads the bytes of a text
+     */
+    public ByteTokenizer() {
+    }
+
     @Override
     public int end() {
         return END;

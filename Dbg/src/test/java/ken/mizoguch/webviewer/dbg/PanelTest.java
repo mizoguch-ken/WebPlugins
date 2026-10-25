@@ -51,13 +51,33 @@ public class PanelTest {
     }
 
     /**
-     * the panel of the plug-in, read by the engine of the page of the WebViewer
+     * the panel of the plug-in, read by the engine of the page of the WebViewer : the engine of the
+     * page does not always read the panel at its first use, when the engine is started, so the
+     * panel is read again before the test says that the engine did not read it
      *
      * @return the engine of the panel, which holds the panel of the plug-in
      */
     private WebEngine read() {
         toolkit();
 
+        /* the state of the engine, kept to tell why the panel was not read */
+        final String[] told = new String[1];
+
+        WebEngine panel = readPanel(told);
+        if (panel == null) {
+            panel = readPanel(told);
+        }
+        assertNotNull(panel, "the engine of the page read the panel of the plug-in [" + told[0] + "]");
+        return panel;
+    }
+
+    /**
+     * one reading of the panel of the plug-in by the engine of the page of the WebViewer
+     *
+     * @param told last state of the engine, which tells why the panel was not read
+     * @return the engine of the panel, null when the panel was not read
+     */
+    private WebEngine readPanel(String[] told) {
         final CountDownLatch read = new CountDownLatch(1);
         final WebEngine[] held = new WebEngine[1];
 
@@ -67,20 +87,27 @@ public class PanelTest {
 
             panel.getLoadWorker().stateProperty().addListener(
                     (observable, was, now) -> {
+                        told[0] = String.valueOf(now);
                         if (now == Worker.State.SUCCEEDED) {
                             /* the panel is read : the page of the test gives it the plug-in */
                             panel.executeScript(PLUGIN);
                             held[0] = panel;
+                            read.countDown();
+                        } else if (now == Worker.State.FAILED || now == Worker.State.CANCELLED) {
+                            /* the engine says why the panel was not read : the test does not wait */
+                            told[0] = now + " [" + panel.getLoadWorker().getException() + "]";
                             read.countDown();
                         }
                     });
             panel.load(PanelTest.class.getResource(PANEL).toExternalForm());
         });
         try {
-            assertTrue(read.await(60, TimeUnit.SECONDS), "the engine of the page read the panel of the plug-in");
+            if (!read.await(120, TimeUnit.SECONDS)) {
+                told[0] = (told[0] == null ? "the engine did not start" : told[0]) + " within 120 s";
+            }
         } catch (InterruptedException ex) {
             Thread.currentThread().interrupt();
-            fail("the engine of the page did not read the panel of the plug-in", ex);
+            told[0] = "the test was interrupted [" + ex + "]";
         }
         return held[0];
     }

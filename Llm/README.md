@@ -10,6 +10,10 @@
  * プラグインは Openai 互換サーバーのクライアントで、プラグイン自身が Openai のサーバーではありません。リモートモデルのキーはプラグインが保持するので、llm.remoteInfo() は保持しているかどうかだけを伝えます。
  * The jar of the plug-in holds the transformer of llm-core and the kit of the plug-ins. The interface and gson are held by the WebViewer which loads the plug-in, so they are not shaded.
  * プラグインの jar には llm-core の transformer とプラグインの kit が入ります。インターフェースと gson は読み込む WebViewer が持つので shade しません。
+ * a training and an answer of a model of the plug-in run in a thread of the plug-in, and a work which asks a model of an other computer runs on a virtual thread : the page keeps showing what it shows while the model reads its weights or waits the answer of the other computer.
+ * プラグインのモデルの学習と回答はプラグインのスレッドで動き、他のコンピューターのモデルを要求する仕事は仮想スレッドで動きます。モデルが重みを読む間、他のコンピューターの答えを待つ間も、ページは表示を保ちます。
+ * the matrices of a model of the plug-in are read by several threads when the work is large enough : the system property webviewer.llm.threads gives the number of the threads the model may use, and zero or one keeps every operation on the thread which asked it.
+ * プラグインのモデルの行列は、仕事が大きい時は複数のスレッドで読みます。システムプロパティ webviewer.llm.threads がモデルの使えるスレッド数で、0 または 1 の時は依頼したスレッドだけで演算します。
 
 ## Functions
 

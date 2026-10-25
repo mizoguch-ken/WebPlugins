@@ -59,7 +59,7 @@ public final class Sampler {
     }
 
     public final void setTemperature(double temperature) {
-        temperature_ = (temperature < 0d) ? 0d : temperature;
+        temperature_ = Math.max(temperature, 0d);
     }
 
     public double temperature() {
@@ -67,7 +67,7 @@ public final class Sampler {
     }
 
     public final void setTopCount(int topCount) {
-        topCount_ = (topCount < 0) ? 0 : topCount;
+        topCount_ = Math.max(topCount, 0);
     }
 
     public int topCount() {
@@ -75,7 +75,7 @@ public final class Sampler {
     }
 
     public final void setTopSum(double topSum) {
-        topSum_ = (topSum < 0d) ? 0d : Math.min(topSum, 1d);
+        topSum_ = Math.clamp(topSum, 0d, 1d);
     }
 
     public double topSum() {

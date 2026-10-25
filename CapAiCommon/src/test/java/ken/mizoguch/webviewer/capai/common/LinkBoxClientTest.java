@@ -21,6 +21,10 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  */
 public class LinkBoxClientTest {
 
+    /* the constructor of the test, so the module of the common gives no default one away */
+    public LinkBoxClientTest() {
+    }
+
     /**
      * the port of the work order : the client connects it before its own socket
      */

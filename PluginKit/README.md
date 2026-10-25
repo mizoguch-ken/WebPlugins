@@ -63,8 +63,8 @@ public class MyPlugin extends PluginSupport {
 
 ## 要件
 
- * Java 17 or later, with the JavaFX modules javafx.base, javafx.controls, javafx.graphics and javafx.web, and the jdk.jsobject module of the JDK
- * Java 17 以上と JavaFX の javafx.base、javafx.controls、javafx.graphics、javafx.web、JDK の jdk.jsobject
+ * Java 21 or later, with the JavaFX modules javafx.base, javafx.controls, javafx.graphics and javafx.web, and the jdk.jsobject module of the JDK
+ * Java 21 以上と JavaFX の javafx.base、javafx.controls、javafx.graphics、javafx.web、JDK の jdk.jsobject
 
 ## Build
 

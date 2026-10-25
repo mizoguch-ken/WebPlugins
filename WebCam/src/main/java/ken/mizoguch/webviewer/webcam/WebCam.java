@@ -57,13 +57,16 @@ public class WebCam extends ServiceSupport<Void> {
     private WebEngine webEngine_;
     private Worker.State state_;
 
-    private class WebcamInfo {
-
-        int index;
-        String name;
+    /**
+     * a camera the computer holds, told to the page
+     */
+    private record WebcamInfo(int index, String name) {
     }
 
-    private class BlobInfo {
+    /**
+     * the values which turn the image of the camera into the paper of a model
+     */
+    private static final class BlobInfo {
 
         double scalefactor;
         Size size;
@@ -249,14 +252,13 @@ public class WebCam extends ServiceSupport<Void> {
      * @return
      */
     public String getWebcams() {
-        int idx = videoInput.listDevices();
+        /* the library of the camera writes the list of the devices it found in the stream of the
+        virtual machine when it is not asked to keep quiet, which disturbs the reader of that stream */
+        int idx = videoInput.listDevices(true);
         List<WebcamInfo> webcamInfos = new ArrayList<>();
 
         for (int i = 0; i < idx; i++) {
-            WebcamInfo webcamInfo = new WebcamInfo();
-            webcamInfo.index = i;
-            webcamInfo.name = videoInput.getDeviceName(i).getString();
-            webcamInfos.add(webcamInfo);
+            webcamInfos.add(new WebcamInfo(i, videoInput.getDeviceName(i).getString()));
         }
 
         return gson_.toJson(webcamInfos);

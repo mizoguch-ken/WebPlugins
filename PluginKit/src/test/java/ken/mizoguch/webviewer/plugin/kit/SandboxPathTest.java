@@ -13,6 +13,10 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class SandboxPathTest {
 
+    /* the constructor of the test, so the module of the kit gives no default one away */
+    public SandboxPathTest() {
+    }
+
     @TempDir
     Path directory;
 

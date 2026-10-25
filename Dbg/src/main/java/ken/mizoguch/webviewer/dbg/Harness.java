@@ -79,8 +79,8 @@ public final class Harness extends Application {
         try {
             Object window = page.executeScript("window");
 
-            if (window instanceof JSObject) {
-                ((JSObject) window).setMember(plugin_.functionName(), plugin_);
+            if (window instanceof JSObject object) {
+                object.setMember(plugin_.functionName(), plugin_);
             }
         } catch (RuntimeException ex) {
             plugin_.writeStackTrace(plugin_.functionName(), ex);

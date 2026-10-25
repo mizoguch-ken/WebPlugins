@@ -10,6 +10,10 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 public class ScriptFunctionTest {
 
+    /* the constructor of the test, so the module of the kit gives no default one away */
+    public ScriptFunctionTest() {
+    }
+
     @Test
     public void aNameOfThePageIsUsed() {
         assertTrue(ScriptFunction.isValid("onData"));

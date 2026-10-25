@@ -15,7 +15,6 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -86,8 +85,7 @@ public class Db extends PluginSupport {
                             getClass().getClassLoader());
                     ServiceLoader<Driver> srvcLoader = ServiceLoader.load(Driver.class, loader_);
                     try {
-                        for (Iterator<Driver> it = srvcLoader.iterator(); it.hasNext();) {
-                            Driver driver = it.next();
+                        for (Driver driver : srvcLoader) {
                             Properties prop = new Properties();
                             if (user != null) {
                                 prop.setProperty("user", user);
@@ -159,7 +157,9 @@ public class Db extends PluginSupport {
                     List<Map<String, String>> table = new ArrayList<>();
                     List<String> columnNames = new ArrayList<>();
                     ResultSetMetaData rsmd = rs.getMetaData();
-                    for (int i = 1; i <= rsmd.getColumnCount(); i++) {
+                    int columns = rsmd.getColumnCount();
+
+                    for (int i = 1; i <= columns; i++) {
                         columnNames.add(rsmd.getColumnName(i));
                     }
 
@@ -191,9 +191,7 @@ public class Db extends PluginSupport {
         if (conn_ != null) {
             if (sql != null) {
                 try (Statement stmt = conn_.createStatement()) {
-                    int ret = stmt.executeUpdate(sql);
-                    stmt.close();
-                    return ret;
+                    return stmt.executeUpdate(sql);
                 }
             } else {
                 write(FUNCTION_NAME, "Incorrect database argument", true);

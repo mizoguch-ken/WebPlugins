@@ -29,6 +29,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class LinkBoxClientPluginTest {
 
+    /* the constructor of the test, so the module of the common gives no default one away */
+    public LinkBoxClientPluginTest() {
+    }
+
     /**
      * the number of the notifications the base class keeps for the page
      */

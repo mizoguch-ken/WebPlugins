@@ -32,6 +32,10 @@
             <groupId>net.sf.jasperreports</groupId>
             <artifactId>jasperreports</artifactId>
         </dependency>
+        <!-- the two libraries of JasperReports hold the metadata of their properties under the same
+        name, so the jar of the plug-in keeps one of them, that of the library of the engine : only
+        the utility of that metadata reads it, which the plug-in does not read, so the warning of the
+        shaded jar about that file has no effect on the reports the plug-in prints -->
         <dependency>
             <groupId>net.sf.jasperreports</groupId>
             <artifactId>jasperreports-json</artifactId>

@@ -11,6 +11,7 @@ import java.io.StringReader;
 import java.io.UnsupportedEncodingException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
 import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
@@ -117,7 +118,7 @@ public class Ftp extends PluginSupport {
         }
         ftpClient_.setDefaultTimeout(FTP_TIMEOUT_MILLIS);
         ftpClient_.setConnectTimeout(FTP_TIMEOUT_MILLIS);
-        ftpClient_.setDataTimeout(FTP_TIMEOUT_MILLIS);
+        ftpClient_.setDataTimeout(Duration.ofMillis(FTP_TIMEOUT_MILLIS));
         if (ftpClient_.isConnected()) {
             ftpClient_.disconnect();
         }

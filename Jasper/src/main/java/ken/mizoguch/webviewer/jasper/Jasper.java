@@ -5,7 +5,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonSyntaxException;
 import java.io.ByteArrayInputStream;
-import java.nio.charset.Charset;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -180,7 +180,8 @@ public class Jasper extends PluginSupport {
             write(FUNCTION_NAME, "Incorrect data", true);
             return;
         }
-        dataSource_ = new JsonDataSource(new ByteArrayInputStream(jsonElement.getBytes(Charset.forName("UTF-8"))));
+        dataSource_ = new JsonDataSource(
+                new ByteArrayInputStream(jsonElement.getBytes(StandardCharsets.UTF_8)));
     }
 
     /**
@@ -193,7 +194,8 @@ public class Jasper extends PluginSupport {
             write(FUNCTION_NAME, "Incorrect data", true);
             return;
         }
-        dataSource_ = new JRCsvDataSource(new ByteArrayInputStream(csvElement.getBytes(Charset.forName("UTF-8"))));
+        dataSource_ = new JRCsvDataSource(
+                new ByteArrayInputStream(csvElement.getBytes(StandardCharsets.UTF_8)));
     }
 
     /**

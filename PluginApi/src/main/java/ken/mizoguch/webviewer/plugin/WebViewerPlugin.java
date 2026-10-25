@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package ken.mizoguch.webviewer.plugin;
 
 import java.nio.file.Path;
@@ -23,25 +18,25 @@ import javafx.stage.Stage;
 public interface WebViewerPlugin {
 
     // webviewer -> plugin
-    public void initialize(WebViewerPlugin webViewer);
+    void initialize(WebViewerPlugin webViewer);
 
-    public String functionName();
+    String functionName();
 
-    public void state(Worker.State state);
+    void state(Worker.State state);
 
-    public void close();
+    void close();
 
     // plugin -> webviewer
-    public Stage stage();
+    Stage stage();
 
-    public List<Image> icons();
+    List<Image> icons();
 
-    public WebEngine webEngine();
+    WebEngine webEngine();
 
-    public Path webPath();
+    Path webPath();
 
     // console
-    public void writeStackTrace(String name, Throwable throwable);
+    void writeStackTrace(String name, Throwable throwable);
 
-    public void write(String name, String msg, boolean err);
+    void write(String name, String msg, boolean err);
 }

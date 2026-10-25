@@ -14,6 +14,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class LinkBoxEnumsTest {
 
+    /* the constructor of the test, so the module of the common gives no default one away */
+    public LinkBoxEnumsTest() {
+    }
+
     @Test
     @DisplayName("the number of a code and its string")
     public void testNumberAndString() {

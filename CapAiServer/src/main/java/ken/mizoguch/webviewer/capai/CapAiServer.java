@@ -158,24 +158,21 @@ public class CapAiServer extends PluginSupport implements LinkBoxServerListener 
         JsonArray localAddress = new JsonArray();
 
         try {
-            Enumeration<NetworkInterface> enumMip;
-            Enumeration<InetAddress> enumIa;
-            NetworkInterface ni;
-            InetAddress ia;
-            StringBuilder address;
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
 
-            enumMip = NetworkInterface.getNetworkInterfaces();
-            if (enumMip != null) {
-                while (enumMip.hasMoreElements()) {
-                    ni = (NetworkInterface) enumMip.nextElement();
-                    enumIa = ni.getInetAddresses();
-                    while (enumIa.hasMoreElements()) {
-                        ia = (InetAddress) enumIa.nextElement();
-                        address = new StringBuilder();
-                        for (Byte addr : ia.getAddress()) {
-                            address.append(String.format("%02X", addr));
+            if (interfaces != null) {
+                while (interfaces.hasMoreElements()) {
+                    NetworkInterface anInterface = interfaces.nextElement();
+
+                    for (Enumeration<InetAddress> addresses = anInterface.getInetAddresses();
+                            addresses.hasMoreElements();) {
+                        InetAddress address = addresses.nextElement();
+                        StringBuilder text = new StringBuilder();
+
+                        for (byte value : address.getAddress()) {
+                            text.append(String.format("%02X", value));
                         }
-                        localAddress.add(address.toString());
+                        localAddress.add(text.toString());
                     }
                 }
             }

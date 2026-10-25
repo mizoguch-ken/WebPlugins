@@ -1,6 +1,6 @@
 package ken.mizoguch.webviewer.onlineart;
 
-import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 
 /**
  *
@@ -517,11 +517,8 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
             for (i = 1; i < sendIndex_; i++) {
                 calcCrc = (CRC16_TABLE[((calcCrc >>> 8) ^ sendBuffer_[i]) & 0xff] ^ (calcCrc << 8)) & 0xffff;
             }
-            try {
-                for (byte b : String.format("%04X", calcCrc).getBytes("UTF-8")) {
-                    sendBuffer_[sendIndex_++] = b;
-                }
-            } catch (UnsupportedEncodingException ex) {
+            for (byte b : String.format("%04X", calcCrc).getBytes(StandardCharsets.US_ASCII)) {
+                sendBuffer_[sendIndex_++] = b;
             }
             sendBuffer_[sendIndex_++] = END_CODE_CR;
             sendBuffer_[sendIndex_++] = END_CODE_LF;

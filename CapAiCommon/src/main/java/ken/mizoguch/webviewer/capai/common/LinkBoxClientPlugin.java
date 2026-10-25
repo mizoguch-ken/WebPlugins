@@ -41,7 +41,12 @@ public abstract class LinkBoxClientPlugin extends PluginSupport implements LinkB
 
     /**
      * a CapAi client which reports the traffic of its Link Box to the page
+     *
+     * The notifications of the page only keep the plug-in, they do not read it, so the warning on a
+     * this which would escape before the class is built is kept quiet : the class is abstract and a
+     * subclass reads its own notifications after its own construction.
      */
+    @SuppressWarnings("this-escape")
     protected LinkBoxClientPlugin() {
         linkBoxClient_ = new LinkBoxClient();
         clientStart_ = new ScriptNotifier(this, "Notification of the start is dropped");
@@ -179,24 +184,21 @@ public abstract class LinkBoxClientPlugin extends PluginSupport implements LinkB
         JsonArray localAddress = new JsonArray();
 
         try {
-            Enumeration<NetworkInterface> enumMip;
-            Enumeration<InetAddress> enumIa;
-            NetworkInterface ni;
-            InetAddress ia;
-            StringBuilder address;
+            Enumeration<NetworkInterface> interfaces = NetworkInterface.getNetworkInterfaces();
 
-            enumMip = NetworkInterface.getNetworkInterfaces();
-            if (enumMip != null) {
-                while (enumMip.hasMoreElements()) {
-                    ni = (NetworkInterface) enumMip.nextElement();
-                    enumIa = ni.getInetAddresses();
-                    while (enumIa.hasMoreElements()) {
-                        ia = (InetAddress) enumIa.nextElement();
-                        address = new StringBuilder();
-                        for (Byte addr : ia.getAddress()) {
-                            address.append(String.format("%02X", addr));
+            if (interfaces != null) {
+                while (interfaces.hasMoreElements()) {
+                    NetworkInterface anInterface = interfaces.nextElement();
+
+                    for (Enumeration<InetAddress> addresses = anInterface.getInetAddresses();
+                            addresses.hasMoreElements();) {
+                        InetAddress address = addresses.nextElement();
+                        StringBuilder text = new StringBuilder();
+
+                        for (byte value : address.getAddress()) {
+                            text.append(String.format("%02X", value));
                         }
-                        localAddress.add(address.toString());
+                        localAddress.add(text.toString());
                     }
                 }
             }

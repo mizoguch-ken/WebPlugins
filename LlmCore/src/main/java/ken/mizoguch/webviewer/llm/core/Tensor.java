@@ -1,5 +1,8 @@
 package ken.mizoguch.webviewer.llm.core;
 
+import java.util.concurrent.ForkJoinPool;
+import java.util.concurrent.ForkJoinTask;
+
 /**
  * the operations of the model on flat arrays of floats : a matrix of rows and columns is kept in
  * one array, row by row, so the model reads and writes one array instead of an array of arrays,
@@ -8,9 +11,106 @@ package ken.mizoguch.webviewer.llm.core;
  * The methods write into an array given by the caller, so a step of a training allocates nothing
  * but the activations of the step.
  *
+ * A large work is read by several threads when it is worth their call : the units of a matrix are
+ * cut in parts and a unit is read by one thread only, with the values of the unit read in their own
+ * order, so the parallel work writes the same bits as the same work on one thread and the answer of
+ * a training does not change with the number of the threads. The system property
+ * webviewer.llm.threads gives the number of the threads the module may use, and zero or one leaves
+ * every operation on the thread which asks it. The threads are the threads the language shares, so
+ * the module keeps no thread of its own when the plug-in is left.
+ *
  * @author mizoguch-ken
  */
 public final class Tensor {
+
+    /**
+     * the number of the threads a work of the matrices may be cut in
+     */
+    private static final int THREADS = threads();
+
+    /**
+     * the values of a part of a matrix : a work which holds less values than that keeps the thread
+     * which asks it, because the call of a thread costs more than the values
+     */
+    private static final long PART_VALUES = 1L << 13;
+
+    /**
+     * the operations of the module are read on a thread, never on an object of the class
+     */
+    private Tensor() {
+    }
+
+    /**
+     * the number of the threads the system gives to the module
+     *
+     * @return the number of the threads, at least one
+     */
+    private static int threads() {
+        return Math.max(1, Integer.getInteger("webviewer.llm.threads",
+                ForkJoinPool.commonPool().getParallelism() + 1));
+    }
+
+    /**
+     * the values of a part of a work
+     */
+    interface Block {
+
+        /**
+         * read the units of the part
+         *
+         * @param from first unit of the part
+         * @param to unit after the last one
+         */
+        void run(int from, int to);
+    }
+
+    /**
+     * the parts a work of some units is cut in
+     *
+     * @param units units of the work
+     * @param values values read and written by the whole work
+     * @return the parts of the work, one when a thread is not worth the work
+     */
+    private static int parts(int units, long values) {
+        if ((units < 2) || (values < PART_VALUES)) {
+            return 1;
+        }
+        return (int) Math.max(1L, Math.min((long) THREADS, Math.min(values / PART_VALUES, units)));
+    }
+
+    /**
+     * the units of a work read by the threads of the module : the caller reads the last part of the
+     * work by itself and waits the other parts, so a step of a training waits its own answer as it
+     * does on one thread.
+     *
+     * @param units units of the work, a row or a column of a matrix most often
+     * @param values values read and written by the whole work
+     * @param action action on the units of a part
+     */
+    static void blocks(int units, long values, Block action) {
+        int parts = parts(units, values);
+
+        if (parts < 2) {
+            action.run(0, units);
+            return;
+        }
+        int size = (units + parts - 1) / parts;
+        ForkJoinTask<?>[] tasks = new ForkJoinTask<?>[parts - 1];
+
+        for (int part = 0; part < (parts - 1); part++) {
+            int from = part * size;
+            int to = Math.min(units, from + size);
+
+            tasks[part] = ForkJoinTask.adapt(() -> action.run(from, to));
+        }
+        for (ForkJoinTask<?> task : tasks) {
+            ForkJoinPool.commonPool().execute(task);
+        }
+        action.run((parts - 1) * size, units);
+        for (ForkJoinTask<?> task : tasks) {
+            task.join();
+        }
+    }
 
     /**
      * the factor of the approximation of the error function used by the activation of the model
@@ -37,23 +137,25 @@ public final class Tensor {
         for (int index = 0; index < (m * n); index++) {
             out[index] = 0f;
         }
-        for (int row = 0; row < m; row++) {
-            int aOffset = row * k;
-            int outOffset = row * n;
+        blocks(m, (long) m * k * n, (from, to) -> {
+            for (int row = from; row < to; row++) {
+                int aOffset = row * k;
+                int outOffset = row * n;
 
-            for (int inner = 0; inner < k; inner++) {
-                float value = a[aOffset + inner];
+                for (int inner = 0; inner < k; inner++) {
+                    float value = a[aOffset + inner];
 
-                if (value == 0f) {
-                    continue;
-                }
-                int bOffset = inner * n;
+                    if (value == 0f) {
+                        continue;
+                    }
+                    int bOffset = inner * n;
 
-                for (int column = 0; column < n; column++) {
-                    out[outOffset + column] += value * b[bOffset + column];
+                    for (int column = 0; column < n; column++) {
+                        out[outOffset + column] += value * b[bOffset + column];
+                    }
                 }
             }
-        }
+        });
     }
 
     /**
@@ -70,21 +172,25 @@ public final class Tensor {
         for (int index = 0; index < (m * n); index++) {
             out[index] = 0f;
         }
-        for (int inner = 0; inner < k; inner++) {
-            int aOffset = inner * m;
-            int bOffset = inner * n;
+        blocks(n, (long) m * k * n, (from, to) -> {
+            for (int inner = 0; inner < k; inner++) {
+                int aOffset = inner * m;
+                int bOffset = inner * n;
 
-            for (int row = 0; row < m; row++) {
-                float value = a[aOffset + row];
+                for (int row = 0; row < m; row++) {
+                    float value = a[aOffset + row];
 
-                if (value == 0f) {
-                    continue;
-                }
-                for (int column = 0; column < n; column++) {
-                    out[(row * n) + column] += value * b[bOffset + column];
+                    if (value == 0f) {
+                        continue;
+                    }
+                    int outOffset = row * n;
+
+                    for (int column = from; column < to; column++) {
+                        out[outOffset + column] += value * b[bOffset + column];
+                    }
                 }
             }
-        }
+        });
     }
 
     /**
@@ -101,20 +207,22 @@ public final class Tensor {
         for (int index = 0; index < (m * n); index++) {
             out[index] = 0f;
         }
-        for (int row = 0; row < m; row++) {
-            int aOffset = row * k;
-            int outOffset = row * n;
+        blocks(m, (long) m * n * k, (from, to) -> {
+            for (int row = from; row < to; row++) {
+                int aOffset = row * k;
+                int outOffset = row * n;
 
-            for (int other = 0; other < n; other++) {
-                int bOffset = other * k;
-                float sum = 0f;
+                for (int other = 0; other < n; other++) {
+                    int bOffset = other * k;
+                    float sum = 0f;
 
-                for (int inner = 0; inner < k; inner++) {
-                    sum += a[aOffset + inner] * b[bOffset + inner];
+                    for (int inner = 0; inner < k; inner++) {
+                        sum += a[aOffset + inner] * b[bOffset + inner];
+                    }
+                    out[outOffset + other] = sum;
                 }
-                out[outOffset + other] = sum;
             }
-        }
+        });
     }
 
     /**
@@ -126,13 +234,15 @@ public final class Tensor {
      * @param bias vector of the columns values
      */
     public static void addBias(float[] matrix, int rows, int columns, float[] bias) {
-        for (int row = 0; row < rows; row++) {
-            int offset = row * columns;
+        blocks(rows, (long) rows * columns, (from, to) -> {
+            for (int row = from; row < to; row++) {
+                int offset = row * columns;
 
-            for (int column = 0; column < columns; column++) {
-                matrix[offset + column] += bias[column];
+                for (int column = 0; column < columns; column++) {
+                    matrix[offset + column] += bias[column];
+                }
             }
-        }
+        });
     }
 
     /**
@@ -156,16 +266,18 @@ public final class Tensor {
      * @param out columns values written
      */
     public static void columnSum(float[] matrix, int rows, int columns, float[] out) {
-        for (int column = 0; column < columns; column++) {
-            out[column] = 0f;
-        }
-        for (int row = 0; row < rows; row++) {
-            int offset = row * columns;
-
-            for (int column = 0; column < columns; column++) {
-                out[column] += matrix[offset + column];
+        blocks(columns, (long) rows * columns, (from, to) -> {
+            for (int column = from; column < to; column++) {
+                out[column] = 0f;
             }
-        }
+            for (int row = 0; row < rows; row++) {
+                int offset = (row * columns) + from;
+
+                for (int column = from; column < to; column++) {
+                    out[column] += matrix[offset++];
+                }
+            }
+        });
     }
 
     /**
@@ -209,9 +321,11 @@ public final class Tensor {
      * @param values values to change
      */
     public static void gelu(float[] values) {
-        for (int index = 0; index < values.length; index++) {
-            values[index] = geluValue(values[index]);
-        }
+        blocks(values.length, values.length, (from, to) -> {
+            for (int index = from; index < to; index++) {
+                values[index] = geluValue(values[index]);
+            }
+        });
     }
 
     /**
@@ -233,15 +347,17 @@ public final class Tensor {
      * @param out derivatives written
      */
     public static void geluDerivative(float[] before, float[] out) {
-        for (int index = 0; index < before.length; index++) {
-            float value = before[index];
-            float inner = GELU_C0 * (value + (GELU_C1 * value * value * value));
-            float tanh = (float) Math.tanh(inner);
-            float outer = 1f - (tanh * tanh);
-            float innerDerivative = GELU_C0 * (1f + (3f * GELU_C1 * value * value));
+        blocks(before.length, before.length, (from, to) -> {
+            for (int index = from; index < to; index++) {
+                float value = before[index];
+                float inner = GELU_C0 * (value + (GELU_C1 * value * value * value));
+                float tanh = (float) Math.tanh(inner);
+                float outer = 1f - (tanh * tanh);
+                float innerDerivative = GELU_C0 * (1f + (3f * GELU_C1 * value * value));
 
-            out[index] = 0.5f * (1f + tanh) + (0.5f * value * outer * innerDerivative);
-        }
+                out[index] = 0.5f * (1f + tanh) + (0.5f * value * outer * innerDerivative);
+            }
+        });
     }
 
     /**
@@ -257,11 +373,13 @@ public final class Tensor {
      */
     public static void gather(float[] matrix, int rows, int columns, int offset, int width,
             float[] out) {
-        for (int row = 0; row < rows; row++) {
-            int from = (row * columns) + offset;
+        blocks(rows, (long) rows * width, (first, last) -> {
+            for (int row = first; row < last; row++) {
+                int start = (row * columns) + offset;
 
-            System.arraycopy(matrix, from, out, row * width, width);
-        }
+                System.arraycopy(matrix, start, out, row * width, width);
+            }
+        });
     }
 
     /**
@@ -276,9 +394,11 @@ public final class Tensor {
      */
     public static void scatter(float[] source, int rows, int width, int offset, int columns,
             float[] matrix) {
-        for (int row = 0; row < rows; row++) {
-            System.arraycopy(source, row * width, matrix, (row * columns) + offset, width);
-        }
+        blocks(rows, (long) rows * width, (first, last) -> {
+            for (int row = first; row < last; row++) {
+                System.arraycopy(source, row * width, matrix, (row * columns) + offset, width);
+            }
+        });
     }
 
     /**
@@ -328,36 +448,38 @@ public final class Tensor {
      */
     public static void layerNorm(float[] matrix, int rows, int width, float[] scale, float[] shift,
             float[] out, float[] centered, float[] inverse) {
-        for (int row = 0; row < rows; row++) {
-            int offset = row * width;
-            float sum = 0f;
+        blocks(rows, (long) rows * width, (first, last) -> {
+            for (int row = first; row < last; row++) {
+                int offset = row * width;
+                float sum = 0f;
 
-            for (int column = 0; column < width; column++) {
-                sum += matrix[offset + column];
-            }
-            float mean = sum / width;
-            float variance = 0f;
-
-            for (int column = 0; column < width; column++) {
-                float difference = matrix[offset + column] - mean;
-
-                variance += difference * difference;
-            }
-            float divisor = (float) Math.sqrt((variance / width) + EPSILON);
-
-            for (int column = 0; column < width; column++) {
-                float reduced = (matrix[offset + column] - mean) / divisor;
-
-                if (centered != null) {
-                    centered[offset + column] = reduced;
+                for (int column = 0; column < width; column++) {
+                    sum += matrix[offset + column];
                 }
-                out[offset + column] = (reduced * ((scale == null) ? 1f : scale[column]))
-                        + ((shift == null) ? 0f : shift[column]);
+                float mean = sum / width;
+                float variance = 0f;
+
+                for (int column = 0; column < width; column++) {
+                    float difference = matrix[offset + column] - mean;
+
+                    variance += difference * difference;
+                }
+                float divisor = (float) Math.sqrt((variance / width) + EPSILON);
+
+                for (int column = 0; column < width; column++) {
+                    float reduced = (matrix[offset + column] - mean) / divisor;
+
+                    if (centered != null) {
+                        centered[offset + column] = reduced;
+                    }
+                    out[offset + column] = (reduced * ((scale == null) ? 1f : scale[column]))
+                            + ((shift == null) ? 0f : shift[column]);
+                }
+                if (inverse != null) {
+                    inverse[row] = 1f / divisor;
+                }
             }
-            if (inverse != null) {
-                inverse[row] = 1f / divisor;
-            }
-        }
+        });
     }
 
     /**
@@ -381,28 +503,30 @@ public final class Tensor {
         for (int index = 0; index < centered.length; index++) {
             scaleGradient[index % width] += gradient[index] * centered[index];
         }
-        for (int row = 0; row < rows; row++) {
-            int offset = row * width;
-            float sum = 0f;
-            float dot = 0f;
+        blocks(rows, (long) rows * width, (first, last) -> {
+            for (int row = first; row < last; row++) {
+                int offset = row * width;
+                float sum = 0f;
+                float dot = 0f;
 
-            for (int column = 0; column < width; column++) {
-                float scaled = gradient[offset + column] * scale[column];
+                for (int column = 0; column < width; column++) {
+                    float scaled = gradient[offset + column] * scale[column];
 
-                sum += scaled;
-                dot += scaled * centered[offset + column];
+                    sum += scaled;
+                    dot += scaled * centered[offset + column];
+                }
+                float mean = sum / width;
+                float meanDot = dot / width;
+                float inv = inverse[row];
+
+                for (int column = 0; column < width; column++) {
+                    float scaled = gradient[offset + column] * scale[column];
+
+                    out[offset + column] += inv * (scaled - mean
+                            - (centered[offset + column] * meanDot));
+                }
             }
-            float mean = sum / width;
-            float meanDot = dot / width;
-            float inv = inverse[row];
-
-            for (int column = 0; column < width; column++) {
-                float scaled = gradient[offset + column] * scale[column];
-
-                out[offset + column] += inv * (scaled - mean
-                        - (centered[offset + column] * meanDot));
-            }
-        }
+        });
     }
 
     /**

@@ -17,11 +17,10 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <!-- the JavaFX modules come from the JDK of the build : maven.compiler.release can not be
-        used, the release option of the compiler restricts the compilation to the signatures of
-        the standard JDK and javafx is not one of them -->
-        <maven.compiler.source>17</maven.compiler.source>
-        <maven.compiler.target>17</maven.compiler.target>
+        <!-- the JavaFX modules come from the JDK of the build : the release option of the compiler
+        is given with the modules of the JDK resolved on the module path, so the JavaFX signatures
+        are read ; the build is refused under Java 21 by the enforcer below -->
+        <maven.compiler.release>21</maven.compiler.release>
 
         <!-- modules given to surefire : the JavaFX modules are not resolved by default -->
         <javafx.modules>javafx.base,javafx.graphics,javafx.web</javafx.modules>
@@ -162,15 +161,39 @@
                     <artifactId>maven-compiler-plugin</artifactId>
                     <version>3.16.0</version>
                     <configuration>
-                        <source>${maven.compiler.source}</source>
-                        <target>${maven.compiler.target}</target>
+                        <release>${maven.compiler.release}</release>
+                        <encoding>${project.build.sourceEncoding}</encoding>
+                        <compilerArgs>
+                            <arg>-Xlint:all</arg>
+                        </compilerArgs>
                     </configuration>
+                    <executions>
+                        <execution>
+                            <id>default-testCompile</id>
+                            <configuration>
+                                <!-- the tests of a module are compiled with it : junit is read as an
+                                automatic module which exports its packages to nobody, so every
+                                annotation of a test answers the rule of the exports ; surefire reads
+                                those tests on the class path, where the rule does not stand, so only
+                                that group is kept quiet and the rest of -Xlint:all is read -->
+                                <compilerArgs>
+                                    <arg>-Xlint:all,-exports</arg>
+                                </compilerArgs>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-enforcer-plugin</artifactId>
+                    <version>3.5.0</version>
                 </plugin>
 
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
                     <artifactId>maven-surefire-plugin</artifactId>
-                    <version>3.5.4</version>
+                    <version>3.6.0</version>
                     <configuration>
                         <!-- JavaFX comes from the JDK modules : they are not resolved by default -->
                         <argLine>--add-modules ${javafx.modules}</argLine>
@@ -203,7 +226,41 @@
                                     a plug-in which shades its own copy of the interface would
                                     not implement the interface of the loader which reads it -->
                                     <exclude>ken/mizoguch/webviewer/plugin/WebViewerPlugin.class</exclude>
-                                    <exclude>META-INF/maven/ken.mizoguch/webviewer-plugin-api/**</exclude>
+                                    <!-- the WebViewer reads the jar of a plug-in in its class path,
+                                    not in its module path : the descriptor of the shaded jar would
+                                    only carry the requires of the module which was shaded last -->
+                                    <exclude>module-info.class</exclude>
+                                    <exclude>META-INF/versions/*/module-info.class</exclude>
+                                    <!-- the manifest of the jar of the plug-in is written by the
+                                    transformer of the manifest, so the manifests of the shaded
+                                    libraries are not read : the pom of a library and the
+                                    configuration of its native image are of no use to the WebViewer,
+                                    which runs the plug-in on the virtual machine of its JDK -->
+                                    <exclude>META-INF/MANIFEST.MF</exclude>
+                                    <exclude>META-INF/maven/**</exclude>
+                                    <exclude>META-INF/native-image/**</exclude>
+                                </excludes>
+                            </filter>
+                            <!-- the properties of its version are written in every library of netty
+                            under the same name : the plug-in reads the version of the library which
+                            holds the class of the version, so the copies of the other libraries of
+                            netty are not shaded in the jar of the plug-in -->
+                            <filter>
+                                <artifact>io.netty:netty-buffer</artifact>
+                                <excludes>
+                                    <exclude>META-INF/io.netty.versions.properties</exclude>
+                                </excludes>
+                            </filter>
+                            <filter>
+                                <artifact>io.netty:netty-resolver</artifact>
+                                <excludes>
+                                    <exclude>META-INF/io.netty.versions.properties</exclude>
+                                </excludes>
+                            </filter>
+                            <filter>
+                                <artifact>io.netty:netty-transport</artifact>
+                                <excludes>
+                                    <exclude>META-INF/io.netty.versions.properties</exclude>
                                 </excludes>
                             </filter>
                         </filters>
@@ -241,5 +298,31 @@
                 </plugin>
             </plugins>
         </pluginManagement>
+
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>enforce-java</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>[21,)</version>
+                                    <message>the WebViewer plug-ins take Java 21 : the JDK has to be 21 or later and to provide the JavaFX modules</message>
+                                </requireJavaVersion>
+                                <requireMavenVersion>
+                                    <version>[3.8,)</version>
+                                </requireMavenVersion>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
     </build>
 </project>

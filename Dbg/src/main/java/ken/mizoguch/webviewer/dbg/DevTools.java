@@ -136,8 +136,8 @@ final class DevTools {
         try {
             Object window = panel.executeScript("window");
 
-            if (window instanceof JSObject) {
-                ((JSObject) window).setMember(host_.functionName(), host_);
+            if (window instanceof JSObject object) {
+                object.setMember(host_.functionName(), host_);
             }
         } catch (RuntimeException ex) {
             host_.writeStackTrace(host_.functionName(), ex);

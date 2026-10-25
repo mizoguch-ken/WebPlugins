@@ -137,27 +137,33 @@ public final class AdamW {
 
         double firstPower = 1d - Math.pow(0.9d, steps_);
         double secondPower = 1d - Math.pow(0.999d, steps_);
+        long values = 0L;
 
-        for (int leaf = 0; leaf < weights.length; leaf++) {
-            float[] weight = weights[leaf];
-            float[] gradient = gradients[leaf];
-            float[] first = first_[leaf];
-            float[] second = second_[leaf];
-
-            for (int index = 0; index < weight.length; index++) {
-                double value = gradient[index] * scale;
-
-                first[index] = (float) ((0.9d * first[index]) + (0.1d * value));
-                second[index] = (float) ((0.999d * second[index]) + (0.001d * value * value));
-
-                double moved = (first[index] / firstPower)
-                        / ((Math.sqrt(second[index] / secondPower)) + 1e-8d);
-
-                weight[index] -= (float) (learningRate_ * moved);
-                weight[index] -= (float) (learningRate_ * weightDecay_ * weight[index]);
-                gradient[index] = 0f;
-            }
+        for (float[] weight : weights) {
+            values += weight.length;
         }
+        Tensor.blocks(weights.length, values, (from, to) -> {
+            for (int leaf = from; leaf < to; leaf++) {
+                float[] weight = weights[leaf];
+                float[] gradient = gradients[leaf];
+                float[] first = first_[leaf];
+                float[] second = second_[leaf];
+
+                for (int index = 0; index < weight.length; index++) {
+                    double value = gradient[index] * scale;
+
+                    first[index] = (float) ((0.9d * first[index]) + (0.1d * value));
+                    second[index] = (float) ((0.999d * second[index]) + (0.001d * value * value));
+
+                    double moved = (first[index] / firstPower)
+                            / ((Math.sqrt(second[index] / secondPower)) + 1e-8d);
+
+                    weight[index] -= (float) (learningRate_ * moved);
+                    weight[index] -= (float) (learningRate_ * weightDecay_ * weight[index]);
+                    gradient[index] = 0f;
+                }
+            }
+        });
         return norm;
     }
 }

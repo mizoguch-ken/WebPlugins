@@ -1,3 +1,11 @@
+/**
+ * the report of the page
+ *
+ * The libraries of the report are automatic modules : they hold no module-info of their own, so the
+ * module of the plug-in reads them as they are, and the rule which asks a directive for them is kept
+ * quiet.
+ */
+@SuppressWarnings("requires-automatic")
 module Jasper {
     requires ken.mizoguch.webviewer.plugin.api;
     requires ken.mizoguch.webviewer.plugin.kit;
