@@ -21,7 +21,11 @@
     var netRows = [];
 
     /* the state of the plug-in, which the panel reads when it is opened */
-    var plugin = { version: 'dev', page: '', hook: false };
+    var plugin = { version: 'dev', page: '', hook: false, dropped: 0 };
+
+    /* the page and its engine, read of the page for the about tab of the panel */
+    var engine = null;
+    var info = null;
 
     /* the elements of the page the panel shows, kept by their identifier */
     var nodes = {};
@@ -570,6 +574,8 @@
      * the tree of the page, asked of the page
      */
     function reload() {
+        /* the tree of the page is read again : the mark of the page is not kept over the new tree */
+        ask('unhighlight', {}, null);
         ask('page', {}, function (answer) {
             if (answer.error) {
                 el('tree').appendChild(make('div', 'src', answer.error));
@@ -603,6 +609,19 @@
             kept.row.className = 'node pick';
         }
         ask('highlight', { id: id }, null);
+        again(id);
+    }
+
+    /**
+     * the element the user chose, read again of the page : the page wrote what the panel asked for,
+     * so the panel shows the element, its box, its attributes and its styles as the page holds them
+     * now.<br>
+     * The styles are asked after the element, because the panel writes the element first and the
+     * styles after it : the styles of the page are not written over the attributes of the element
+     *
+     * @param id identifier of the element of the page
+     */
+    function again(id) {
         ask('node', { id: id }, function (answer) {
             if (answer.none || answer.error) {
                 props(answer.error || 'the page holds this element no more');
@@ -610,11 +629,11 @@
             }
             crumbs(answer.path);
             fields(answer);
-        });
-        ask('styles', { id: id }, function (answer) {
-            if (!answer.none && !answer.error) {
-                styles(answer);
-            }
+            ask('styles', { id: id }, function (held) {
+                if (!held.none && !held.error) {
+                    styles(held);
+                }
+            });
         });
     }
 
@@ -662,6 +681,22 @@
         }
         box.appendChild(make('h3', '', 'node'));
         box.appendChild(make('div', 'attr', answer.name));
+
+        if (answer.box) {
+            box.appendChild(make('h3', '', 'box of the element'));
+            box.appendChild(declared(['place (x , y)', answer.box.x + ' , ' + answer.box.y]));
+            box.appendChild(declared(['size (w x h)', answer.box.w + ' x ' + answer.box.h]));
+            box.appendChild(declared(['seen by the page',
+                    answer.box.shown ? 'yes' : ('no : ' + answer.box.why)]));
+            box.appendChild(declared(['padding', sidesOf(answer.box.padding)]));
+            box.appendChild(declared(['border', sidesOf(answer.box.border)]));
+            box.appendChild(declared(['margin', sidesOf(answer.box.margin)]));
+            box.appendChild(declared(['inside (w x h)', sized(answer.box.client)]));
+            box.appendChild(declared(['scrolled (up , left)', sized(answer.box.scrolled)]));
+            box.appendChild(declared(['content (w x h)', sized(answer.box.size)]));
+            box.appendChild(declared(['of the engine', answer.box.display + ' , ' + answer.box.position
+                    + ' , ' + answer.box.visibility + ' , ' + answer.box.opacity]));
+        }
 
         box.appendChild(make('h3', '', 'attributes'));
         for (index = 0; answer.attributes && (index < answer.attributes.length); index++) {
@@ -714,12 +749,66 @@
         box.appendChild(make('h3', '', 'text'));
         var area = make('textarea', '');
 
+        area.id = 'elText';
         area.rows = 4;
         area.value = answer.text || '';
         area.onchange = function () {
             ask('setText', { id: answer.id, text: area.value }, null);
         };
         box.appendChild(area);
+
+        box.appendChild(make('h3', '', 'html of the element, which the user may write again'));
+        var html = make('textarea', '');
+
+        html.id = 'elHtml';
+        html.rows = 6;
+        html.value = answer.html || '';
+        box.appendChild(html);
+
+        var htmlTools = make('div', 'tools');
+        var htmlWrite = make('button', '', 'Write HTML');
+
+        htmlWrite.id = 'elWrite';
+        htmlWrite.onclick = function () {
+            ask('setHtml', { id: answer.id, html: html.value }, function (held) {
+                if (held.read) {
+                    box.appendChild(make('div', 'src', held.read));
+                    return;
+                }
+                /* the page holds an other element now : the tree and the element are read again */
+                reload();
+                choose(held.id);
+            });
+        };
+        var htmlIn = make('input', '');
+        var htmlAdd = make('button', '', 'Add inside');
+
+        htmlIn.id = 'elIn';
+        htmlAdd.id = 'elAdd';
+        htmlIn.placeholder = 'an element to add inside the element';
+        htmlIn.onkeydown = function (event) {
+            if (event.keyCode === 13) {
+                htmlAdd.onclick();
+            }
+        };
+        htmlAdd.onclick = function () {
+            if (!htmlIn.value) {
+                return;
+            }
+            ask('insertChild', { id: answer.id, html: htmlIn.value }, function (held) {
+                if (held.read) {
+                    box.appendChild(make('div', 'src', held.read));
+                    return;
+                }
+                htmlIn.value = '';
+                reload();
+                again(answer.id);
+            });
+        };
+        htmlTools.appendChild(htmlWrite);
+        htmlTools.appendChild(htmlIn);
+        htmlTools.appendChild(htmlAdd);
+        box.appendChild(htmlTools);
 
         var tools = make('div', 'tools');
         var remove = make('button', '', 'Remove');
@@ -784,11 +873,7 @@
                     row.childNodes[index].textContent = '';
                 }
             }
-            ask('node', { id: id }, function (answer) {
-                if (!answer.none && !answer.error) {
-                    fields(answer);
-                }
-            });
+            again(id);
         }
     }
 
@@ -806,10 +891,64 @@
             box.appendChild(make('div', 'src', answer.read));
         }
         if (answer.inline && answer.inline.length) {
-            box.appendChild(make('h3', '', 'style of the element'));
+            box.appendChild(make('h3', '', 'style of the element, which the user may write again'));
             for (index = 0; index < answer.inline.length; index++) {
-                box.appendChild(declared(answer.inline[index]));
+                (function (pair) {
+                    var line = make('div', 'attr sty');
+                    var text = make('input', '');
+
+                    line.appendChild(make('span', 'name', pair[0]));
+                    text.value = pair[1];
+                    text.onchange = function () {
+                        ask('setStyle', { id: answer.id, name: pair[0], value: text.value },
+                                function (held) {
+                                    if (held.read) {
+                                        box.appendChild(make('div', 'src', held.read));
+                                        return;
+                                    }
+                                    again(answer.id);
+                                });
+                    };
+                    line.appendChild(text);
+                    var gone = make('span', 'del', 'x');
+
+                    gone.onclick = function () {
+                        ask('setStyle', { id: answer.id, name: pair[0], value: '' }, function () {
+                            again(answer.id);
+                        });
+                    };
+                    line.appendChild(gone);
+                    box.appendChild(line);
+                })(answer.inline[index]);
             }
+            var add = make('div', 'attr sty');
+            var key = make('input', '');
+            var val = make('input', '');
+
+            key.id = 'elStyle';
+            val.id = 'elStyleValue';
+            key.placeholder = 'a style of the element';
+            val.placeholder = 'its value';
+            add.appendChild(make('span', 'name', ''));
+            add.appendChild(key);
+            add.appendChild(val);
+            var put = make('button', '', 'Set');
+
+            put.id = 'elStylePut';
+            put.onclick = function () {
+                if (!key.value) {
+                    return;
+                }
+                ask('setStyle', { id: answer.id, name: key.value, value: val.value }, function (held) {
+                    if (held.read) {
+                        box.appendChild(make('div', 'src', held.read));
+                        return;
+                    }
+                    again(answer.id);
+                });
+            };
+            add.appendChild(put);
+            box.appendChild(add);
         }
         for (index = 0; answer.matched && (index < answer.matched.length); index++) {
             box.appendChild(make('h3', '', answer.matched[index].selector + '  [' + answer.matched[index].sheet + ']'));
@@ -838,6 +977,90 @@
         line.appendChild(make('span', 'name', pair[0]));
         line.appendChild(make('span', 'value', pair[1]));
         return line;
+    }
+
+    /**
+     * the four sides of the box of an element of the page, as the panel shows them
+     *
+     * @param values sides of the box of the element, top, right, bottom, left
+     * @return the four sides of the box, as one text
+     */
+    function sidesOf(values) {
+        return String(values[0]) + ' top , ' + String(values[1]) + ' right , ' + String(values[2])
+                + ' bottom , ' + String(values[3]) + ' left';
+    }
+
+    /**
+     * the two sizes of a box of an element of the page, as the panel shows them
+     *
+     * @param values the two sizes of the box of the element
+     * @return the two sizes of the box, as one text
+     */
+    function sized(values) {
+        return String(values[0]) + ' x ' + String(values[1]);
+    }
+
+    /**
+     * what the javascript of the page wrote in a request, as the panel shows it : the plug-in keeps
+     * the row of the request with the text the page wrote in it, so the panel shows the ask of the
+     * request even when the page forgot its answer
+     *
+     * @param request request of the page, as the panel keeps it
+     * @return the ask of the request, as one text
+     */
+    function askedText(request) {
+        var out = String(request.method || 'GET') + ' ' + String(request.url);
+
+        if (request.text) {
+            out += '  ' + request.text;
+        }
+        if (request.mime) {
+            out += '\ncontent-type of the answer: ' + request.mime;
+        }
+        if (request.note) {
+            out += '\n' + request.note;
+        }
+        if (request.body) {
+            out += '\nthe page wrote: ' + request.body;
+        }
+        return out;
+    }
+
+    /**
+     * the answer of a request of the page, shown under the row of the request : the headers and the
+     * text are kept by the agent of the page, which forgets them when the page asks too many requests
+     *
+     * @param request request of the page, as the panel keeps it
+     * @param held answer of the page to the request, read again of the agent of the page
+     * @return the answer of the page, as one text
+     */
+    function heldText(request, held) {
+        var out = askedText(request);
+        var index;
+        var askOf = held.ask;
+
+        if (askOf && askOf.headers && askOf.headers.length) {
+            out += '\n--- what the page asked for ---';
+            for (index = 0; index < askOf.headers.length; index++) {
+                out += '\n' + askOf.headers[index][0] + ': ' + askOf.headers[index][1];
+            }
+        }
+        out += '\n--- what the page answered ---';
+        if (held.headers && held.headers.length) {
+            for (index = 0; index < held.headers.length; index++) {
+                out += '\n' + held.headers[index][0] + ': ' + held.headers[index][1];
+            }
+        } else {
+            out += '\n(no header read)';
+        }
+        if (held.text) {
+            out += '\n' + held.text;
+        } else if (request.kind === 'fetch') {
+            out += '\n(the page gives the text of a fetch to its javascript only)';
+        } else {
+            out += '\n(no text read)';
+        }
+        return out;
     }
 
     /**
@@ -900,6 +1123,47 @@
     /* the text of the page, kept by the panel for the filter of the panel */
     var pageHtml = '';
 
+    /* the file of the page the panel shows now, so the text the user writes is written for that file */
+    var opened = null;
+
+    /**
+     * a word the user wrote in the panel, asked of the page and shown with its file and its line :
+     * the panel reads the text of the files of the page, so it searches them as a debugger of a
+     * browser does
+     */
+    function search() {
+        var word = el('srcWord').value;
+
+        if (!word) {
+            return;
+        }
+        ask('find', { word: word }, function (answer) {
+            var box = el('srcfind');
+            var index;
+
+            while (box.firstChild) {
+                box.removeChild(box.firstChild);
+            }
+            for (index = 0; answer.hits && (index < answer.hits.length); index++) {
+                (function (hit) {
+                    var line = make('div', 'item');
+
+                    line.appendChild(make('span', 'size', 'line ' + hit.line));
+                    line.appendChild(make('span', '', (hit.kind === 'page') ? hit.kind : short(hit.name)));
+                    line.appendChild(make('span', 'src', '  ' + hit.text));
+                    line.onclick = function () {
+                        textOf({ kind: hit.kind, i: hit.i }, pageHtml);
+                        el('srcWord').focus();
+                    };
+                    box.appendChild(line);
+                })(answer.hits[index]);
+            }
+            if (!box.firstChild) {
+                box.appendChild(make('div', 'src', 'the sources of the page hold no [' + word + ']'));
+            }
+        });
+    }
+
     /**
      * the files of the page which carry the javascript and the styles of the page, asked of the page
      */
@@ -907,7 +1171,10 @@
         ask('scripts', {}, function (scripts) {
             ask('sheets', {}, function (sheets) {
                 files = [];
-                files.push({ kind: 'page', name: plugin.page || 'the page', src: '' });
+                files.push({
+                    kind: 'page', name: plugin.page || 'the page', src: '',
+                    size: (sheets.html ? sheets.html.length : 0)
+                });
                 var index;
 
                 for (index = 0; scripts.scripts && (index < scripts.scripts.length); index++) {
@@ -928,6 +1195,7 @@
                         size: sheets.sheets[index].size
                     });
                 }
+                pageHtml = sheets.html || '';
                 listed(pageHtml);
             });
         });
@@ -974,7 +1242,8 @@
     }
 
     /**
-     * the text of a file of the page, asked of the page and shown in the panel
+     * the text of a file of the page, asked of the page and shown in the panel : the text is shown in
+     * a text area, so the user writes it again and the panel asks the page to read the new text
      *
      * @param item file of the page
      * @param html text of the page, kept by the panel
@@ -982,25 +1251,85 @@
     function textOf(item, html) {
         var code = el('srccode');
 
+        opened = item;
+        code.value = '';
         if (item.kind === 'page') {
-            code.textContent = html || 'the page holds no text';
+            code.value = html || 'the page holds no text';
+            noteOf(item, '');
             return;
         }
         if (item.kind === 'link') {
             ask('sheetText', { i: item.i, kind: 'link' }, function (answer) {
-                code.textContent = answer.text || (answer.none ? '' : 'the page can not read this file');
+                code.value = answer.text || (answer.none ? '' : 'the page can not read this file');
+                noteOf(item, answer.text ? '' : 'the page can not read the text of this file');
             });
             return;
         }
         if (item.kind === 'style') {
             ask('sheetText', { i: item.i, kind: 'style' }, function (answer) {
-                code.textContent = answer.text || '';
+                code.value = answer.text || '';
+                noteOf(item, '');
             });
             return;
         }
         ask('scriptText', { i: item.i }, function (answer) {
-            code.textContent = answer.text || 'the page can not read this file';
+            code.value = answer.text || 'the page can not read this file';
+            noteOf(item, answer.text ? '' : 'the page can not read the text of this file');
         });
+    }
+
+    /**
+     * what the panel tells under the text of a file of the page : the plug-in writes no file of the
+     * computer, so the user knows what the page reads after the panel wrote the text
+     *
+     * @param item file of the page the panel shows
+     * @param extra word the panel adds to the word of the file
+     */
+    function noteOf(item, extra) {
+        var word;
+
+        if (!item) {
+            word = 'the panel holds no file of the page';
+        } else if (item.kind === 'page') {
+            word = 'the page reads the text the panel writes, its own file keeps its text';
+        } else if (item.kind === 'script') {
+            word = item.src
+                    ? 'the file of the script keeps its text : the panel writes in the page only'
+                    : 'the page reads the text of the script the panel writes';
+        } else if (item.kind === 'link') {
+            word = 'the file of the style keeps its text : the page reads a style the panel writes';
+        } else {
+            word = 'the page reads the style the panel writes';
+        }
+        el('srcNote').textContent = extra ? (word + '   ' + extra) : word;
+    }
+
+    /**
+     * the text the user wrote in the panel, written for the file of the page the panel shows : the
+     * page reads the text until it is loaded again, which reads the file of the page on the computer
+     *
+     * @param run true when the page reads the text of a script again as its javascript
+     */
+    function writeSource(run) {
+        if (!opened) {
+            noteOf(null, '');
+            return;
+        }
+        var item = opened;
+
+        ask('writeSource', { kind: item.kind, i: item.i, text: el('srccode').value, run: !!run },
+                function (answer) {
+                    if (answer.error) {
+                        noteOf(item, answer.error);
+                        return;
+                    }
+                    noteOf(item, answer.read || '');
+                    if (item.kind === 'page') {
+                        /* the page is written again : its tree and its files are read again */
+                        ask('unhighlight', {}, null);
+                        sources();
+                    }
+                });
     }
 
     /* -------------------------------------------------------------------- the network tab */
@@ -1025,19 +1354,22 @@
     }
 
     /**
-     * a request of the page, shown in the list of the panel
+     * a request of the page, shown in the list of the panel : the row of the request answers the
+     * click of the user by writing the answer of the page under the row, and by hiding it again, so a
+     * row holds one answer at a time and the clicks of the user add no rows
      *
      * @param request request of the page
-     * @param kept the row of the panel which holds the request
      */
-    function line(request, kept) {
+    function line(request) {
         var body = el('netbody');
         var row = document.createElement('tr');
         var filter = el('netFilter').value.toLowerCase();
+        var kind = el('netKind').value;
+        var bad = el('netBad').checked;
         var index;
         var names = ['time', 'method', 'url', 'status', 'kind', 'duration', 'size'];
         var values = [
-            clock(request.time),
+            request.time ? clock(request.time) : '',
             request.method || '',
             request.url,
             (typeof request.status === 'number') ? request.status : '',
@@ -1054,28 +1386,45 @@
             }
             row.appendChild(cell);
         }
-        if ((request.status >= 400) || (request.status === 0)) {
+        if ((request.status >= 400) || ((request.status === 0) && request.id)) {
             row.className = 'bad';
         }
-        if (filter && (String(request.url).toLowerCase().indexOf(filter) < 0)) {
+        if ((filter && (String(request.url).toLowerCase().indexOf(filter) < 0))
+                || (kind && (String(request.kind) !== kind))
+                || (bad && (request.status < 400))) {
             row.style.display = 'none';
         }
         row.onclick = function () {
-            if (kept && kept.nextSibling && (kept.nextSibling.className === 'src')) {
-                body.removeChild(kept.nextSibling);
+            var held = row.nextSibling;
+
+            if (held && (held.className === 'src')) {
+                /* the user read the answer of the request already : the row holds it no more */
+                body.removeChild(held);
                 return;
             }
             var word = make('tr', 'src');
-            var cell2 = make('td', '', String(request.url));
+            var cell2 = make('td', '', askedText(request));
 
             cell2.setAttribute('colspan', String(names.length));
             word.appendChild(cell2);
             row.parentNode.insertBefore(word, row.nextSibling);
+            if (!request.id) {
+                /* the files the engine of the page read by itself hold no answer kept by the page */
+                return;
+            }
+            /* the answer of the request is kept by the page, so the panel asks it again */
+            ask('netText', { id: request.id }, function (back) {
+                if (!word.parentNode) {
+                    /* the user read another request while this answer was asked */
+                    return;
+                }
+                if (back.none) {
+                    cell2.textContent = askedText(request) + '\n' + (back.note || 'no answer');
+                    return;
+                }
+                cell2.textContent = heldText(request, back);
+            });
         };
-        if (kept) {
-            body.appendChild(row);
-            return;
-        }
         body.appendChild(row);
         while (body.childNodes.length > MAX_ROWS) {
             body.removeChild(body.firstChild);
@@ -1096,6 +1445,43 @@
         for (index = 0; index < netRows.length; index++) {
             line(netRows[index]);
         }
+    }
+
+    /**
+     * the files the engine of the page read by itself, asked of the page and kept with the requests
+     * of the javascript of the page : the engine tells nothing of the answers of its files, so the
+     * rows of the panel hold what the page keeps of them, their address and their kind
+     */
+    function pageFiles() {
+        ask('netFiles', {}, function (answer) {
+            if (answer.error) {
+                told({ text: answer.error });
+                return;
+            }
+            var known = {};
+            var index;
+            var held;
+            var name;
+            var added = 0;
+
+            for (index = 0; index < netRows.length; index++) {
+                known[String(netRows[index].kind) + '|' + String(netRows[index].url)] = true;
+            }
+            for (index = 0; answer.files && (index < answer.files.length); index++) {
+                held = answer.files[index];
+                name = String(held.kind) + '|' + String(held.url);
+                if (known[name]) {
+                    continue;
+                }
+                known[name] = true;
+                added = added + 1;
+                netted(held, true);
+                line(held);
+            }
+            told({ text: (added > 0)
+                    ? (added + ' files of the page read by the engine of the page')
+                    : 'the page holds no file the panel does not know yet' });
+        });
     }
 
     /* --------------------------------------------------------------------- the storage tab */
@@ -1122,8 +1508,17 @@
                     var edit = make('span', '', 'edit  ');
 
                     edit.onclick = function () {
-                        el('stKey').value = pair[0];
-                        el('stValue').value = pair[1];
+                        /* the list of the storage keeps its values shorter than the text of the
+                        agent, so the panel asks the whole value of the key before writing it again */
+                        ask('readValue', { area: answer.area, key: pair[0] }, function (held) {
+                            el('stKey').value = pair[0];
+                            el('stValue').value = (held && !held.none && !held.error && held.value)
+                                    ? held.value : pair[1];
+                            if (held && held.n) {
+                                el('stNote').textContent = pair[0] + ' holds ' + held.n + ' characters';
+                            }
+                            el('stValue').focus();
+                        });
                     };
                     var gone = make('span', '', 'del');
 
@@ -1137,24 +1532,111 @@
                     body.appendChild(row);
                 })(answer.items[index]);
             }
-            if (answer.cookie) {
-                var cookies = document.createElement('tr');
+            var notes = '';
 
-                cookies.appendChild(make('td', 'src', 'cookies of the page: ' + answer.cookie));
-                body.appendChild(cookies);
+            if (answer.read) {
+                notes = answer.read;
+            } else if (answer.cookie) {
+                notes = 'cookies of the page: ' + answer.cookie;
+            }
+            if (notes) {
+                var told2 = document.createElement('tr');
+
+                told2.appendChild(make('td', 'src', notes));
+                told2.appendChild(make('td', '', ''));
+                told2.appendChild(make('td', '', ''));
+                body.appendChild(told2);
+            }
+            /* the cookies of the page, asked when the storage of the page is read */
+            cookies();
+        });
+    }
+
+    /**
+     * the cookies the page reads, asked of the page and shown in the panel : the cookies the engine
+     * of the page keeps for itself are not read, so the panel says what it reads
+     */
+    function cookies() {
+        ask('cookies', {}, function (answer) {
+            var body = el('cobody');
+            var index;
+
+            while (body.firstChild) {
+                body.removeChild(body.firstChild);
+            }
+            el('coNote').textContent = answer.error || ((answer.n || 0) + ' cookies'
+                    + (answer.note ? ' : ' + answer.note : ''));
+            for (index = 0; answer.items && (index < answer.items.length); index++) {
+                (function (pair) {
+                    var row = document.createElement('tr');
+
+                    row.appendChild(make('td', '', pair[0]));
+                    row.appendChild(make('td', '', pair[1]));
+                    var act = make('td', 'act', '');
+                    var edit = make('span', '', 'edit  ');
+
+                    edit.onclick = function () {
+                        el('coKey').value = pair[0];
+                        el('coValue').value = pair[1];
+                    };
+                    var gone = make('span', '', 'del');
+
+                    gone.onclick = function () {
+                        writeCookie(pair[0], null);
+                    };
+                    act.appendChild(edit);
+                    act.appendChild(gone);
+                    row.appendChild(act);
+                    body.appendChild(row);
+                })(answer.items[index]);
             }
         });
     }
 
+    /**
+     * a cookie of the page, written by the page : the panel shows in the log of its console what the
+     * engine of the page refused, and it reads the cookies of the page again
+     *
+     * @param name name of the cookie, empty when the page removes every cookie it reads
+     * @param value value of the cookie, null when the page removes the cookie of that name
+     */
+    function writeCookie(name, value) {
+        ask('writeCookie', { name: name, value: value }, function (answer) {
+            if (answer.error) {
+                told({ text: answer.error });
+            }
+            cookies();
+        });
+    }
+
     /* ----------------------------------------------------------------------- the about tab */
+    /**
+     * the page and its engine, asked of the page for the about tab of the panel : the panel reads
+     * them again when the user opens the tab, so the panel shows the page as it is now
+     */
+    function askAbout() {
+        about();
+        ask('probe', {}, function (answer) {
+            if (!answer.error) {
+                engine = answer;
+                about();
+            }
+            /* the page is read after the engine of the page, so the panel reads one answer at a time */
+            ask('info', {}, function (held) {
+                if (!held.error) {
+                    info = held;
+                }
+                about();
+            });
+        });
+    }
 
     /**
      * what the panel is and what the panel reads : the panel of the plug-in is not the debugger of a
      * browser, so the panel says what it holds and what it can not hold
      *
-     * @param held what the engine of the page reads, given by the agent of the page
      */
-    function about(held) {
+    function about() {
         var box = el('about');
         var index;
 
@@ -1173,39 +1655,72 @@
         said(table, 'agent of the page', plugin.hook ? 'read' : 'not read');
         said(table, 'messages of the console', String(logRows.length));
         said(table, 'requests of the page', String(netRows.length));
+        said(table, 'messages the plug-in forgot', String(plugin.dropped));
         box.appendChild(table);
 
-        if (held) {
+        if (engine) {
             box.appendChild(make('h2', '', 'the engine of the page'));
             table = document.createElement('table');
-            said(table, 'agent of the page', held.agent || '');
-            said(table, 'user agent', held.userAgent || '');
-            said(table, 'json', held.json ? 'yes' : 'no');
-            said(table, 'selectors of the styles', held.querySelector ? 'yes' : 'no');
-            said(table, 'styles of the engine', held.computedStyle ? 'yes' : 'no');
-            said(table, 'requests of the page', held.xhr ? 'yes' : 'no');
-            said(table, 'fetch of the page', held.fetch ? 'yes' : 'no');
-            said(table, 'storage of the page', held.storage ? 'yes' : 'no');
-            said(table, 'styles of the page', String(held.sheets));
+            said(table, 'agent of the page', engine.agent || '');
+            said(table, 'user agent', engine.userAgent || '');
+            said(table, 'json', engine.json ? 'yes' : 'no');
+            said(table, 'selectors of the styles', engine.querySelector ? 'yes' : 'no');
+            said(table, 'styles of the engine', engine.computedStyle ? 'yes' : 'no');
+            said(table, 'requests of the page', engine.xhr ? 'yes' : 'no');
+            said(table, 'fetch of the page', engine.fetch ? 'yes' : 'no');
+            said(table, 'storage of the page', engine.storage ? 'yes' : 'no');
+            said(table, 'styles of the page', String(engine.sheets));
+            box.appendChild(table);
+        }
+
+        if (info) {
+            box.appendChild(make('h2', '', 'the page now'));
+            table = document.createElement('table');
+            said(table, 'title of the page', info.title || '');
+            said(table, 'address of the page', info.url || '');
+            said(table, 'page which wrote this page', info.referrer || 'none');
+            said(table, 'state of the page', info.ready || '');
+            said(table, 'language of the page', info.language || '');
+            said(table, 'characters of the page', info.characterSet || '');
+            said(table, 'computer of the page', info.platform || '');
+            said(table, 'the page is on line', info.online ? 'yes' : 'no');
+            said(table, 'view of the page', String(info.viewport[0]) + ' x ' + String(info.viewport[1])
+                    + '  at  ' + String(info.pixels) + ' pixels');
+            said(table, 'screen of the page', String(info.screen[0]) + ' x ' + String(info.screen[1]));
+            said(table, 'the page is scrolled to', String(info.scrolled[0]) + ' , ' + String(info.scrolled[1]));
+            said(table, 'elements of the page', String(info.nodes));
+            said(table, 'files of javascript of the page', String(info.scripts));
+            said(table, 'files of style of the page', String(info.sheets));
+            said(table, 'cookies the page reads', String(info.cookies));
             box.appendChild(table);
         }
 
         box.appendChild(make('h2', '', 'what the panel reads'));
         box.appendChild(make('pre', '', 'Console : the messages of the console of the page, the errors of the page and the text the\n'
                 + 'user writes, read by the page.\n'
-                + 'Elements : the elements of the page, their attributes, their styles and their text, which the\n'
-                + 'user may write again.\n'
-                + 'Sources : the files of the page which carry javascript and styles, read as text.\n'
-                + 'Network : the requests the page asks for with XMLHttpRequest or fetch.\n'
-                + 'Storage : the storage of the page, which the user may write again.'));
+                + 'Elements : the elements of the page, their attributes, their styles, their box and their text,\n'
+                + 'which the user may write again, with the html of an element and the styles the page wrote on\n'
+                + 'it. The pointing of the panel marks the element under the cursor of the user.\n'
+                + 'Sources : the files of the page which carry javascript and styles, read as text, and the\n'
+                + 'word the user writes, read in those files. The text the user writes again is read by the\n'
+                + 'page for its run.\n'
+                + 'Network : the requests the page asks for with XMLHttpRequest or fetch, with what the page\n'
+                + 'asked for and what the page answered, and the files the page holds.\n'
+                + 'Storage : the storage of the page and the cookies the page reads, which the user may\n'
+                + 'write again. The messages of the console and the requests are saved in a file.'));
 
         box.appendChild(make('h2', '', 'what the panel can not read'));
         box.appendChild(make('pre', '', 'No break point, no step and no watch : the web engine of the WebViewer keeps its\n'
                 + 'javascript out of the reach of a plug-in.\n'
-                + 'No file the page reads by itself : the images, the styles and the pages inside the page are\n'
-                + 'read by the engine of the page, which tells nothing of them to the plug-in. Only the requests\n'
-                + 'the javascript of the page asks for are read.\n'
+                + 'No answer of the files the page reads by itself : the images, the styles and the pages inside\n'
+                + 'the page are read by the engine of the page, which tells nothing of their answers to the\n'
+                + 'plug-in. The panel shows their address, their kind and, when the engine keeps them, their\n'
+                + 'times and their lengths. Only the requests the javascript of the page asks for are read.\n'
+                + 'No file of the computer written by the panel : the text the panel writes in a file of the page\n'
+                + 'is read by the page until the page is loaded again, and the file of the page keeps its text.\n'
                 + 'No javascript of the panel inside the page : the panel asks a work and reads its answer.\n'
+                + 'No cookies the engine of the page keeps for itself and no cookies the page hides from\n'
+                + 'its javascript : the panel reads the cookies of the javascript of the page.\n'
                 + 'No debugger of a browser : the panel of the plug-in holds no protocol of a browser.'));
 
         var licenses = make('button', '', 'licenses of the libraries of the jar');
@@ -1289,8 +1804,9 @@
         plugin.version = data.version || 'dev';
         plugin.page = data.page || '';
         plugin.hook = !!data.hook;
+        plugin.dropped = data.dropped || 0;
         el('state').textContent = (plugin.page || 'no page') + '  |  ' + (data.console || 0) + ' messages  |  '
-                + (data.network || 0) + ' requests';
+                + (data.network || 0) + ' requests  |  ' + (data.dropped || 0) + ' forgotten';
 
         emptied();
         var held = read(dbg.journal('console', '2000'));
@@ -1306,11 +1822,7 @@
         }
         networks();
         told({ text: 'the plug-in reads the page [' + (plugin.page || 'no address') + ']' });
-        ask('probe', {}, function (answer) {
-            if (!answer.error) {
-                about(answer);
-            }
-        });
+        askAbout();
     }
 
     /**
@@ -1381,7 +1893,7 @@
             storage();
         }
         if (name === 'about') {
-            about(null);
+            askAbout();
         }
     }
 
@@ -1446,6 +1958,10 @@
         pointing = !pointing;
         el('point').className = pointing ? 'on' : '';
         ask('inspect', { on: pointing }, null);
+        if (!pointing) {
+            /* the mark of the pointing is not kept over the page when the panel stops the pointing */
+            ask('unhighlight', {}, null);
+        }
     };
 
     /* the files of the page */
@@ -1453,12 +1969,48 @@
     el('srcFilter').onkeyup = function () {
         listed(pageHtml);
     };
+    el('srcFind').onclick = search;
+    el('srcWord').onkeydown = function (event) {
+        if (event.keyCode === 13) {
+            search();
+        }
+    };
+    el('srcApply').onclick = function () {
+        writeSource(false);
+    };
+    el('srcRun').onclick = function () {
+        writeSource(true);
+    };
+
+    /* the messages of the page, kept by the plug-in for the user */
+    el('save').onclick = function () {
+        var held = read(dbg.save('console', 'journal.txt'));
+
+        if (held && held.file) {
+            el('saved').textContent = held.file + ' (' + held.count + ')';
+            told({ text: 'the plug-in wrote the messages of the page in [' + held.file + ']' });
+        } else {
+            el('saved').textContent = (held && held.error) ? held.error : 'the plug-in wrote nothing';
+        }
+    };
 
     /* the requests of the page */
     el('netClear').onclick = function () {
         dbg.clear();
     };
     el('netFilter').onkeyup = networks;
+    el('netKind').onchange = networks;
+    el('netBad').onchange = networks;
+    el('netFiles').onclick = pageFiles;
+    el('netSave').onclick = function () {
+        var held = read(dbg.save('network', 'network.txt'));
+
+        if (held && held.file) {
+            told({ text: 'the plug-in wrote the requests of the page in [' + held.file + ']' });
+        } else {
+            told({ text: (held && held.error) ? held.error : 'the plug-in wrote nothing' });
+        }
+    };
 
     /* the storage of the page */
     el('area').onchange = storage;
@@ -1475,6 +2027,18 @@
         storage();
     };
 
-    about(null);
+    /* the cookies the page reads */
+    el('coReload').onclick = cookies;
+    el('coClear').onclick = function () {
+        writeCookie('', null);
+    };
+    el('coSet').onclick = function () {
+        if (!el('coKey').value) {
+            return;
+        }
+        writeCookie(el('coKey').value, el('coValue').value);
+    };
+
+    askAbout();
     el('ask').focus();
 }());

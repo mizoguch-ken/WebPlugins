@@ -1,5 +1,6 @@
 package ken.mizoguch.webviewer.dbg;
 
+import java.nio.charset.StandardCharsets;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -14,6 +15,7 @@ import javafx.stage.Stage;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
 import ken.mizoguch.webviewer.plugin.kit.ScriptFunction;
 import ken.mizoguch.webviewer.plugin.kit.ScriptValue;
+import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
 
 /**
  * the debugger of the page : the plug-in reads the messages of the console of the page, the
@@ -229,6 +231,53 @@ public class Dbg extends PluginSupport {
     public void clear() {
         bridge_.journal().clear();
         bridge_.send("dbgUi.clear", "{}");
+    }
+
+    /**
+     * write the messages of the page the plug-in keeps in a file of the run of the WebViewer, so
+     * the user reads them out of the panel : a name which ends with .txt holds the messages as
+     * text, an other name holds them in json, as the panel reads them<br>
+     * The file is kept in the directory the plug-in wrote for the run and removed when the
+     * WebViewer closes the plug-in, so an other user of the computer can not read the page.
+     *
+     * @param kind kind of the messages, network for the requests of the page, console else
+     * @param file name of the file under the directory of the run, journal.json else
+     * @return a json object which carries the file the plug-in wrote and the number of the messages
+     */
+    public String save(String kind, String file) {
+        String name = ((file == null) || file.trim().isEmpty()) ? "journal.json" : file.trim();
+        Path local;
+
+        try {
+            local = files();
+        } catch (IOException ex) {
+            writeStackTrace(FUNCTION_NAME, ex);
+            return "{" + Json.field("error", "the plug-in can not write its files") + "}";
+        }
+        Path to = SandboxPath.resolve(local, name);
+
+        if (to == null) {
+            return "{" + Json.field("error", "Incorrect file path [" + name + "]") + "}";
+        }
+        boolean net = Journal.NETWORK.equals(kind);
+        Journal journal = bridge_.journal();
+        String text = name.toLowerCase().endsWith(".txt")
+                ? journal.text(net ? Journal.NETWORK : Journal.CONSOLE)
+                : journal.entries(net ? Journal.NETWORK : Journal.CONSOLE, net ? Journal.NETWORK_MAX : Journal.CONSOLE_MAX);
+
+        try {
+            Path parent = to.getParent();
+
+            if ((parent != null) && !Files.isDirectory(parent)) {
+                Files.createDirectories(parent);
+            }
+            Files.writeString(to, text, StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            writeStackTrace(FUNCTION_NAME, ex);
+            return "{" + Json.field("error", "the plug-in can not write the file [" + name + "]") + "}";
+        }
+        return "{" + Json.field("file", local.relativize(to).toString().replace('\\', '/'))
+                + "," + Json.field("count", journal.size(net ? Journal.NETWORK : Journal.CONSOLE)) + "}";
     }
 
     /**

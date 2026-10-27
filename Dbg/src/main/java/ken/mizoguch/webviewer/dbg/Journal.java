@@ -114,6 +114,62 @@ final class Journal {
     }
 
     /**
+     * the messages kept for the panel, oldest first, written as text, one on a line : the plug-in
+     * writes them in a file the user reads, when the user saves the messages of the page
+     *
+     * @param kind {@link #CONSOLE} or {@link #NETWORK}
+     * @return the messages of the page, as text
+     */
+    synchronized String text(String kind) {
+        StringBuilder text = new StringBuilder(64);
+
+        for (String entry : network(kind)) {
+            text.append(render(kind, entry)).append('\n');
+        }
+        return text.toString();
+    }
+
+    /**
+     * a message of the page, written as a line of text for the user : the message is written in
+     * json by the agent of the page, so the fields of the message are read as they are written
+     *
+     * @param kind {@link #CONSOLE} or {@link #NETWORK}
+     * @param entry the message, written in json by the agent of the page
+     * @return the message, as a line of text
+     */
+    private static String render(String kind, String entry) {
+        if (NETWORK.equals(kind)) {
+            String method = Json.fieldText(entry, "method");
+            String url = Json.fieldText(entry, "url");
+            Long status = Json.fieldNumber(entry, "status");
+            Long duration = Json.fieldNumber(entry, "duration");
+            Long size = Json.fieldNumber(entry, "size");
+
+            return String.valueOf(method == null ? "" : method) + ' '
+                    + String.valueOf(status == null ? "" : status) + ' '
+                    + String.valueOf(url == null ? "" : url)
+                    + ((duration == null) ? "" : " (" + duration + " ms)")
+                    + ((size == null) ? "" : " (" + size + " bytes)");
+        }
+        String level = Json.fieldText(entry, "level");
+        Long time = Json.fieldNumber(entry, "time");
+        StringBuilder line = new StringBuilder();
+
+        line.append((time == null) ? "" : DATE.format(java.time.Instant.ofEpochMilli(time)));
+        line.append(' ').append(String.valueOf(level == null ? "log" : level)).append(": ");
+        String args = Json.texts(entry, "args");
+
+        line.append(String.valueOf((args == null) ? "" : args));
+        return line.toString().stripTrailing();
+    }
+
+    /**
+     * the time of a message of the page, as the saved text shows it
+     */
+    private static final java.time.format.DateTimeFormatter DATE =
+            java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss.SSS").withZone(java.time.ZoneId.systemDefault());
+
+    /**
      * the queue of the kind of messages the panel asks for
      *
      * @param kind {@link #CONSOLE} or {@link #NETWORK}

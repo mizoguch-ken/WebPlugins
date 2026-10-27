@@ -88,8 +88,10 @@ public class BridgeTest {
     @Test
     public void thePanelReadsTheNamesOfTheWorksOfThePage() {
         String[] works = {"page", "children", "node", "styles", "setAttr", "delAttr", "setText", "removeNode",
-            "html", "search", "scripts", "scriptText", "sheets", "sheetText", "storage", "writeStorage",
-            "highlight", "unhighlight", "inspect", "scrollIntoView", "exec", "probe", "unhook"};
+            "setStyle", "setHtml", "insertChild", "html", "search", "scripts", "scriptText", "sheets", "sheetText",
+            "writeSource", "storage", "writeStorage", "readValue",
+            "highlight", "unhighlight", "inspect", "scrollIntoView", "exec", "probe", "unhook",
+            "find", "cookies", "writeCookie", "netText", "netFiles", "info"};
         Dbg host = new Dbg();
 
         for (String work : works) {

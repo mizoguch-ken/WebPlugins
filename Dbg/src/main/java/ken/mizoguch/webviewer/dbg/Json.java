@@ -105,6 +105,178 @@ final class Json {
         return "\"" + name + "\":" + value;
     }
 
+    /**
+     * the text of a field of a json the plug-in reads : the messages of the page are written in
+     * json by the agent of the page and kept as they are, so the plug-in reads a field of a
+     * message without a reader of json, between the quotes which carry a text of json.<br>
+     * A message which is not json and a field which is not read give null.
+     *
+     * @param json the message, written in json by the agent of the page
+     * @param name name of the field
+     * @return the text of the field, null when the field is not read
+     */
+    static String fieldText(String json, String name) {
+        return valueText(json, read(json, name));
+    }
+
+    /**
+     * the text of a value of a json the plug-in reads, read from the place just after the column of
+     * a field : the value is read out of its quotes when it holds quotes, and it is read to the
+     * character which ends it when it holds none
+     *
+     * @param json the message, written in json by the agent of the page
+     * @param at the place of the value, -1 when the field is not read
+     * @return the text of the value, null when the value is not read
+     */
+    private static String valueText(String json, int at) {
+        if ((json == null) || (at < 0) || (at >= json.length())) {
+            return null;
+        }
+        while ((at < json.length()) && (json.charAt(at) == ' ')) {
+            at++;
+        }
+        if (at >= json.length()) {
+            return null;
+        }
+        StringBuilder text = new StringBuilder();
+        boolean quoted = (json.charAt(at) == '"');
+        int index = quoted ? at + 1 : at;
+        int size = json.length();
+
+        while (index < size) {
+            char ch = json.charAt(index);
+
+            if (quoted && (ch == '"')) {
+                break;
+            }
+            if (!quoted && ((ch == ',') || (ch == '}') || (ch == ']'))) {
+                break;
+            }
+            if ((ch == '\\') && (index + 1 < size)) {
+                char next = json.charAt(index + 1);
+
+                if (next == 'n') {
+                    text.append('\n');
+                } else if (next == 'r') {
+                    text.append('\r');
+                } else if (next == 't') {
+                    text.append('\t');
+                } else if (next == 'b') {
+                    text.append('\b');
+                } else if (next == 'f') {
+                    text.append('\f');
+                } else {
+                    text.append(next);
+                }
+                index = index + 2;
+                continue;
+            }
+            text.append(ch);
+            index++;
+        }
+        return text.toString();
+    }
+
+    /**
+     * the number of a field of a json the plug-in reads
+     *
+     * @param json the message, written in json by the agent of the page
+     * @param name name of the field
+     * @return the number of the field, null when the field is not read
+     */
+    static Long fieldNumber(String json, String name) {
+        int at = read(json, name);
+
+        if (at < 0) {
+            return null;
+        }
+        int index = at;
+
+        if ((json.charAt(index) == '-') || (json.charAt(index) == '+')) {
+            index++;
+        }
+        int start = index;
+        int size = json.length();
+
+        while ((index < size) && (json.charAt(index) >= '0') && (json.charAt(index) <= '9')) {
+            index++;
+        }
+        if (index == start) {
+            return null;
+        }
+        try {
+            return Long.valueOf(json.substring(start, index));
+        } catch (NumberFormatException ex) {
+            // a number longer than the numbers of java is not read
+            return null;
+        }
+    }
+
+    /**
+     * the texts of the values of an array of a json the plug-in reads : the console of the page
+     * writes its messages with an array of the values the page wrote, so the user of a file the
+     * plug-in wrote reads the texts of them, one after an other
+     *
+     * @param json the message, written in json by the agent of the page
+     * @param name name of the field which holds the array
+     * @return the texts of the values of the array, null when the field is not read
+     */
+    static String texts(String json, String name) {
+        int at = read(json, name);
+
+        if ((json == null) || (at < 0) || (json.charAt(at) != '[')) {
+            return null;
+        }
+        StringBuilder out = new StringBuilder();
+        String field = "\"v\":";
+        int index = at;
+
+        for (;;) {
+            int held = json.indexOf(field, index);
+
+            if (held < 0) {
+                break;
+            }
+            index = held + field.length();
+            String value = valueText(json, index);
+
+            if ((value == null) || value.isEmpty()) {
+                continue;
+            }
+            if (out.length() > 0) {
+                out.append(' ');
+            }
+            out.append(value);
+        }
+        return out.toString();
+    }
+
+    /**
+     * the place of the value of a field of json, just after the column of the field, -1 when the
+     * message is not json or holds no field
+     *
+     * @param json the message, written in json by the agent of the page
+     * @param name name of the field
+     * @return the place of the value, -1 when the field is not read
+     */
+    private static int read(String json, String name) {
+        if ((json == null) || (name == null) || name.isEmpty()) {
+            return -1;
+        }
+        String field = "\"" + name + "\":";
+        int at = json.indexOf(field);
+
+        if (at < 0) {
+            return -1;
+        }
+        int value = at + field.length();
+
+        while ((value < json.length()) && (json.charAt(value) == ' ')) {
+            value++;
+        }
+        return (value < json.length()) ? value : -1;
+    }
+
     private Json() {
     }
 }

@@ -118,8 +118,23 @@ button.on {
     border-right: 1px solid #333333;
 }
 
-#split #props, #split #srccode {
+#split #props, #split /* the cookies of the page and the hits of the search of the sources */
+.list.half {
+    flex: 0 0 34%;
+}
+
+#srcfind {
+    border-top: 1px solid #333333;
+}
+
+#srccode {
     flex: 1;
+    width: 100%;
+    resize: none;
+    border: 0;
+    border-left: 1px solid #333333;
+    outline: none;
+    box-sizing: border-box;
 }
 
 #repl {
@@ -166,6 +181,12 @@ button.on {
 .src {
     color: #6a6a6a;
     font-size: 11px;
+}
+
+/* the answer of a request of the page, shown under the row of the request */
+#netbody tr.src td {
+    white-space: pre-wrap;
+    word-wrap: break-word;
 }
 
 /* the values the page gives back */
@@ -237,6 +258,24 @@ button.on {
     padding-left: 6px;
 }
 
+/* the texts of the element the user writes again */
+#props textarea {
+    width: 100%;
+    box-sizing: border-box;
+    resize: vertical;
+}
+
+#props .tools {
+    padding: 6px 0;
+    border: 0;
+    background: none;
+}
+
+#props .tools input {
+    flex: 1;
+    min-width: 80px;
+}
+
 /* the files of the page */
 .item {
     padding: 3px 8px;
@@ -249,6 +288,15 @@ button.on {
 .item:hover { background: #262626; }
 .item.on { background: #2b3a4a; }
 .item .size { color: #6a6a6a; float: right; }
+
+/* the cookies of the page and the hits of the search of the sources */
+.list.half {
+    flex: 0 0 34%;
+}
+
+#srcfind {
+    border-top: 1px solid #333333;
+}
 
 #srccode {
     margin: 0;

@@ -30,6 +30,8 @@
                 </select>
                 <label><input type="checkbox" id="stamp"> time</label>
                 <button id="clear">Clear</button>
+                <button id="save">Save</button>
+                <span id="saved"></span>
             </div>
             <div class="list" id="log"></div>
             <div id="repl">
@@ -56,17 +58,39 @@
             <div class="tools">
                 <button id="srcReload">Reload</button>
                 <input type="text" id="srcFilter" class="grow" placeholder="filter">
+                <input type="text" id="srcWord" class="grow" placeholder="a word of the sources">
+                <button id="srcFind">Find</button>
             </div>
             <div id="split">
                 <div class="list" id="srclist"></div>
-                <pre id="srccode"></pre>
+                <textarea id="srccode" spellcheck="false"></textarea>
             </div>
+            <div class="tools">
+                <button id="srcApply">Write in the page</button>
+                <button id="srcRun">Run in the page</button>
+                <span id="srcNote" class="src grow"></span>
+            </div>
+            <div class="list half" id="srcfind"></div>
         </div>
 
         <div class="panel hidden" id="panel-network">
             <div class="tools">
                 <input type="text" id="netFilter" class="grow" placeholder="filter">
+                <select id="netKind">
+                    <option value="">all kinds</option>
+                    <option value="xhr">xhr</option>
+                    <option value="fetch">fetch</option>
+                    <option value="js">js of the page</option>
+                    <option value="css">css of the page</option>
+                    <option value="img">img of the page</option>
+                    <option value="iframe">iframe of the page</option>
+                    <option value="media">media of the page</option>
+                    <option value="file">files of the engine</option>
+                </select>
+                <label><input type="checkbox" id="netBad"> errors only</label>
+                <button id="netFiles">Files of the page</button>
                 <button id="netClear">Clear</button>
+                <button id="netSave">Save</button>
             </div>
             <div class="list" id="netlist">
                 <table class="grid">
@@ -75,6 +99,9 @@
                     </thead>
                     <tbody id="netbody"></tbody>
                 </table>
+            </div>
+            <div class="tools">
+                <span class="src">the row of a request holds its answer when the user clicks it, and hides it again</span>
             </div>
         </div>
 
@@ -100,6 +127,25 @@
                 <input type="text" id="stKey" class="grow" placeholder="key">
                 <input type="text" id="stValue" class="grow" placeholder="value">
                 <button id="stSet">Set</button>
+            </div>
+
+            <div class="tools">
+                <span id="coNote"></span>
+                <button id="coReload">Cookies</button>
+                <button id="coClear">Clear</button>
+            </div>
+            <div class="list half" id="colist">
+                <table class="grid">
+                    <thead>
+                        <tr><th>Cookie</th><th>Value</th><th></th></tr>
+                    </thead>
+                    <tbody id="cobody"></tbody>
+                </table>
+            </div>
+            <div class="tools">
+                <input type="text" id="coKey" class="grow" placeholder="cookie">
+                <input type="text" id="coValue" class="grow" placeholder="value">
+                <button id="coSet">Set</button>
             </div>
         </div>
 

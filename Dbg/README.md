@@ -30,6 +30,8 @@
  * boolean dbg.isConsoleHook() : ページのメッセージを読んでいるか
  * String dbg.journal(String kind, String limit) : the messages of the page kept for the panel, as a json array ; kind is console or network
  * String dbg.journal(String kind, String limit) : パネルのために保持するページのメッセージを json 配列で返します。kind は console か network
+ * String dbg.save(String kind, String file) : write the messages the plug-in keeps for its panel in a file under the directory of the run ; a name which ends with .txt holds them as text, an other name holds them in json
+ * String dbg.save(String kind, String file) : パネルのために保持するメッセージを実行用のフォルダー内のファイルに書き出します。.txt で終わる名前はテキスト、他の名前は json で持ちます
  * String dbg.cmd(String name, String arguments) : a work the javascript of the page is asked for ; the answer of the page comes back with the identifier given back here
  * String dbg.cmd(String name, String arguments) : ページの javascript に仕事を頼みます。ページの返事はここで返る identifier と一緒に来ます
  * void dbg.up(String kind, String json) : a message of the agent of the page ; only the agent of the plug-in writes it
@@ -69,16 +71,32 @@ function setup() {
 
  * Console : the messages of the console of the page, the errors of the page and the text the user writes, which the page reads ; the values of the page are shown as the trees the user opens, and the messages written before the opening of the panel are kept
  * Console : ページのコンソールのメッセージとエラー、ユーザーが書いたテキストをページが読みます。ページの値は開ける木として見えます。パネルを開く前のメッセージも残っています
+ * Console : the Save button writes those messages in a file under the directory of the run, so the user reads them out of the panel and gives them to an other person
+ * Console : Save ボタンで、そのメッセージを実行用のフォルダー内のファイルに書き出します。パネルの外で読んだり他の人に渡したりできます
  * Elements : the elements of the page, their attributes, their styles and their text, which the user may write again ; the Inspect button reads the element under the cursor of the user, as the debugger of a browser does
  * Elements : ページのelements・attributes・style・テキストをユーザーが書き直せます。Inspect のボタンで、カーソルの下の要素を読みます
+ * Elements : the box of the chosen element is shown too, with its place, its size, its padding, its border, its margin and the styles the engine of the page gives it, so the user knows why an element is not seen
+ * Elements : 選んだ要素の box も見せます。位置・大きさ・padding・border・margin・ページのエンジンが与えた style を並べます。要素が見えない理由が分かります
+ * Elements : the mark of the pointed element is removed when the cursor of the user leaves the page or when the Inspect button is turned off
+ * Elements : カーソルがページから出るか Inspect ボタンが off になると、指した要素の mark を消します
  * Sources : the files of the page which carry javascript and styles, read as text
  * Sources : ページの javascript と style のファイルをテキストとして読みます
+ * Sources : a word the user writes is searched in the page and in those files, and the panel shows the lines which answer it with their file and their line ; a line the user chooses opens the file which holds it
+ * Sources : ユーザーが書いた語をページやそれらのファイルの中へ検索し、答えた行をファイルと行番号で並べます。選んだ行を選ぶと、その行を持つファイルを開きます
  * Network : the requests the javascript of the page asks for with XMLHttpRequest or fetch, with their method, address, answer, time and length
  * Network : ページの javascript が XMLHttpRequest か fetch で頼んだ要求を、method・アドレス・回答・時間・長さで見せます
+ * Network : the row of a request opens the answer of the page under that row, with its headers and its text ; the agent of the page keeps the answers of the last sixty requests, and the text of a fetch is not read, because the page gives it to its javascript only
+ * Network : 要求の行を選ぶと、その行の下にページの回答を headers とテキストで開きます。エージェントは直近 60 件の回答を保持します。fetch のテキストはページが自身の javascript だけに渡すので読めません
  * Storage : the storage of the page, which the user may write again
  * Storage : ページの storage をユーザーが書き直せます
+ * Storage : the cookies the javascript of the page reads are listed with their name and their value, which the user may write again or remove ; the cookies the engine of the page keeps for itself and the cookies the page hides from its javascript are not read
+ * Storage : ページの javascript が読む cookie を名前と値で並べ、ユーザーが書き直したり消したりできます。ページ自身のエンジンが保持する cookie と、javascript に隠した cookie は読めません
+ * Storage : the engine of the page refuses a cookie it can not keep and tells nothing to the page, so the panel reads the cookies of the page again and tells the refusal in the log of its console
+ * Storage : ページのエンジンが保持できない cookie は黙って拒否されるため、パネルはページの cookie を読み直し、その拒否を自身のコンソールのログに出します
  * About : the version of the plug-in, what the engine of the page reads and what the panel can not read
  * About : プラグインのバージョン、ページのエンジンが読む情報、パネルが読めない情報を見せます
+ * About : the page is read again when the tab is opened, so the tab shows the title, the address, the state, the language, the view, the screen, the scroll of the page and the number of its elements, of its files and of the cookies it reads, as they are now ; the panel tells too how many messages of the page it forgot
+ * About : tab を開くたびにページを読み直すので、タイトル・アドレス・状態・言語・view・screen・scroll・要素数・ファイル数・読む cookie 数を今のまま見せます。プラグインが消したメッセージの数も教えます
 
 ## What the panel can not read
 
@@ -120,6 +138,8 @@ java --add-modules javafx.controls,javafx.web -cp "Dbg/target/Dbg.jar;PluginApi/
  * info()、log()、error()、warn() はそのテキストをページのコンソールの関数（console.info、console.log、console.error、console.warn）に書きます。テキストは escape されるので、別の javascript を混ぜられません
  * a message of the page longer than 256 KB is not written in the panel, and the queues of the plug-in hold 2000 messages of the console and 500 requests of the page : the messages which do not fit them are dropped and counted, so a page which writes messages without end can not fill the memory of the WebViewer
  * 256 KB より長いメッセージはパネルに書きません。プラグインはコンソールのメッセージを 2000 件、要求を 500 件保持します。入らないメッセージは消して数えます。メッセージを延々書くページでも WebViewer のメモリはいっぱいになりません
+ * the agent of the page keeps the headers and the text of the answers of the last sixty requests only, and the cookies it reads are those the javascript of the page reads : the cookies the engine of the page keeps for itself stay out of the panel
+ * エージェントが保持する回答の headers とテキストは直近 60 件だけです。読む cookie はページの javascript が読む cookie で、ページのエンジンが自身用に保持する cookie はパネルに出ません
  * an error of the javascript of the panel is written in the console of the WebViewer too, so the panel of the plug-in does not fail without a word
  * パネルの javascript のエラーも WebViewer のコンソールに書きます。パネルが失敗しても黙っていません
  * the name of a work the panel asks and the name of a console function of the page are read as names of function before they are written in a javascript, so the javascript of the page can not ask an other javascript of the plug-in

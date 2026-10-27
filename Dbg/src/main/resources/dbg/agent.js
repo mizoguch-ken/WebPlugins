@@ -16,9 +16,11 @@
     var MAX_NODES = 1500;
     var MAX_HTML = 60000;
     var MAX_STYLE = 120;
+    var MAX_HITS = 300;
+    var MAX_HIT_TEXT = 240;
 
     /* the build of the agent of the page, written again when the plug-in writes its javascript */
-    var AGENT_VERSION = '2026.10.11';
+    var AGENT_VERSION = '2026.10.26';
 
     if (window.__dbg && window.__dbg.alive) {
         /* a page which reads the agent again keeps the agent it knows */
@@ -34,6 +36,7 @@
     var errorBefore = window.onerror;
     var xhrOpenBefore = null;
     var xhrSendBefore = null;
+    var xhrHeaderBefore = null;
     var fetchBefore = (typeof window.fetch === 'function') ? window.fetch : null;
 
     var nodes = {};
@@ -42,9 +45,19 @@
     var isInspect = false;
     var isInternal = false;
     var overlay = null;
+    var marked = null;
     var counter = 0;
     var inspectOver = null;
     var inspectDown = null;
+    var inspectOut = null;
+    var inspectMove = null;
+    var inspectScroll = null;
+
+    /* the answers of the requests of the page, kept for the panel which asks them again */
+    var netId = 0;
+    var netKept = {};
+    var netOrder = [];
+    var MAX_NET = 100;
 
     /* eval of the global page, so the text the panel asks for sees the page and not the agent */
     var geval = eval;
@@ -385,6 +398,30 @@
     }
 
     /**
+     * the style the page wrote on an element itself, as the panel shows it
+     *
+     * @param element element of the page
+     * @return the styles of the element itself, name and value
+     */
+    function inline(element) {
+        var out = [];
+        var index;
+        var property;
+
+        try {
+            if (element && element.style) {
+                for (index = 0; (index < element.style.length) && (out.length < MAX_STYLE); index++) {
+                    property = element.style[index];
+                    out.push([property, cut(element.style.getPropertyValue(property))]);
+                }
+            }
+        } catch (e) {
+            /* the style of the element itself is kept out of the answer */
+        }
+        return out;
+    }
+
+    /**
      * the styles of an element of the page : the styles of the engine of the page, the rules of the
      * page which answer the element and the style the page wrote on the element itself
      *
@@ -406,16 +443,7 @@
         } catch (e) {
             out.read = 'the engine of the page refuses the styles';
         }
-        try {
-            if (element.style) {
-                for (index = 0; (index < element.style.length) && (out.inline.length < MAX_STYLE); index++) {
-                    property = element.style[index];
-                    out.inline.push([property, cut(element.style.getPropertyValue(property))]);
-                }
-            }
-        } catch (e) {
-            /* the style of the element itself is kept out of the answer */
-        }
+        out.inline = inline(element);
         try {
             var sheets = document.styleSheets;
 
@@ -462,31 +490,47 @@
     /**
      * show an element of the page : a page of the WebViewer is not read by a debugger of a browser,
      * so the agent writes its own mark over the element, and the mark is not an element of the page
-     * the user reads
+     * the user reads.<br>
+     * The mark is kept and moved, and not written again, because a mark removed under the cursor of
+     * the user tells the page that the cursor left an element, and the page answers it by hiding the
+     * mark again.
      *
      * @param element element of the page
      */
     function mark(element) {
-        unmark();
         if (!element || !element.getBoundingClientRect) {
+            unmark();
             return;
         }
-        try {
-            var box = element.getBoundingClientRect();
-            var owner = document.body || document.documentElement;
+        var place;
 
-            if (!owner) {
-                return;
-            }
-            overlay = document.createElement('div');
-            overlay.setAttribute('style', 'position:fixed;left:' + box.left + 'px;top:' + box.top + 'px;'
-                    + 'width:' + box.width + 'px;height:' + box.height + 'px;margin:0;padding:0;'
-                    + 'border:2px solid #1a73e8;background:rgba(66,133,244,0.25);z-index:2147483647;'
-                    + 'pointer-events:none');
-            owner.appendChild(overlay);
+        try {
+            place = element.getBoundingClientRect();
         } catch (e) {
-            /* a page which refuses the mark keeps the element */
+            /* a page which refuses the place of the element keeps the mark it has */
+            return;
         }
+        var owner = document.body || document.documentElement;
+
+        if (!owner) {
+            return;
+        }
+        if (!overlay || !overlay.parentNode) {
+            overlay = document.createElement('div');
+            overlay.className = '__dbg_mark';
+            owner.appendChild(overlay);
+        }
+        var wide = (typeof place.width === 'number') ? place.width : (place.right - place.left);
+        var high = (typeof place.height === 'number') ? place.height : (place.bottom - place.top);
+
+        try {
+            overlay.style.cssText = 'position:fixed;left:' + place.left + 'px;top:' + place.top + 'px;width:'
+                    + wide + 'px;height:' + high + 'px;margin:0;padding:0;border:2px solid #1a73e8;'
+                    + 'background:rgba(66,133,244,0.25);z-index:2147483647;pointer-events:none';
+        } catch (e) {
+            /* an engine which refuses the styles of the mark keeps the place it had */
+        }
+        marked = element;
     }
 
     /**
@@ -497,6 +541,29 @@
             overlay.parentNode.removeChild(overlay);
         }
         overlay = null;
+        marked = null;
+    }
+
+    /**
+     * the element of the page under the cursor of the user : the mark of the agent is kept out of the
+     * read, because the mark is written over the element of the page and is not an element of the page
+     *
+     * @param event message of the page about the cursor of the user
+     * @return the element of the page under the cursor, the element of the message else
+     */
+    function under(event) {
+        try {
+            if (document.elementFromPoint && (typeof event.clientX === 'number')) {
+                var found = document.elementFromPoint(event.clientX, event.clientY);
+
+                if (found && (found !== overlay)) {
+                    return found;
+                }
+            }
+        } catch (e) {
+            /* an engine which does not read the place of the cursor reads the element of the message */
+        }
+        return event.target;
     }
 
     /**
@@ -566,26 +633,103 @@
     }
 
     /**
-     * a request of the page
+     * a request of the page, told to the panel of the plug-in : the panel keeps the row of the
+     * request and asks the answer of the request again with the identifier given here
      *
-     * @param method method of the request
-     * @param url address of the request
-     * @param status answer of the page
-     * @param begin time of the ask of the request
-     * @param end time of the answer of the request
-     * @param size length of the answer of the request
-     * @param kind kind of the request, xhr or fetch
+     * @param row request of the page, as the panel shows it
      */
-    function request(method, url, status, begin, end, size, kind) {
+    function request(row) {
         send('net', JSON.stringify({
-            method: cut(method),
-            url: cut(url),
-            status: status,
-            kind: kind,
-            time: begin,
-            duration: end - begin,
-            size: size
+            id: row.id,
+            method: cut(row.method),
+            url: cut(row.url),
+            status: row.status,
+            text: cut(row.text),
+            mime: cut(row.mime),
+            kind: row.kind,
+            time: row.begin,
+            duration: row.end - row.begin,
+            size: row.size,
+            body: cut(row.body)
         }));
+    }
+
+    /**
+     * the answer of the page to a request its javascript asked for, as the agent reads it : an
+     * answer out of the page is refused by the page, which keeps its status for itself
+     *
+     * @param request request of the page, asked by the javascript of the page
+     * @return the status and the names of the answer of the page
+     */
+    function answered(request) {
+        var out = { status: 0, text: '', mime: '' };
+
+        try {
+            out.status = request.status;
+            out.text = String(request.statusText || '');
+            out.mime = String(request.getResponseHeader('content-type') || '');
+        } catch (e) {
+            /* a request which refuses its answer keeps no status, and the row of the panel holds 0 */
+        }
+        return out;
+    }
+
+    /**
+     * the text an ask of the page carries, as the agent keeps it : a value which is not a text is
+     * kept as the page writes it, because the agent does not read the types of the page
+     *
+     * @param body text of the ask of the page
+     * @return the text of the ask of the page
+     */
+    function bodyOf(body) {
+        if ((body === null) || (typeof body === 'undefined')) {
+            return '';
+        }
+        try {
+            return cut((typeof body === 'string') ? body : String(body));
+        } catch (e) {
+            return '';
+        }
+    }
+
+    /**
+     * the headers an ask of the page carries, given by the javascript of the page as an object of
+     * names, an array of pairs or an object of the page which reads them one by one
+     *
+     * @param headers headers of the ask of the page
+     * @return the headers of the ask of the page, name and value
+     */
+    function headersOfAsk(headers) {
+        var out = [];
+        var index;
+
+        if (!headers) {
+            return out;
+        }
+        try {
+            if (isArray(headers)) {
+                for (index = 0; (index < headers.length) && (out.length < 40); index++) {
+                    out.push([cut(headers[index][0]), cut(headers[index][1])]);
+                }
+                return out;
+            }
+            if (typeof headers.forEach === 'function') {
+                headers.forEach(function (value, name) {
+                    if (out.length < 40) {
+                        out.push([cut(name), cut(value)]);
+                    }
+                });
+                return out;
+            }
+            var keys = Object.keys(headers);
+
+            for (index = 0; (index < keys.length) && (out.length < 40); index++) {
+                out.push([cut(keys[index]), cut(headers[keys[index]])]);
+            }
+        } catch (e) {
+            /* an ask which refuses its headers keeps none */
+        }
+        return out;
     }
 
     /**
@@ -672,33 +816,68 @@
             if (!xhrOpenBefore) {
                 xhrOpenBefore = proto.open;
                 xhrSendBefore = proto.send;
+                xhrHeaderBefore = proto.setRequestHeader;
                 proto.open = function (method, url) {
                     this.__dbg = {
                         method: String(method || 'GET'),
                         url: String(url || ''),
-                        begin: (new Date()).getTime()
+                        kind: 'xhr',
+                        begin: (new Date()).getTime(),
+                        headers: [],
+                        body: ''
                     };
                     if (xhrOpenBefore) {
                         return xhrOpenBefore.apply(this, arguments);
                     }
                     return null;
                 };
-                proto.send = function () {
+                proto.setRequestHeader = function (name, value) {
+                    var info = this.__dbg;
+
+                    if (info && !isInternal && (info.headers.length < 40)) {
+                        info.headers.push([String(name), cut(value)]);
+                    }
+                    if (xhrHeaderBefore) {
+                        return xhrHeaderBefore.apply(this, arguments);
+                    }
+                    return null;
+                };
+                proto.send = function (body) {
                     var self = this;
                     var info = self.__dbg;
 
                     if (!info || isInternal) {
                         return xhrSendBefore ? xhrSendBefore.apply(self, arguments) : null;
                     }
+                    info.body = bodyOf(body);
                     var told = function () {
                         var size = 0;
+                        var text = '';
+                        var held = 0;
+                        var back;
 
                         try {
-                            size = self.responseText ? String(self.responseText).length : 0;
+                            text = self.responseText ? String(self.responseText) : '';
+                            size = text.length;
                         } catch (e) {
                             /* an answer the page does not read keeps no length */
                         }
-                        request(info.method, info.url, self.status, info.begin, (new Date()).getTime(), size, 'xhr');
+                        held = ++netId;
+                        back = answered(self);
+                        keepAnswer(held, info, headersOf(self), cut(text));
+                        request({
+                            id: held,
+                            method: info.method,
+                            url: info.url,
+                            kind: info.kind,
+                            status: back.status,
+                            text: back.text,
+                            mime: back.mime,
+                            begin: info.begin,
+                            end: (new Date()).getTime(),
+                            size: size,
+                            body: info.body
+                        });
                     };
 
                     if (self.addEventListener) {
@@ -722,19 +901,68 @@
                 window.__dbgFetch = true;
                 window.fetch = function (input, options) {
                     var begin = (new Date()).getTime();
-                    var url = (typeof input === 'string') ? input : ((input && input.url) || '');
-                    var method = (options && options.method) || 'GET';
+                    var info;
 
                     if (isInternal) {
                         return fetchBefore.apply(window, arguments);
                     }
+                    info = {
+                        method: (options && options.method) ? String(options.method)
+                                : ((input && input.method) ? String(input.method) : 'GET'),
+                        url: (typeof input === 'string') ? input : ((input && input.url) || ''),
+                        kind: 'fetch',
+                        begin: begin,
+                        headers: headersOfAsk(options && options.headers),
+                        body: bodyOf(options && options.body)
+                    };
                     return fetchBefore.apply(window, arguments).then(
                             function (answer) {
-                                request(method, url, answer ? answer.status : 0, begin, (new Date()).getTime(), 0, 'fetch');
+                                var held = ++netId;
+                                var back = { status: answer ? answer.status : 0, text: '', mime: '' };
+
+                                try {
+                                    if (answer) {
+                                        back.text = String(answer.statusText || '');
+                                        back.mime = answer.headers
+                                                ? String(answer.headers.get('content-type') || '') : '';
+                                    }
+                                } catch (e) {
+                                    /* an answer which refuses its names keeps none */
+                                }
+                                keepAnswer(held, info, headersOfFetch(answer), '');
+                                request({
+                                    id: held,
+                                    method: info.method,
+                                    url: info.url,
+                                    kind: info.kind,
+                                    status: back.status,
+                                    text: back.text,
+                                    mime: back.mime,
+                                    begin: begin,
+                                    end: (new Date()).getTime(),
+                                    size: 0,
+                                    body: info.body
+                                });
+                                readFetch(answer, held);
                                 return answer;
                             },
                             function (error) {
-                                request(method, url, 0, begin, (new Date()).getTime(), 0, 'fetch');
+                                var lost = ++netId;
+
+                                keepAnswer(lost, info, [], '');
+                                request({
+                                    id: lost,
+                                    method: info.method,
+                                    url: info.url,
+                                    kind: info.kind,
+                                    status: 0,
+                                    text: '',
+                                    mime: '',
+                                    begin: begin,
+                                    end: (new Date()).getTime(),
+                                    size: 0,
+                                    body: info.body
+                                });
                                 throw error;
                             });
                 };
@@ -742,49 +970,99 @@
         } else if (xhrOpenBefore) {
             proto.open = xhrOpenBefore;
             proto.send = xhrSendBefore;
+            proto.setRequestHeader = xhrHeaderBefore;
             xhrOpenBefore = null;
             xhrSendBefore = null;
+            xhrHeaderBefore = null;
         }
     }
 
     /**
      * the elements of the page the user points at : the panel asks for the element under the cursor
-     * of the user, as the debugger of a browser does
+     * of the user, as the debugger of a browser does.<br>
+     * The mark follows the element under the cursor with the messages of the cursor, because the page
+     * may change under the cursor of the user without telling a new element : the mark is kept while
+     * the cursor reads the page, and hidden when the cursor leaves the page itself.
      *
      * @param state state of the pointing of the panel
      */
     function pointing(state) {
         isInspect = state;
-        if (!window.addEventListener) {
+        if (!document.addEventListener) {
             return;
         }
         if (state) {
             if (!inspectOver) {
                 inspectOver = function (event) {
-                    if (event.target && (event.target !== overlay)) {
-                        mark(event.target);
+                    var element = under(event);
+
+                    if (element && (element !== overlay)) {
+                        mark(element);
+                    }
+                };
+                inspectMove = function (event) {
+                    var element = under(event);
+
+                    if (element && (element !== overlay) && (element !== marked)) {
+                        mark(element);
+                    }
+                };
+                inspectScroll = function () {
+                    if (marked) {
+                        mark(marked);
                     }
                 };
                 inspectDown = function (event) {
-                    var element = event.target;
+                    var element = under(event);
 
                     event.preventDefault();
                     event.stopPropagation();
-                    unmark();
-                    isInspect = false;
+                    /* the pointing is read once : the page stops marking when the user chose */
+                    pointing(false);
                     send('inspect', JSON.stringify({
                         id: keep(element),
                         name: brief(element),
                         path: element ? path(element) : []
                     }));
                 };
+                inspectOut = function (event) {
+                    var went = event.relatedTarget;
+
+                    if (went && (went !== document.documentElement) && (went !== document.body)) {
+                        /* the cursor of the user went to an other element of the page : its mark
+                        is kept, and the message of that element writes it again */
+                        return;
+                    }
+                    /* the cursor of the user left the page itself : its mark is not kept */
+                    unmark();
+                };
             }
-            window.addEventListener('mouseover', inspectOver, true);
-            window.addEventListener('mousedown', inspectDown, true);
-        } else if (inspectOver) {
-            window.removeEventListener('mouseover', inspectOver, true);
-            window.removeEventListener('mousedown', inspectDown, true);
+            /* the messages of the cursor are read on the document of the page and not on the window
+            of it, because the older webkit of the WebViewer stops the messages of the page at its
+            document and lets them reach the window only for the messages the page builds itself */
+            document.addEventListener('mouseover', inspectOver, true);
+            document.addEventListener('mousemove', inspectMove, true);
+            document.addEventListener('mouseout', inspectOut, true);
+            document.addEventListener('scroll', inspectScroll, true);
+            document.addEventListener('mousedown', inspectDown, true);
+        } else {
+            document.removeEventListener('mouseover', inspectOver, true);
+            document.removeEventListener('mousemove', inspectMove, true);
+            document.removeEventListener('mouseout', inspectOut, true);
+            document.removeEventListener('scroll', inspectScroll, true);
+            document.removeEventListener('mousedown', inspectDown, true);
+            /* the mark of the pointing is not kept when the panel stops the pointing */
+            unmark();
         }
+        /* the panel tells the user that the page reads the pointing or forgets it, so a page which
+        holds no agent is not read as a page which refuses the cursor of the user */
+        send('notice', JSON.stringify({
+            k: 'inspect',
+            on: isInspect,
+            text: isInspect ? 'the page reads the pointing of the panel'
+                    : 'the page forgets the pointing of the panel',
+            url: String(location.href || '')
+        }));
     }
 
     /**
@@ -820,9 +1098,332 @@
     }
 
     /**
+     * an element of the page written again with a text the user wrote in the panel, or a text added
+     * inside an element of the page : the text is read by the page as the elements of the page, so
+     * the panel writes an element and not only its name
+     *
+     * @param element element of the page the panel shows
+     * @param html text of the element, as the user wrote it
+     * @param inside true when the text is written inside the element, false when the element itself
+     *               is written again
+     * @return the element the page holds now, null when the page refuses the text
+     */
+    function made(element, html, inside) {
+        try {
+            var parent = element.parentNode;
+
+            if (!parent) {
+                return null;
+            }
+            /* the engine of the page reads the parts of a table only under a table, so the text of a
+            row of the page is not read as the text of a division of the page */
+            var name = String(parent.tagName || '').toLowerCase();
+            var box = document.createElement(('table' === name) || ('tbody' === name) || ('thead' === name)
+                    || ('tfoot' === name) || ('tr' === name) ? 'table' : 'div');
+
+            box.innerHTML = String(html || '');
+
+            var list = [];
+            var node = box.firstChild;
+            var index;
+
+            while (node) {
+                list.push(node);
+                node = node.nextSibling;
+            }
+            if (!list.length) {
+                return null;
+            }
+            if (inside) {
+                for (index = 0; index < list.length; index++) {
+                    element.appendChild(list[index]);
+                    /* the elements the page reads now are kept by the agent, so the panel asks for
+                    them with an identifier of its own */
+                    keep(list[index]);
+                }
+                return element;
+            }
+            for (index = 0; index < list.length; index++) {
+                parent.insertBefore(list[index], element);
+                keep(list[index]);
+            }
+            parent.removeChild(element);
+            return list[0];
+        } catch (e) {
+            return null;
+        }
+    }
+
+    /**
+     * an element of the page, written in json for the panel after the panel wrote it again
+     *
+     * @param element element of the page
+     * @return the element of the page, written in json
+     */
+    function shown(element) {
+        return {
+            name: brief(element),
+            tag: element.tagName ? String(element.tagName).toLowerCase() : '',
+            attributes: attributes(element),
+            text: cut(element.textContent),
+            html: long(element.outerHTML || element.nodeValue || ''),
+            box: box(element),
+            path: path(element)
+        };
+    }
+
+    /**
+     * the lines of a text of the page which answer a word the user wrote in the panel, for the
+     * search of the sources : the lines are kept shorter than the length the panel reads
+     *
+     * @param text text of a file of the page
+     * @param pattern word the user wrote, kept out of its case
+     * @param out the hits read yet, kept under the limit of the search
+     * @param kind kind of the file, page or script or link or style
+     * @param i number of the file of the kind, given back to the panel
+     * @param name name of the file, as the panel shows it
+     */
+    function lines(text, pattern, out, kind, i, name) {
+        var held = String(text || '');
+        var parts = held.split('\n');
+
+        for (var index = 0; (index < parts.length) && (out.length < MAX_HITS); index++) {
+            if (parts[index].toLowerCase().indexOf(pattern) >= 0) {
+                out.push({
+                    kind: kind,
+                    i: i,
+                    name: name,
+                    line: index + 1,
+                    text: parts[index].substring(0, MAX_HIT_TEXT)
+                });
+            }
+        }
+    }
+
+    /**
+     * the cookies the page reads, kept apart for the panel : the cookies the engine of the page
+     * keeps for itself are not read, as the cookies the page hides from its javascript
+     *
+     * @return the cookies of the page, name and value
+     */
+    function readCookies() {
+        var out = [];
+        var held = '';
+
+        try {
+            held = String(document.cookie || '');
+        } catch (e) {
+            return { items: out, note: 'the page refuses the cookies' };
+        }
+        var parts = held.split(';');
+        for (var index = 0; (index < parts.length) && (out.length < 200); index++) {
+            var part = parts[index].replace(/^ +/, '');
+            var at = part.indexOf('=');
+
+            if (at > 0) {
+                out.push([part.substring(0, at), cut(part.substring(at + 1))]);
+            } else if (part) {
+                out.push([part, '']);
+            }
+        }
+        return { items: out, n: out.length, note: 'the page reads the cookies of its javascript only' };
+    }
+
+    /**
      * the works the panel of the plug-in asks the page for : the panel never writes the elements of
      * the page, it asks for them by the identifiers the agent gave them
      */
+    /**
+     * a length of the page, given back as the panel reads it : the styles of the engine of the page
+     * are written as text, with the name of their unit
+     *
+     * @param text length of the page, as the engine of the page writes it
+     * @return the length of the page, in the pixels of the page
+     */
+    function number(text) {
+        var value = parseFloat(String(text));
+
+        return isNaN(value) ? 0 : Math.round(value * 10) / 10;
+    }
+
+    /**
+     * the four sides of a box of the page, as the panel shows them
+     *
+     * @param computed styles of the engine of the page
+     * @param name name of the box, written by the engine of the page
+     * @return the sides of the box, top, right, bottom, left
+     */
+    function sides(computed, name) {
+        return [number(computed.getPropertyValue(name + '-top')), number(computed.getPropertyValue(name + '-right')),
+                number(computed.getPropertyValue(name + '-bottom')), number(computed.getPropertyValue(name + '-left'))];
+    }
+
+    /**
+     * the place and the size of an element of the page and the box the engine of the page gives it :
+     * a debugger of a browser draws them over the page, the panel of the plug-in shows them under the
+     * attributes of the element, so the user knows why an element is not seen
+     *
+     * @param element element of the page
+     * @return the box of the element, written in json
+     */
+    function box(element) {
+        var out = { x: 0, y: 0, w: 0, h: 0, padding: [0, 0, 0, 0], border: [0, 0, 0, 0], margin: [0, 0, 0, 0],
+                client: [0, 0], scrolled: [0, 0], size: [0, 0], shown: false, why: '',
+                display: '', position: '', visibility: '', opacity: '' };
+
+        try {
+            var place = element.getBoundingClientRect();
+
+            out.x = number(place.left);
+            out.y = number(place.top);
+            out.w = number(place.width);
+            out.h = number(place.height);
+        } catch (e) {
+            /* an element out of the page holds no place */
+        }
+        try {
+            out.client = [number(element.clientWidth), number(element.clientHeight)];
+            out.scrolled = [number(element.scrollTop), number(element.scrollLeft)];
+            out.size = [number(element.scrollWidth), number(element.scrollHeight)];
+        } catch (e) {
+            /* an element which holds no size keeps none */
+        }
+        try {
+            var computed = window.getComputedStyle(element, '');
+
+            out.display = cut(computed.getPropertyValue('display'));
+            out.position = cut(computed.getPropertyValue('position'));
+            out.visibility = cut(computed.getPropertyValue('visibility'));
+            out.opacity = cut(computed.getPropertyValue('opacity'));
+            out.padding = sides(computed, 'padding');
+            out.border = sides(computed, 'border-width');
+            out.margin = sides(computed, 'margin');
+        } catch (e) {
+            out.why = 'the engine of the page refuses the styles';
+        }
+        out.shown = (out.display !== 'none') && (out.visibility !== 'hidden') && (out.opacity !== '0')
+                && ((out.w > 0) || (out.h > 0));
+        if (!out.shown && !out.why) {
+            if ((out.display === 'none') || (out.visibility === 'hidden')) {
+                out.why = 'the page hides the element';
+            } else {
+                out.why = 'the element holds no size';
+            }
+        }
+        return out;
+    }
+
+    /**
+     * the headers of the answer of a request of the page, read of the request itself
+     *
+     * @param request request of the page, asked by the javascript of the page
+     * @return the headers of the answer, name and value
+     */
+    function headersOf(request) {
+        var out = [];
+
+        try {
+            var held = request.getAllResponseHeaders ? String(request.getAllResponseHeaders()) : '';
+            var parts = held.split('\n');
+
+            for (var index = 0; (index < parts.length) && (out.length < 60); index++) {
+                var line = parts[index].replace(/\r/g, '');
+                var at = line.indexOf(':');
+
+                if (at > 0) {
+                    out.push([cut(line.substring(0, at)), cut(line.substring(at + 1).replace(/^ +/, ''))]);
+                }
+            }
+        } catch (e) {
+            /* a request which refuses its headers keeps none */
+        }
+        return out;
+    }
+
+    /**
+     * the headers of the answer of a fetch of the page
+     *
+     * @param answer answer of the page to the fetch of the page
+     * @return the headers of the answer, name and value
+     */
+    function headersOfFetch(answer) {
+        var out = [];
+
+        try {
+            if (answer && answer.headers && (typeof answer.headers.forEach === 'function')) {
+                answer.headers.forEach(function (value, name) {
+                    if (out.length < 60) {
+                        out.push([cut(name), cut(value)]);
+                    }
+                });
+            }
+        } catch (e) {
+            /* an answer which refuses its headers keeps none */
+        }
+        return out;
+    }
+
+    /**
+     * the answer of a request of the page, kept for the panel which asks it again : the plug-in keeps
+     * the requests it read, but their headers and their text are held by the page, so the agent keeps
+     * the last ones under the identifier it gave the request, with the ask of the request the page
+     * wrote itself
+     *
+     * @param id identifier of the request of the page
+     * @param ask ask of the request, with its method, its address, its headers and its text
+     * @param headers headers of the answer of the page
+     * @param text text of the answer of the page, when the page reads it
+     */
+    function keepAnswer(id, ask, headers, text) {
+        netKept[id] = { ask: ask, headers: headers, text: text };
+        netOrder.push(id);
+        while (netOrder.length > MAX_NET) {
+            delete netKept[netOrder.shift()];
+        }
+    }
+
+    /**
+     * the text of an answer read after the request was told to the panel : the text of a fetch of the
+     * page comes later than its headers, so the agent writes it in the answer it keeps
+     *
+     * @param id identifier of the request of the page
+     * @param text text of the answer of the page
+     */
+    function keepText(id, text) {
+        var kept = netKept[id];
+
+        if (kept) {
+            kept.text = cut(text);
+            kept.size = String(text || '').length;
+        }
+    }
+
+    /**
+     * the text of the answer of a fetch of the page, read of a copy of the answer : the answer given
+     * to the javascript of the page is kept as it is, so the page reads its fetch as before the agent
+     *
+     * @param answer answer of the page to the fetch of the page
+     * @param id identifier of the request of the page
+     */
+    function readFetch(answer, id) {
+        try {
+            if (!answer || (typeof answer.clone !== 'function') || (typeof answer.text !== 'function')) {
+                return;
+            }
+            var held = answer.clone().text();
+
+            if (held && (typeof held.then === 'function')) {
+                held.then(function (text) {
+                    keepText(id, text);
+                }, function (e) {
+                    /* an answer which refuses its text keeps none */
+                });
+            }
+        } catch (e) {
+            /* an engine which reads no fetch keeps no text */
+        }
+    }
+
     var work = {
 
         /* the page itself, which the panel shows when it is opened */
@@ -860,15 +1461,10 @@
             if (!element) {
                 return { none: true };
             }
-            return {
-                id: ask.id,
-                name: brief(element),
-                tag: element.tagName ? String(element.tagName).toLowerCase() : '',
-                attributes: attributes(element),
-                text: cut(element.textContent),
-                html: long(element.outerHTML),
-                path: path(element)
-            };
+            var out = shown(element);
+
+            out.id = ask.id;
+            return out;
         },
 
         /* the styles of an element of the page */
@@ -927,6 +1523,69 @@
             element.parentNode.removeChild(element);
             delete nodes[ask.id];
             return { id: ask.id, removed: true };
+        },
+
+        /* a style the user wrote on an element of the page : no value removes the style of that name */
+        setStyle: function (ask) {
+            var element = held(ask.id);
+
+            if (!element || !element.style) {
+                return { none: true };
+            }
+            if (!ask.name) {
+                return { id: ask.id, read: 'a style holds a name', inline: inline(element) };
+            }
+            try {
+                if ((ask.value === null) || (typeof ask.value === 'undefined') || ('' === String(ask.value))) {
+                    element.style.removeProperty(ask.name);
+                } else {
+                    element.style.setProperty(ask.name, String(ask.value));
+                }
+            } catch (e) {
+                /* the engine of the page refuses a style it does not read */
+                return { id: ask.id, read: cut(e), inline: inline(element) };
+            }
+            return { id: ask.id, inline: inline(element), box: box(element) };
+        },
+
+        /* the text an element of the page holds, written again by the user : the page reads the
+        elements the user wrote as the elements of the page, so the element of the panel is written
+        again and the panel reads the new element with the new identifier the agent gives it */
+        setHtml: function (ask) {
+            var element = held(ask.id);
+
+            if (!element || !element.parentNode) {
+                return { none: true };
+            }
+            var born = made(element, ask.html, false);
+
+            if (!born) {
+                return { id: ask.id, read: 'the page refuses the text the panel wrote' };
+            }
+            delete nodes[ask.id];
+            var out = shown(born);
+
+            out.id = keep(born);
+            out.gone = ask.id;
+            return out;
+        },
+
+        /* the elements the user wrote in the panel, added inside an element of the page */
+        insertChild: function (ask) {
+            var element = held(ask.id);
+
+            if (!element || (element.nodeType === 3)) {
+                return { none: true };
+            }
+            var born = made(element, ask.html, true);
+
+            if (!born) {
+                return { id: ask.id, read: 'the page refuses the text the panel wrote' };
+            }
+            var out = shown(born);
+
+            out.id = ask.id;
+            return out;
         },
 
         /* the text of an element of the page, as the page reads it */
@@ -1066,6 +1725,196 @@
             return work.storage(ask);
         },
 
+        /* the whole value of a key of the storage of the page : the list of the storage keeps its
+        values shorter than the text of the agent, so the panel asks the value it writes again */
+        readValue: function (ask) {
+            var store = null;
+
+            try {
+                store = (ask.area === 'session') ? window.sessionStorage : window.localStorage;
+            } catch (e) {
+                /* the engine of the page refuses the storage */
+            }
+            if (!store) {
+                return { read: 'the page refuses the storage' };
+            }
+            var value = null;
+
+            try {
+                value = store.getItem(ask.key);
+            } catch (e) {
+                return { read: cut(e) };
+            }
+            if ((value === null) || (typeof value === 'undefined')) {
+                return { area: ask.area, key: ask.key, none: true };
+            }
+            return { area: ask.area, key: ask.key, value: long(value), n: String(value).length };
+        },
+
+        /* the text of a file of the page, written again for the run of the page : the plug-in writes
+        no file of the computer, so the page reads the text the panel wrote until the page is loaded
+        again, and the file of the page on the computer keeps its own text */
+        writeSource: function (ask) {
+            var text = String(ask.text || '');
+            var read;
+            var tags;
+            var tag;
+
+            if ('page' === ask.kind) {
+                if (!document.documentElement) {
+                    return { none: true };
+                }
+                try {
+                    document.documentElement.innerHTML = text;
+                } catch (e) {
+                    return { read: cut(e) };
+                }
+                prune();
+                return { kind: ask.kind, size: text.length,
+                        read: 'the page reads the text the panel wrote, its own file keeps its text' };
+            }
+            if ('style' === ask.kind) {
+                tags = document.getElementsByTagName('style');
+                tag = tags[ask.i];
+                if ((tag === undefined) || !tag) {
+                    return { none: true };
+                }
+                tag.textContent = text;
+                return { kind: ask.kind, size: text.length, read: 'the page reads the style the panel wrote' };
+            }
+            if ('script' === ask.kind) {
+                tags = document.getElementsByTagName('script');
+                tag = tags[ask.i];
+                if (!tag) {
+                    return { none: true };
+                }
+                read = tag.src
+                        ? 'the file of the script keeps its own text, the page reads the text the panel wrote'
+                        : 'the page reads the text of the script the panel wrote';
+                if (!tag.src) {
+                    tag.textContent = text;
+                }
+                if (ask.run) {
+                    try {
+                        geval(text);
+                        read = read + ' and the page read it';
+                    } catch (e) {
+                        read = cut(e);
+                    }
+                }
+                return { kind: ask.kind, size: text.length, read: read };
+            }
+            if ('link' === ask.kind) {
+                tags = document.getElementsByTagName('link');
+                tag = tags[ask.i];
+                if (!tag) {
+                    return { none: true };
+                }
+                /* the file of the style is not written by the plug-in, so the page reads a style the
+                panel wrote instead of the file of the page, and the file of the page keeps its text */
+                try {
+                    tag.disabled = true;
+                    var kept = document.getElementById('__dbg_style_' + ask.i);
+
+                    if (!kept) {
+                        kept = document.createElement('style');
+                        kept.id = '__dbg_style_' + ask.i;
+                        (document.body || document.documentElement).appendChild(kept);
+                    }
+                    kept.textContent = text;
+                } catch (e) {
+                    return { read: cut(e) };
+                }
+                return { kind: ask.kind, size: text.length,
+                        read: 'the page reads the style the panel wrote, its file keeps its text' };
+            }
+            return { error: 'the panel writes no file of that kind [' + ask.kind + ']' };
+        },
+
+        /* the text of the files of the page which answers a word the user wrote in the panel */
+        find: function (ask) {
+            var word = String(ask.word || '');
+            var pattern = word.toLowerCase();
+            var out = [];
+            var index;
+
+            if (!pattern) {
+                return { word: word, hits: out, n: 0 };
+            }
+            lines(document.documentElement ? document.documentElement.outerHTML : '', pattern, out, 'page', 0, 'the page');
+
+            var links = document.getElementsByTagName('link');
+            for (index = 0; (index < links.length) && (out.length < MAX_HITS); index++) {
+                if (links[index].rel && (String(links[index].rel).toLowerCase().indexOf('stylesheet') >= 0)
+                        && links[index].href) {
+                    lines(read(links[index].href), pattern, out, 'link', index, String(links[index].href));
+                }
+            }
+            var tags = document.getElementsByTagName('script');
+            for (index = 0; (index < tags.length) && (out.length < MAX_HITS); index++) {
+                if (tags[index].src) {
+                    lines(read(tags[index].src), pattern, out, 'script', index, String(tags[index].src));
+                } else {
+                    lines(String(tags[index].text || tags[index].textContent || ''), pattern, out,
+                        'script', index, '(inline)');
+                }
+            }
+            var stylesTags = document.getElementsByTagName('style');
+            for (index = 0; (index < stylesTags.length) && (out.length < MAX_HITS); index++) {
+                lines(String(stylesTags[index].textContent || ''), pattern, out, 'style', index, '(inline)');
+            }
+            return { word: word, hits: out, n: out.length };
+        },
+
+        /* the cookies the page reads, which the panel shows as the storage of the page */
+        cookies: function () {
+            return readCookies();
+        },
+
+        /* a cookie the user wrote in the panel : no name removes every cookie the page reads,
+        no value removes the cookie of that name */
+        writeCookie: function (ask) {
+            var index;
+            var held;
+            var back;
+
+            if (!ask.name) {
+                held = readCookies().items;
+                for (index = 0; index < held.length; index++) {
+                    try {
+                        document.cookie = held[index][0] + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+                        document.cookie = held[index][0] + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+                    } catch (e) {
+                        /* the engine of the page refuses the cookie */
+                    }
+                }
+                return readCookies();
+            }
+            if ((ask.name.indexOf('=') >= 0) || (ask.name.indexOf(';') >= 0)) {
+                return { error: 'a cookie holds no = nor ; in its name', items: readCookies().items };
+            }
+            try {
+                if ((ask.value === null) || (typeof ask.value === 'undefined')) {
+                    document.cookie = ask.name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
+                    document.cookie = ask.name + '=; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+                    return readCookies();
+                }
+                document.cookie = ask.name + '=' + encodeURIComponent(String(ask.value)) + '; path=/';
+            } catch (e) {
+                return { error: cut(e), items: readCookies().items };
+            }
+            /* the engine of the page refuses a cookie it can not keep and tells nothing, so the
+            agent reads the cookies of the page again to know the cookie the page kept */
+            back = readCookies();
+            for (index = 0; index < back.items.length; index++) {
+                if (back.items[index][0] === String(ask.name)) {
+                    return back;
+                }
+            }
+            back.error = 'the engine of the page refused the cookie';
+            return back;
+        },
+
         /* an element of the page the panel shows */
         highlight: function (ask) {
             mark(held(ask.id));
@@ -1107,7 +1956,121 @@
             }
         },
 
-        /* what the engine of the page reads, which the panel of the plug-in shows in About */
+        /* the answer of a request of the page, which the panel asks again with the identifier the
+        agent gave the request : the ask of the request is kept too, so the panel shows what the
+        javascript of the page wrote and not only what the page answered */
+        netText: function (ask) {
+            var kept = netKept[ask.id];
+
+            if (!kept) {
+                return { none: true, note: 'the page keeps this answer no more' };
+            }
+            return { id: ask.id, ask: kept.ask, headers: kept.headers, text: kept.text,
+                    size: kept.size };
+        },
+
+        /* the files the engine of the page read by itself : the engine tells nothing of their
+        answers to a plug-in, so the agent reads what the page holds of them, which is their
+        address, their kind and, when the engine keeps them, their times and their lengths */
+        netFiles: function () {
+            var out = [];
+            var held = {};
+            var tags;
+            var index;
+            var read;
+
+            var add = function (url, kind, begin, duration, size) {
+                var name = String(url || '');
+
+                if (!name || held[kind + '|' + name] || (out.length >= MAX_NET)) {
+                    return;
+                }
+                held[kind + '|' + name] = true;
+                out.push({
+                    id: 0,
+                    method: 'GET',
+                    url: cut(name),
+                    status: 0,
+                    text: '',
+                    mime: '',
+                    kind: kind,
+                    time: begin || 0,
+                    duration: duration || 0,
+                    size: size || 0,
+                    body: '',
+                    note: 'the engine of the page read this file by itself'
+                });
+            };
+
+            /* the times the engine of the page keeps, when it keeps them */
+            try {
+                if (window.performance && (typeof window.performance.getEntriesByType === 'function')) {
+                    read = window.performance.getEntriesByType('resource');
+                    for (index = 0; read && (index < read.length) && (out.length < MAX_NET); index++) {
+                        /* the engine of the page keeps the time of its files from the start of the
+                        page, which the panel does not know : only the length of the time is kept */
+                        add(read[index].name, 'file', 0, Number(read[index].duration) || 0,
+                                Number(read[index].transferSize || read[index].encodedBodySize) || 0);
+                    }
+                }
+            } catch (e) {
+                /* an engine which keeps no times tells nothing of the files it read */
+            }
+            tags = document.getElementsByTagName('script');
+            for (index = 0; (index < tags.length) && (out.length < MAX_NET); index++) {
+                add(tags[index].src, 'js', 0, 0, String(tags[index].text || tags[index].textContent || '').length);
+            }
+            tags = document.getElementsByTagName('link');
+            for (index = 0; (index < tags.length) && (out.length < MAX_NET); index++) {
+                if (String(tags[index].rel || '').toLowerCase().indexOf('stylesheet') >= 0) {
+                    add(tags[index].href, 'css', 0, 0, 0);
+                }
+            }
+            tags = document.getElementsByTagName('img');
+            for (index = 0; (index < tags.length) && (out.length < MAX_NET); index++) {
+                add(tags[index].src, 'img', 0, 0, 0);
+            }
+            tags = document.getElementsByTagName('iframe');
+            for (index = 0; (index < tags.length) && (out.length < MAX_NET); index++) {
+                add(tags[index].src, 'iframe', 0, 0, 0);
+            }
+            var parts = ['embed', 'object', 'audio', 'video', 'source'];
+            var part;
+
+            for (index = 0; (index < parts.length) && (out.length < MAX_NET); index++) {
+                tags = document.getElementsByTagName(parts[index]);
+                for (part = 0; (part < tags.length) && (out.length < MAX_NET); part++) {
+                    add(tags[part].src || tags[part].data, 'media', 0, 0, 0);
+                }
+            }
+            return { files: out, n: out.length };
+        },
+
+        /* the page and its engine, as they are when the panel reads them */
+        info: function () {
+            var cookies = readCookies().items;
+
+            return {
+                title: cut(document.title),
+                url: cut(location.href),
+                referrer: cut(document.referrer),
+                ready: String(document.readyState || ''),
+                language: cut(navigator.language || ''),
+                characterSet: cut(document.characterSet || ''),
+                platform: cut(navigator.platform || ''),
+                online: (navigator.onLine !== false),
+                viewport: [number(window.innerWidth), number(window.innerHeight)],
+                pixels: number(window.devicePixelRatio || 1),
+                screen: [number((window.screen && window.screen.width) || 0),
+                        number((window.screen && window.screen.height) || 0)],
+                scrolled: [number(window.pageXOffset || 0), number(window.pageYOffset || 0)],
+                nodes: document.getElementsByTagName('*').length,
+                scripts: document.scripts ? document.scripts.length : 0,
+                sheets: document.styleSheets ? document.styleSheets.length : 0,
+                cookies: cookies.length
+            };
+        },
+
         probe: function () {
             return {
                 agent: AGENT_VERSION,

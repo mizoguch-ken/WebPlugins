@@ -74,6 +74,7 @@ public class DbgTest {
         assertCallable("setConsoleHook", boolean.class);
         assertCallable("isConsoleHook");
         assertCallable("journal", String.class, String.class);
+        assertCallable("save", String.class, String.class);
         assertCallable("cmd", String.class, String.class);
         assertCallable("up", String.class, String.class);
         assertCallable("clear");
@@ -123,6 +124,41 @@ public class DbgTest {
 
         plugin.close();
         assertFalse(Files.exists(local), "the plug-in removes the files it wrote for the run");
+    }
+
+    @Test
+    public void theJournalOfThePageIsWrittenInAFileOfThePlugIn() throws Exception {
+        Dbg plugin = new Dbg();
+
+        plugin.up(Bridge.LOG, "{\"level\":\"warn\",\"time\":1700000000000,\"src\":\"page\",\"args\":["
+                + "{\"t\":\"string\",\"v\":\"a message of the page\"}]}");
+        plugin.up(Bridge.NET, "{\"method\":\"GET\",\"url\":\"a file of the page\",\"status\":200,"
+                + "\"kind\":\"xhr\",\"time\":1700000001000,\"duration\":12,\"size\":120}");
+
+        String kept = plugin.save("console", "journal.txt");
+
+        assertTrue(kept.contains("\"file\":\"journal.txt\""), "the plug-in gives the file it wrote");
+        assertTrue(kept.contains("\"count\":1"), "the plug-in gives the number of the messages it wrote");
+
+        String text = Files.readString(plugin.files().resolve("journal.txt"));
+
+        assertTrue(text.contains("warn: a message of the page"), "the file holds the message of the page");
+        assertFalse(text.contains(" \n"), "the plug-in writes no space at the end of a line");
+
+        kept = plugin.save("network", "journal.json");
+        assertTrue(kept.contains("\"count\":1"), "the plug-in counts the requests of the page");
+        assertTrue(Files.readString(plugin.files().resolve("journal.json")).contains("a file of the page"),
+                "the file holds the request of the page in json");
+
+        assertTrue(plugin.save("console", "../an other file.txt").contains("Incorrect file path"),
+                "the plug-in writes its file under the directory of the run only");
+
+        plugin.clear();
+        assertTrue(plugin.save("console", "an empty file.txt").contains("\"count\":0"),
+                "the plug-in tells the user it wrote no message");
+        assertEquals("", Files.readString(plugin.files().resolve("an empty file.txt")),
+                "the plug-in writes an empty file when the page wrote no message");
+        plugin.close();
     }
 
     @Test

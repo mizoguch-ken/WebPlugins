@@ -91,4 +91,41 @@ public class JournalTest {
         assertEquals(0, Journal.limit("0", Journal.CONSOLE_MAX));
         assertEquals(0, Journal.limit("-3", Journal.CONSOLE_MAX));
     }
+
+    @Test
+    public void aMessageHoldsNoSpaceAtTheEndOfItsLine() {
+        Journal journal = new Journal();
+
+        journal.add(Journal.CONSOLE, "{\"level\":\"log\",\"time\":1,\"args\":[]}");
+        journal.add(Journal.CONSOLE, "{\"level\":\"warn\",\"time\":2,\"args\":[{\"t\":\"string\",\"v\":\"a message\"}]}");
+
+        String kept = journal.text(Journal.CONSOLE);
+
+        assertEquals(2, kept.lines().count());
+        for (String line : kept.lines().toList()) {
+            assertEquals(line.stripTrailing(), line, "a line of the text of a message holds no space at its end");
+        }
+    }
+
+    @Test
+    public void theMessagesAreWrittenAsTextForTheUser() {
+        Journal journal = new Journal();
+
+        journal.add(Journal.CONSOLE, "{\"level\":\"warn\",\"time\":1,\"args\":[{\"t\":\"string\",\"v\":\"a message"
+                + " of the page\"},{\"t\":\"number\",\"v\":2}]}");
+        journal.add(Journal.NETWORK, "{\"method\":\"GET\",\"url\":\"a file of the page\",\"status\":200,"
+                + "\"duration\":12,\"size\":120}");
+
+        String kept = journal.text(Journal.CONSOLE);
+
+        assertTrue(kept.contains("a message of the page"), "the text holds the message of the page");
+        assertTrue(kept.contains("warn:"), "the text holds the level of the message of the page");
+        assertTrue(kept.contains("2"), "the text holds the number the page wrote");
+
+        String net = journal.text(Journal.NETWORK);
+
+        assertTrue(net.contains("GET 200 a file of the page"), "the text holds the request of the page");
+        assertTrue(net.contains("12 ms"), "the text holds the time of the request of the page");
+        assertTrue(net.contains("120 bytes"), "the text holds the length of the answer of the page");
+    }
 }
