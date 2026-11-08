@@ -1,83 +1,86 @@
 # WebPlugins PluginKit
 
-## Overview
+## Overview / 概要
 
-## 概要
+* **PluginKit** (`webviewer-plugin-kit`) provides the common base classes, thread-safe notification queues, JavaScript escaping utilities, callback validators, and path sandboxing helpers shared by all `WebViewer` plug-ins.
+* **PluginKit**（`webviewer-plugin-kit`）は、すべての `WebViewer` プラグインで共通利用される基底クラス、JavaFX スレッド通知キュー、JavaScript エスケープ処理、コールバック関数名検証、およびパスサンドボックス機能を提供するサポートライブラリです。
+* It is built as a plain library JAR (`webviewer-plugin-kit-<version>.jar`). Do **not** place it directly in `web/plugins`; each plug-in shades `PluginKit` into its own deliverable JAR.
+* 通常のライブラリ JAR（`webviewer-plugin-kit-<version>.jar`）としてビルドされます。`web/plugins` フォルダーには直接置かず、各プラグインが自身の JAR に shade して使用します。
 
- * The common support of the WebViewer plug-ins : the base class of a plug-in and the helpers which keep the values of the page out of the javascript the plug-in writes.
- * WebViewer プラグインの共通の支援部分です。プラグインの基底クラスと、プラグインが書く javascript にページの値が混ざらないようにする手助けのクラスです。
- * It is a plain library : it is not put in the [plugins] folder, each plug-in shades it in its own jar.
- * 通常のライブラリです。[plugins]フォルダーには置かず、各プラグインが自身の jar に shade します。
+---
 
-## Classes
+## Classes / クラス一覧
 
-## クラス
+* **Java Module**: `ken.mizoguch.webviewer.plugin.kit`
+* **Exported Package**: `ken.mizoguch.webviewer.plugin.kit`
 
- * module ken.mizoguch.webviewer.plugin.kit, which exports the package ken.mizoguch.webviewer.plugin.kit
- * モジュール ken.mizoguch.webviewer.plugin.kit はパッケージ ken.mizoguch.webviewer.plugin.kit を exports します
- * PluginSupport : the base class of a plug-in, which implements WebViewerPlugin ; it gives webViewer(), stage(), icons(), webEngine(), webPath(), write(), writeStackTrace(), state() and close(), and the protected scriptFunction(String func) keeps the name the page gave for a notification
- * PluginSupport : プラグインの基底クラスで WebViewerPlugin を実装します。webViewer()、stage()、icons()、webEngine()、webPath()、write()、writeStackTrace()、state()、close() を与え、protected の scriptFunction(String func) はページが通知のために与えた名前を保ちます
- * ServiceSupport&lt;V&gt; : the base class of a plug-in which runs a work of its own in a thread of its own, which extends javafx.concurrent.Service ; it gives awaitTermination(int millis)
- * ServiceSupport&lt;V&gt; : 自身の仕事を自身のスレッドで動かすプラグインの基底クラスで javafx.concurrent.Service を継承します。awaitTermination(int millis) を与えます（WebCam と OnlineArt が使います）
- * HostRef : the reference of the WebViewer, which answers null or nothing when the plug-in is not initialized yet
- * HostRef : WebViewer の参照です。プラグインがまだ初期化されていない時は null や空を返します
- * ScriptNotifier : the queue of the notifications of the page, which calls the function the page gave with the arguments the plug-in gives ; the queue holds ScriptNotifier.QUEUE_MAX (1024) notifications and a dropped one is told to the console
- * ScriptNotifier : ページへの通知の列です。ページが与えた関数を、プラグインが与えた引数で呼びます。列は ScriptNotifier.QUEUE_MAX（1024）まで保持し、あふれた物はコンソールに書かれます。setFunction(String function) , function() , setEngine(WebEngine engine) , setState(Worker.State state) , pending() , clear() , send() , send(String arguments)
- * ScriptFunction : isValid(String name) tells whether a name given by the page is a name a javascript function can carry
- * ScriptFunction : isValid(String name) はページが与えた名前が javascript の関数の名前として使えるかを答えます
- * ScriptValue : quote(String value) and literal(String value) write a text as a javascript value, so the text can not carry an other javascript ; the forms with a length keep a longer text shorter, under ScriptValue.MAX_LENGTH (4096)
- * ScriptValue : quote(String value) と literal(String value) はテキストを javascript の値として書くので、テキストに別の javascript を混ぜられません。長さを指定した形は ScriptValue.MAX_LENGTH（4096）より長いテキストを短くします（モデルの回答の末尾など）
- * SandboxPath : resolve(Path directory, String path) , resolve(Path directory, Path page, String path) and require(Path directory, Path page, String path) keep a path the page wrote under the folder of the page
- * SandboxPath : resolve(Path directory, String path) 、 resolve(Path directory, Path page, String path) 、 require(Path directory, Path page, String path) はページが書いたパスをページのフォルダーの下に留めます
- * LicenseDialog : the window which shows the licenses the plug-in ships with
- * LicenseDialog : プラグインが内包するライブラリのライセンスを表示するウィンドウです
+| Class / クラス | Description / 説明 |
+| :--- | :--- |
+| `PluginSupport` | Base class for standard plug-ins implementing `WebViewerPlugin`. Delegates `webViewer()`, `stage()`, `icons()`, `webEngine()`, `webPath()`, `write()`, `writeStackTrace()`, `state()`, and `close()` through `HostRef`, and provides `protected String scriptFunction(String func)` to validate JavaScript callback names.<br>`WebViewerPlugin` を実装する標準プラグインの基底クラスです。`HostRef` を通じたホスト委譲メソッドと、通知コールバック関数名を検証する `protected String scriptFunction(String func)` を提供します。 |
+| `ServiceSupport<V>` | Base class for plug-ins that run a background worker task (`javafx.concurrent.Service<V>`, used by `OnlineArt` and `WebCam`). Provides `awaitTermination(int millis)` for clean shutdown and `protected String scriptFunction(String func)` for callback validation.<br>バックグラウンドスレッドでタスクを実行するプラグイン（`OnlineArt`, `WebCam`）向けの基底クラスで、`javafx.concurrent.Service<V>` を継承します。終了待機の `awaitTermination(int millis)` と `scriptFunction(String func)` を提供します。 |
+| `HostRef` | Thread-safe holder (`volatile`) for the host `WebViewerPlugin` reference. Safely returns `null` or empty values before `initialize(...)` is called.<br>ホスト側 `WebViewerPlugin` 参照をスレッドセーフ（`volatile`）に保持するラッパーです。未初期化時は安全に `null` や空リストを返します。 |
+| `ScriptNotifier` | Bounded queue (`QUEUE_MAX = 1024`) that dispatches JavaScript callbacks on the JavaFX Application Thread once the page reaches `Worker.State.SUCCEEDED`. Coalesces FX-thread drain tasks and logs dropped notifications if the queue overflows.<br>ページが `Worker.State.SUCCEEDED` の状態のときに JavaFX アプリケーションスレッド上で登録済み JavaScript 関数を呼び出す通知キュー（上限 `QUEUE_MAX = 1024`）です。メソッド: `setFunction(String)`, `function()`, `setEngine(WebEngine)`, `setState(Worker.State)`, `pending()`, `clear()`, `send()`, `send(String arguments)`。 |
+| `ScriptFunction` | Validates via `isValid(String name)` that a callback name supplied by the page is a strict JavaScript function identifier or dotted property path (`^[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)*\z`), preventing arbitrary script injection.<br>ページから渡されたコールバック関数名が正当な JavaScript 関数識別子（またはドット区切りのプロパティ参照）であるかを `isValid(String name)` で検証し、スクリプトインジェクションを防ぎます。 |
+| `ScriptValue` | Escapes Java strings into safe JavaScript string literals via `quote(String)` and `literal(String)` (escaping `\`, `'`, `"`, `\r`, `\n`, `\u0000`, `\u2028`, `\u2029`, and control characters). Overloads with a max length (`MAX_LENGTH = 4096`) truncate long payloads safely.<br>文字列を安全な JavaScript リテラルに変換する `quote(String)` と `literal(String)` を提供します（改行・制御文字・`\u2028`・`\u2029` 等を単一パスでエスケープし、別のスクリプトの混入を防ぎます）。長さ制限付きのオーバーロード（既定 `MAX_LENGTH = 4096`）も備えています。 |
+| `SandboxPath` | Resolves and canonicalizes page-supplied file paths via `resolve(Path directory, String path)`, `resolve(Path directory, Path page, String path)`, and `require(Path directory, Path page, String path)`, rejecting any path that escapes the page's root `web` folder.<br>ページから指定されたファイルパスを正規化し、ページの `web` フォルダー配下に収まっていることを検証します。フォルダー外へ出るパスは拒否されます。 |
+| `LicenseDialog` | JavaFX dialog window that displays the third-party licenses stored in a plug-in's `licenses.txt` resource when `<plugin>.licenses()` is called.<br>`<plugin>.licenses()` 呼び出し時に、プラグインパッケージ内の `licenses.txt` を読み込んで表示するダイアログウィンドウです。 |
 
-## Usage
+---
 
-## 使い方
-
- * A plug-in extends PluginSupport, or ServiceSupport when it runs a work of its own
- * プラグインは PluginSupport を、自身の仕事を動かすなら ServiceSupport を継承します
- * a plug-in tells the name of a page function to the plug-in with a setNotify... function, and the plug-in calls that function with a ScriptNotifier
- * プラグインは setNotify... の関数でページの関数の名前を受け取り、ScriptNotifier でその関数を呼びます
-
-e.g.
+## Usage / 使い方
 
 ```java
+package example;
+
+import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
+import ken.mizoguch.webviewer.plugin.kit.ScriptNotifier;
+import ken.mizoguch.webviewer.plugin.kit.ScriptValue;
+
 public class MyPlugin extends PluginSupport {
 
     private final ScriptNotifier done_ = new ScriptNotifier(this, "done");
+
+    @Override
+    public String functionName() {
+        return "myplugin";
+    }
 
     public void setNotifyDone(String func) {
         done_.setFunction(scriptFunction(func));
     }
 
     public void work() {
-        // the text of the work is escaped : it can not carry an other javascript
+        // Escaped as a safe JS string literal so arbitrary JS cannot be injected
         done_.send(ScriptValue.literal("the end of the work"));
     }
 }
 ```
 
-## Requirements
+---
 
-## 要件
+## Requirements / 要件
 
- * Java 21 or later, with the JavaFX modules javafx.base, javafx.controls, javafx.graphics and javafx.web, and the jdk.jsobject module of the JDK
- * Java 21 以上と JavaFX の javafx.base、javafx.controls、javafx.graphics、javafx.web、JDK の jdk.jsobject
+* **Java**: JDK 21 or later with JavaFX modules (`javafx.base`, `javafx.controls`, `javafx.graphics`, `javafx.web`) and `jdk.jsobject`.
+  * **Java**: JavaFX モジュール（`javafx.base`, `javafx.controls`, `javafx.graphics`, `javafx.web`）および `jdk.jsobject` を含む JDK 21 以上。
 
-## Build
+---
 
-## ビルド
+## Build & Test / ビルドとテスト
 
- * mvn -B -pl PluginKit package : target/webviewer-plugin-kit-<version>.jar, a plain library jar which is not shaded
- * mvn -B -pl PluginKit package : 成果物は target/webviewer-plugin-kit-<version>.jar です。shade しない通常のライブラリ jar です
- * mvn -B -pl PluginKit test reads the JavaFX modules given by the parent pom
- * mvn -B -pl PluginKit test は親 pom が与える JavaFX のモジュールを読みます
+```bash
+# Build the library JAR
+mvn -B -pl PluginKit -am package
 
-## Licenses
+# Run unit tests
+mvn -B -pl PluginKit -am test
+```
 
-## ライセンス
+* Output artifact: `PluginKit/target/webviewer-plugin-kit-<version>.jar` (plain unshaded library JAR).
+  * 成果物: `PluginKit/target/webviewer-plugin-kit-<version>.jar`（shade しない通常のライブラリ JAR）。
 
- * The module ships with no library of an other project
- * このモジュールは他のプロジェクトのライブラリを内包しません
+---
+
+## Licenses / ライセンス
+
+* This module contains no third-party libraries.
+  * このモジュールは外部プロジェクトのライブラリを内包しません。

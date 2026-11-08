@@ -7,15 +7,10 @@ import java.io.BufferedOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.file.Path;
-import java.util.List;
 import javafx.application.Platform;
-import javafx.concurrent.Service;
 import javafx.concurrent.Task;
 import javafx.concurrent.Worker;
-import javafx.scene.image.Image;
 import javafx.scene.web.WebEngine;
-import javafx.stage.Stage;
 import javax.swing.event.EventListenerList;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
 import ken.mizoguch.webviewer.plugin.kit.ServiceSupport;
@@ -127,18 +122,20 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
      */
     private static final int TASK_TERMINATION_MILLIS = 3000;
 
-    private WebEngine webEngine_;
-    private Worker.State state_;
-    private String funcReceiveRequest_, funcReceiveResponse_, funcSendRequest_, funcSendResponse_, funcSendRetry_;
+    private volatile WebEngine webEngine_;
+    private volatile Worker.State state_;
+    private volatile String funcReceiveRequest_, funcReceiveResponse_, funcSendRequest_, funcSendResponse_,
+            funcSendRetry_;
     private final Gson gson_ = new Gson();
 
     private final EventListenerList eventListenerList_;
 
-    private int linkUnitNumber_, linkMaxUnitNumber_, linkBaseTime_, linkDelayTime_, linkRetryNumber_,
+    private volatile int linkUnitNumber_, linkMaxUnitNumber_, linkBaseTime_, linkDelayTime_, linkRetryNumber_,
             linkReceiveAddressOffset_, linkSendAddressOffset_, linkMaxRegisterNumber_, linkConnectionUnits_,
             linkTriggerUnitNumber_;
-    private long linkSynchronizeTime_, linkRequestWaitTime_, linkSendWaitTime_, linkSendDelayTime_, lineOneCycleTime_;
-    private int reserveSendRequestDestination_, reserveSendRequestCommand_, reserveSendRequestStartAddress_,
+    private volatile long linkSynchronizeTime_, linkRequestWaitTime_, linkSendWaitTime_, linkSendDelayTime_,
+            lineOneCycleTime_;
+    private volatile int reserveSendRequestDestination_, reserveSendRequestCommand_, reserveSendRequestStartAddress_,
             reserveSendRequestRegisterNumber_, reserveSendRequestReceiveAddressOffset_,
             reserveSendRequestSendAddressOffset_;
 
@@ -147,11 +144,11 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
     private OnlineArtSendPacket artSendResponsePacket_;
     private OnlineArtSendPacket artSendRequestPacket_;
 
-    private BufferedInputStream inputStream_;
-    private BufferedOutputStream outputStream_;
+    private volatile BufferedInputStream inputStream_;
+    private volatile BufferedOutputStream outputStream_;
 
-    private int[] relay_;
-    private int[] register_;
+    private volatile int[] relay_;
+    private volatile int[] register_;
 
     private volatile boolean isExit_;
 
@@ -242,7 +239,7 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
      * @param func
      */
     public void setNotifyReceiveRequest(String func) {
-        funcReceiveRequest_ = func;
+        funcReceiveRequest_ = scriptFunction(func);
         if ((funcReceiveRequest_ == null) && (funcReceiveResponse_ == null) && (funcSendRequest_ == null)
                 && (funcSendResponse_ == null) && (funcSendRetry_ == null)) {
             removeOnlineArtListener(this);
@@ -256,7 +253,7 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
      * @param func
      */
     public void setNotifyReceiveResponse(String func) {
-        funcReceiveResponse_ = func;
+        funcReceiveResponse_ = scriptFunction(func);
         if ((funcReceiveRequest_ == null) && (funcReceiveResponse_ == null) && (funcSendRequest_ == null)
                 && (funcSendResponse_ == null) && (funcSendRetry_ == null)) {
             removeOnlineArtListener(this);
@@ -270,7 +267,7 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
      * @param func
      */
     public void setNotifySendRequest(String func) {
-        funcSendRequest_ = func;
+        funcSendRequest_ = scriptFunction(func);
         if ((funcReceiveRequest_ == null) && (funcReceiveResponse_ == null) && (funcSendRequest_ == null)
                 && (funcSendResponse_ == null) && (funcSendRetry_ == null)) {
             removeOnlineArtListener(this);
@@ -284,7 +281,7 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
      * @param func
      */
     public void setNotifySendResponse(String func) {
-        funcSendResponse_ = func;
+        funcSendResponse_ = scriptFunction(func);
         if ((funcReceiveRequest_ == null) && (funcReceiveResponse_ == null) && (funcSendRequest_ == null)
                 && (funcSendResponse_ == null) && (funcSendRetry_ == null)) {
             removeOnlineArtListener(this);
@@ -298,7 +295,7 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
      * @param func
      */
     public void setNotifySendRetry(String func) {
-        funcSendRetry_ = func;
+        funcSendRetry_ = scriptFunction(func);
         if ((funcReceiveRequest_ == null) && (funcReceiveResponse_ == null) && (funcSendRequest_ == null)
                 && (funcSendResponse_ == null) && (funcSendRetry_ == null)) {
             removeOnlineArtListener(this);
@@ -314,6 +311,9 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
      * @throws java.io.IOException
      */
     public Boolean setSerialPort(SerialPort serial) throws IOException {
+        if (serial == null) {
+            return false;
+        }
         setInputStream(serial.getInputStream());
         setOutputStream(serial.getOutputStream());
         return true;
@@ -910,6 +910,9 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
     }
 
     private boolean setRelay(int[] data) {
+        if (data == null) {
+            return false;
+        }
         return setData(data, 0, relay_, 0, data.length);
     }
 
@@ -926,6 +929,9 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
     }
 
     private boolean setRegister(int[] data) {
+        if (data == null) {
+            return false;
+        }
         return setData(data, 0, register_, 0, data.length);
     }
 
@@ -994,7 +1000,8 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
     }
 
     private boolean setData(int[] src, int srcPos, int[] dest, int destPos, int length) {
-        if ((0 < (destPos + length)) && ((destPos + length) <= dest.length)) {
+        if ((src != null) && (dest != null) && (0 <= srcPos) && (0 <= destPos) && (0 < length)
+                && ((srcPos + length) <= src.length) && ((destPos + length) <= dest.length)) {
             System.arraycopy(src, srcPos, dest, destPos, length);
             return true;
         }
@@ -1002,14 +1009,14 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
     }
 
     private int getData(int[] array, int position, int bit) {
-        if ((0 <= position) && (position < array.length)) {
+        if ((array != null) && (0 <= position) && (position < array.length) && (0 <= bit) && (bit < 16)) {
             return (((array[position]) >>> bit) & 0x0001);
         }
         return -1;
     }
 
     private boolean setData(boolean data, int[] array, int position, int bit) {
-        if ((0 <= position) && (position < array.length)) {
+        if ((array != null) && (0 <= position) && (position < array.length) && (0 <= bit) && (bit < 16)) {
             if (data) {
                 array[position] |= 0x0001 << bit;
             } else {
@@ -1021,14 +1028,14 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
     }
 
     private int getData(int[] array, int position) {
-        if ((0 <= position) && (position < array.length)) {
+        if ((array != null) && (0 <= position) && (position < array.length)) {
             return array[position];
         }
         return -1;
     }
 
     private boolean setData(int data, int[] array, int position) {
-        if ((0 <= position) && (position < array.length)) {
+        if ((array != null) && (0 <= position) && (position < array.length)) {
             array[position] = data;
             return true;
         }
@@ -1066,12 +1073,16 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
 
                 while (!isExit_) {
                     currentTimeNanos = System.nanoTime();
+                    boolean didWork = false;
 
                     try {
                         // recv
                         if (inputStream_ != null) {
                             if (inputStream_.available() > 0) {
-                                if (artReceivePacket_.read(inputStream_.read())) {
+                                int readByte = inputStream_.read();
+                                if (readByte >= 0) {
+                                    didWork = true;
+                                    if (artReceivePacket_.read(readByte)) {
                                     if (linkUnitNumber_ > 0) {
                                         if (linkUnitNumber_ == 1) {
                                             connectionUnits |= 0x0001 << (artReceivePacket_.getSource() - 1);
@@ -1226,6 +1237,7 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
                                             }
                                         }
                                     }
+                                }
                                 }
                             }
                         }
@@ -1395,6 +1407,9 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
                         }
                     } catch (IOException ex) {
                     }
+                    if (!didWork) {
+                        Thread.onSpinWait();
+                    }
                 }
                 return null;
             }
@@ -1406,10 +1421,12 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
             final int command) {
         if (funcReceiveRequest_ != null) {
             Platform.runLater(() -> {
-                if (funcReceiveRequest_ != null) {
+                String func = funcReceiveRequest_;
+                WebEngine engine = webEngine_;
+                if ((func != null) && (engine != null)) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcReceiveRequest_ + "(" + destination + "," + source + ","
+                            engine.executeScript(func + "(" + destination + "," + source + ","
                                     + dataType + "," + command + ");");
                         } catch (JSException ex) {
                             writeStackTrace(FUNCTION_NAME, ex);
@@ -1424,10 +1441,12 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
     public void receiveResponseOnlineArt(int destination, int source, int dataType, int command) {
         if (funcReceiveResponse_ != null) {
             Platform.runLater(() -> {
-                if (funcReceiveResponse_ != null) {
+                String func = funcReceiveResponse_;
+                WebEngine engine = webEngine_;
+                if ((func != null) && (engine != null)) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcReceiveResponse_ + "(" + destination + "," + source + ","
+                            engine.executeScript(func + "(" + destination + "," + source + ","
                                     + dataType + "," + command + ");");
                         } catch (JSException ex) {
                             writeStackTrace(FUNCTION_NAME, ex);
@@ -1442,10 +1461,12 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
     public void sendRequestOnlineArt(int destination, int source, int dataType, int command) {
         if (funcSendRequest_ != null) {
             Platform.runLater(() -> {
-                if (funcSendRequest_ != null) {
+                String func = funcSendRequest_;
+                WebEngine engine = webEngine_;
+                if ((func != null) && (engine != null)) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcSendRequest_ + "(" + destination + "," + source + ","
+                            engine.executeScript(func + "(" + destination + "," + source + ","
                                     + dataType + "," + command + ");");
                         } catch (JSException ex) {
                             writeStackTrace(FUNCTION_NAME, ex);
@@ -1460,10 +1481,12 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
     public void sendResponseOnlineArt(int destination, int source, int dataType, int command) {
         if (funcSendResponse_ != null) {
             Platform.runLater(() -> {
-                if (funcSendResponse_ != null) {
+                String func = funcSendResponse_;
+                WebEngine engine = webEngine_;
+                if ((func != null) && (engine != null)) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcSendResponse_ + "(" + destination + "," + source + ","
+                            engine.executeScript(func + "(" + destination + "," + source + ","
                                     + dataType + "," + command + ");");
                         } catch (JSException ex) {
                             writeStackTrace(FUNCTION_NAME, ex);
@@ -1478,10 +1501,12 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
     public void sendRetryOnlineArt(int destination, int source, int dataType, int command) {
         if (funcSendRetry_ != null) {
             Platform.runLater(() -> {
-                if (funcSendRetry_ != null) {
+                String func = funcSendRetry_;
+                WebEngine engine = webEngine_;
+                if ((func != null) && (engine != null)) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcSendRetry_ + "(" + destination + "," + source + "," + dataType
+                            engine.executeScript(func + "(" + destination + "," + source + "," + dataType
                                     + "," + command + ");");
                         } catch (JSException ex) {
                             writeStackTrace(FUNCTION_NAME, ex);

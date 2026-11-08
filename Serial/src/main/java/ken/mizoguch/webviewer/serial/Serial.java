@@ -15,7 +15,6 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashMap;
@@ -26,9 +25,7 @@ import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.TimeUnit;
 import javafx.application.Platform;
 import javafx.concurrent.Worker;
-import javafx.scene.image.Image;
 import javafx.scene.web.WebEngine;
-import javafx.stage.Stage;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
 import ken.mizoguch.webviewer.plugin.kit.ScriptFunction;
@@ -41,16 +38,17 @@ import netscape.javascript.JSException;
 public class Serial extends PluginSupport implements SerialPortEventListener {
 
     private static final String FUNCTION_NAME = "serial";
+    private static final int MAX_BUFFER_SIZE = 65536;
 
-    private WebEngine webEngine_;
-    private Worker.State state_;
-    private SerialPort port_;
-    private boolean owner_;
-    private String funcDataAvailable_, funcOutputEmpty_, funcBreakInterrupt_, funcCarrierDetect_, funcCTS_, funcDSR_,
-            funcFramingError_, funcOverrunError_, funcParityError_, funcRingIndicator_;
-    private BlockingQueue<Integer> data_;
-    private BufferedReader bufferedReader_;
-    private BufferedWriter bufferedWriter_;
+    private volatile WebEngine webEngine_;
+    private volatile Worker.State state_;
+    private volatile SerialPort port_;
+    private volatile boolean owner_;
+    private volatile String funcDataAvailable_, funcOutputEmpty_, funcBreakInterrupt_, funcCarrierDetect_, funcCTS_,
+            funcDSR_, funcFramingError_, funcOverrunError_, funcParityError_, funcRingIndicator_;
+    private volatile BlockingQueue<Integer> data_;
+    private volatile BufferedReader bufferedReader_;
+    private volatile BufferedWriter bufferedWriter_;
     private final Gson gson_ = new Gson();
 
     /**
@@ -575,37 +573,45 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
                             break;
                     }
 
-                    port_.setSerialPortParams(
-                            param[0],
-                            param[1],
-                            param[2],
-                            param[3]);
-                    port_.setFlowControlMode(SerialPort.FLOWCONTROL_NONE);
-                    bufferedReader_ = new BufferedReader(
-                            new InputStreamReader(port_.getInputStream(), StandardCharsets.UTF_8));
-                    bufferedWriter_ = new BufferedWriter(
-                            new OutputStreamWriter(port_.getOutputStream(), StandardCharsets.UTF_8));
-                    // input buffer clear
-                    while (bufferedReader_.ready()) {
-                        bufferedReader_.read();
+                    boolean configured = false;
+                    try {
+                        port_.setSerialPortParams(
+                                param[0],
+                                param[1],
+                                param[2],
+                                param[3]);
+                        port_.setFlowControlMode(SerialPort.FLOWCONTROL_NONE);
+                        bufferedReader_ = new BufferedReader(
+                                new InputStreamReader(port_.getInputStream(), StandardCharsets.UTF_8));
+                        bufferedWriter_ = new BufferedWriter(
+                                new OutputStreamWriter(port_.getOutputStream(), StandardCharsets.UTF_8));
+                        // input buffer clear
+                        while (bufferedReader_.ready()) {
+                            bufferedReader_.read();
+                        }
+
+                        port_.addEventListener(this);
+                        port_.notifyOnDataAvailable(true);
+                        port_.notifyOnOutputEmpty(funcOutputEmpty_ != null);
+                        port_.notifyOnBreakInterrupt(funcBreakInterrupt_ != null);
+                        port_.notifyOnCarrierDetect(funcCarrierDetect_ != null);
+                        port_.notifyOnCTS(funcCTS_ != null);
+                        port_.notifyOnDSR(funcDSR_ != null);
+                        port_.notifyOnFramingError(funcFramingError_ != null);
+                        port_.notifyOnOverrunError(funcOverrunError_ != null);
+                        port_.notifyOnParityError(funcParityError_ != null);
+                        port_.notifyOnRingIndicator(funcRingIndicator_ != null);
+
+                        data_ = new LinkedBlockingQueue<>(MAX_BUFFER_SIZE);
+
+                        owner_ = true;
+                        configured = true;
+                        return true;
+                    } finally {
+                        if (!configured) {
+                            close();
+                        }
                     }
-
-                    port_.addEventListener(this);
-                    port_.notifyOnDataAvailable(true);
-                    port_.notifyOnOutputEmpty(funcOutputEmpty_ != null);
-                    port_.notifyOnBreakInterrupt(funcBreakInterrupt_ != null);
-                    port_.notifyOnCarrierDetect(funcCarrierDetect_ != null);
-                    port_.notifyOnCTS(funcCTS_ != null);
-                    port_.notifyOnDSR(funcDSR_ != null);
-                    port_.notifyOnFramingError(funcFramingError_ != null);
-                    port_.notifyOnOverrunError(funcOverrunError_ != null);
-                    port_.notifyOnParityError(funcParityError_ != null);
-                    port_.notifyOnRingIndicator(funcRingIndicator_ != null);
-
-                    data_ = new LinkedBlockingQueue<>();
-
-                    owner_ = true;
-                    return true;
                 } else {
                     write(FUNCTION_NAME, "Incorrect serial argument", true);
                 }
@@ -659,9 +665,10 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @throws java.io.IOException
      */
     public Boolean write(String text) throws IOException {
-        if (bufferedWriter_ != null) {
-            bufferedWriter_.write(text);
-            bufferedWriter_.flush();
+        BufferedWriter writer = bufferedWriter_;
+        if ((writer != null) && (text != null)) {
+            writer.write(text);
+            writer.flush();
             return true;
         }
         return false;
@@ -723,14 +730,18 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param spe
      */
     protected void dataAvailable(SerialPortEvent spe) {
-        if ((data_ != null) && (bufferedReader_ != null)) {
+        BlockingQueue<Integer> data = data_;
+        BufferedReader reader = bufferedReader_;
+        if ((data != null) && (reader != null)) {
             try {
-                while (bufferedReader_.ready()) {
-                    data_.offer(bufferedReader_.read());
-                    if (!bufferedReader_.ready()) {
+                while (reader.ready()) {
+                    data.offer(reader.read());
+                    if (!reader.ready()) {
                         try {
                             TimeUnit.MILLISECONDS.sleep(100);
                         } catch (InterruptedException ex) {
+                            Thread.currentThread().interrupt();
+                            break;
                         }
                     }
                 }
@@ -741,10 +752,12 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
 
         if (funcDataAvailable_ != null) {
             Platform.runLater(() -> {
-                if (funcDataAvailable_ != null) {
+                String func = funcDataAvailable_;
+                WebEngine engine = webEngine_;
+                if ((func != null) && (engine != null)) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcDataAvailable_ + "();");
+                            engine.executeScript(func + "();");
                         } catch (JSException ex) {
                             writeStackTrace(FUNCTION_NAME, ex);
                         }
@@ -762,10 +775,12 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
     protected void outputBufferEmpty(SerialPortEvent spe) {
         if (funcOutputEmpty_ != null) {
             Platform.runLater(() -> {
-                if (funcOutputEmpty_ != null) {
+                String func = funcOutputEmpty_;
+                WebEngine engine = webEngine_;
+                if ((func != null) && (engine != null)) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcOutputEmpty_ + "();");
+                            engine.executeScript(func + "();");
                         } catch (JSException ex) {
                             writeStackTrace(FUNCTION_NAME, ex);
                         }
@@ -783,10 +798,12 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
     protected void breakInterrupt(SerialPortEvent spe) {
         if (funcBreakInterrupt_ != null) {
             Platform.runLater(() -> {
-                if (funcBreakInterrupt_ != null) {
+                String func = funcBreakInterrupt_;
+                WebEngine engine = webEngine_;
+                if ((func != null) && (engine != null)) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcBreakInterrupt_ + "();");
+                            engine.executeScript(func + "();");
                         } catch (JSException ex) {
                             writeStackTrace(FUNCTION_NAME, ex);
                         }
@@ -804,10 +821,13 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
     protected void carrierDetect(SerialPortEvent spe) {
         if (funcCarrierDetect_ != null) {
             Platform.runLater(() -> {
-                if (funcCarrierDetect_ != null) {
+                String func = funcCarrierDetect_;
+                WebEngine engine = webEngine_;
+                SerialPort port = port_;
+                if ((func != null) && (engine != null) && (port != null)) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcCarrierDetect_ + "(" + port_.isCD() + ");");
+                            engine.executeScript(func + "(" + port.isCD() + ");");
                         } catch (JSException ex) {
                             writeStackTrace(FUNCTION_NAME, ex);
                         }
@@ -825,10 +845,13 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
     protected void clearToSend(SerialPortEvent spe) {
         if (funcCTS_ != null) {
             Platform.runLater(() -> {
-                if (funcCTS_ != null) {
+                String func = funcCTS_;
+                WebEngine engine = webEngine_;
+                SerialPort port = port_;
+                if ((func != null) && (engine != null) && (port != null)) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcCTS_ + "(" + port_.isCTS() + ");");
+                            engine.executeScript(func + "(" + port.isCTS() + ");");
                         } catch (JSException ex) {
                             writeStackTrace(FUNCTION_NAME, ex);
                         }
@@ -846,10 +869,13 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
     protected void dataSetReady(SerialPortEvent spe) {
         if (funcDSR_ != null) {
             Platform.runLater(() -> {
-                if (funcDSR_ != null) {
+                String func = funcDSR_;
+                WebEngine engine = webEngine_;
+                SerialPort port = port_;
+                if ((func != null) && (engine != null) && (port != null)) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcDSR_ + "(" + port_.isDSR() + ");");
+                            engine.executeScript(func + "(" + port.isDSR() + ");");
                         } catch (JSException ex) {
                             writeStackTrace(FUNCTION_NAME, ex);
                         }
@@ -867,10 +893,12 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
     protected void framingError(SerialPortEvent spe) {
         if (funcFramingError_ != null) {
             Platform.runLater(() -> {
-                if (funcFramingError_ != null) {
+                String func = funcFramingError_;
+                WebEngine engine = webEngine_;
+                if ((func != null) && (engine != null)) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcFramingError_ + "();");
+                            engine.executeScript(func + "();");
                         } catch (JSException ex) {
                             writeStackTrace(FUNCTION_NAME, ex);
                         }
@@ -888,10 +916,12 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
     protected void overrunError(SerialPortEvent spe) {
         if (funcOverrunError_ != null) {
             Platform.runLater(() -> {
-                if (funcOverrunError_ != null) {
+                String func = funcOverrunError_;
+                WebEngine engine = webEngine_;
+                if ((func != null) && (engine != null)) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcOverrunError_ + "();");
+                            engine.executeScript(func + "();");
                         } catch (JSException ex) {
                             writeStackTrace(FUNCTION_NAME, ex);
                         }
@@ -909,10 +939,12 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
     protected void parityError(SerialPortEvent spe) {
         if (funcParityError_ != null) {
             Platform.runLater(() -> {
-                if (funcParityError_ != null) {
+                String func = funcParityError_;
+                WebEngine engine = webEngine_;
+                if ((func != null) && (engine != null)) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcParityError_ + "();");
+                            engine.executeScript(func + "();");
                         } catch (JSException ex) {
                             writeStackTrace(FUNCTION_NAME, ex);
                         }
@@ -930,10 +962,13 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
     protected void ringIndicator(SerialPortEvent spe) {
         if (funcRingIndicator_ != null) {
             Platform.runLater(() -> {
-                if (funcRingIndicator_ != null) {
+                String func = funcRingIndicator_;
+                WebEngine engine = webEngine_;
+                SerialPort port = port_;
+                if ((func != null) && (engine != null) && (port != null)) {
                     if (state_ == Worker.State.SUCCEEDED) {
                         try {
-                            webEngine_.executeScript(funcRingIndicator_ + "(" + port_.isRI() + ");");
+                            engine.executeScript(func + "(" + port.isRI() + ");");
                         } catch (JSException ex) {
                             writeStackTrace(FUNCTION_NAME, ex);
                         }

@@ -1,84 +1,90 @@
 # WebPlugins Db
 
-## Overview
+## Overview / 概要
 
-## 概要
+* **Db** is the JDBC database plug-in for the `WebViewer`. It dynamically loads a user-supplied JDBC driver JAR, connects to a relational database, executes SQL queries or updates, and returns query rows as a JSON array string.
+* **Db** は、`WebViewer` 向けの JDBC データベースプラグインです。ページが指定した JDBC ドライバー JAR を独自のクラスローダーで動的に読み込み、データベースへの接続、SQL クエリ（SELECT）や更新（INSERT / UPDATE / DELETE 等）の実行、および検索結果の JSON 配列文字列での取得を行います。
+* Because the JDBC driver is loaded dynamically from `web/plugins/lib/` rather than shaded into `Db.jar`, any JDBC-compliant database (PostgreSQL, Oracle, MySQL, MariaDB, SQLite, SQL Server, etc.) can be used.
+* JDBC ドライバーは `Db.jar` に固定で shade せず `web/plugins/lib/` 等から動的に読み込むため、任意の JDBC 対応データベース（PostgreSQL、Oracle、MySQL、MariaDB、SQLite、SQL Server など）を利用できます。
 
- * The database of the page : the plug-in connects a database with a JDBC driver of the page, runs SQL and answers the rows as a json text.
- * ページのデータベースです。プラグインはページの JDBC ドライバーでデータベースに接続し、SQL を実行して行を json のテキストで答えます。
- * The driver is not shaded in the jar of the plug-in : the plug-in reads the jar the page names with a class loader of its own, so a page can choose its driver.
- * ドライバーはプラグインの jar に shade しません。プラグインはページが名前で与えた jar を自身のクラスローダーで読むので、ページはドライバーを選べます。
+---
 
-## Functions
+## JavaScript Functions / JS 関数一覧
 
-## 関数
+```text
+void    db.licenses()
+Boolean db.connect(String libraryPath, String url, String user, String pass)
+String  db.query(String sql)
+Integer db.update(String sql)
+void    db.close()
+```
 
- * void db.licenses()
- * Boolean db.connect(String libraryPath, String url, String user, String pass)
- * String db.query(String sql) : the rows as a json array
- * String db.query(String sql) : 行を json 配列として答えます
- * Integer db.update(String sql) : the number of the rows the SQL changed
- * Integer db.update(String sql) : SQL が変えた行の数を答えます
- * void db.close()
+| Function / 関数 | Description / 説明 |
+| :--- | :--- |
+| `db.connect(libraryPath, url, user, pass)` | Loads the JDBC driver JAR at `libraryPath` and opens a JDBC connection to `url` with `user` and `pass`. Returns `true` on success.<br>`libraryPath` の JDBC ドライバー JAR を読み込み、`url`・`user`・`pass` でデータベースに接続します。成功時は `true` を返します。 |
+| `db.query(sql)` | Executes a `SELECT` query and returns the result set as a JSON array of row objects (`[{column: value, ...}, ...]`), or `null` on error.<br>SQL クエリを実行し、結果の行を列名をキーとする JSON オブジェクトの配列文字列として返します。 |
+| `db.update(sql)` | Executes an `INSERT`, `UPDATE`, `DELETE`, or DDL statement and returns the affected row count, or `null` on error.<br>更新系 SQL を実行し、変更された行数を返します。 |
+| `db.close()` | Closes the active JDBC connection and releases the driver class loader.<br>データベース接続を閉じ、ドライバーのクラスローダーを解放します。 |
 
-## Usage
+---
 
-## 使い方
+## Usage / 使い方
 
-Put the jar of the JDBC driver in the web/plugins/lib folder, then read it by its path.
+Place `Db.jar` in `web/plugins/`, place your JDBC driver JAR in `web/plugins/lib/`, and restart the `WebViewer`.
+`Db.jar` を `web/plugins/` に、JDBC ドライバーの JAR を `web/plugins/lib/` に配置して `WebViewer` を再起動します。
 
-JDBC ドライバーの jar を web/plugins/lib フォルダーへ置き、そのパスを読みます。
-
-e.g.
+### PostgreSQL Example / PostgreSQL の例
 
 ```javascript
 db.connect('./web/plugins/lib/postgresql.jar', 'jdbc:postgresql://localhost:5432/dbname', 'user', 'pass');
-var result = db.query('select id from tbl');
+var result = db.query('SELECT id FROM tbl');
 db.close();
 if (result) {
   var data = JSON.parse(result);
 }
 ```
 
-e.g.
+### Oracle Example / Oracle の例
 
 ```javascript
 db.connect('./web/plugins/lib/ojdbc10.jar', 'jdbc:oracle:thin:@localhost:1521:sidname', 'user', 'pass');
-var result = db.query('select id from tbl');
+var result = db.query('SELECT id FROM tbl');
 db.close();
 if (result) {
   var data = JSON.parse(result);
 }
 ```
 
-## Notes
+---
 
-## 注記
+## Notes / 注記
 
- * when the page reads an Oracle database and the error "Non supported character set (add orai18n.jar in your classpath)" is told, put orai18n.jar in the web/plugins/lib folder too
- * ページが Oracle のデータベースを読み、「Non supported character set (add orai18n.jar in your classpath)」のエラーが出たら、orai18n.jar も web/plugins/lib フォルダーへ置いてください
- * the rows of a query are written as a json array of the objects of the columns, so the page reads them with JSON.parse()
- * query の行は列のオブジェクトの json 配列として書くので、ページは JSON.parse() で読めます
+* **Oracle Character Set Support**: If connecting to an Oracle database produces `Non supported character set (add orai18n.jar in your classpath)`, place `orai18n.jar` in `web/plugins/lib/` alongside `ojdbc10.jar`.
+  * **Oracle 文字セット対応**: Oracle データベース接続時に `Non supported character set (add orai18n.jar in your classpath)` エラーが発生する場合は、`orai18n.jar` も `web/plugins/lib/` フォルダーに配置してください。
+* **SLF4J Included**: `Db.jar` shades `slf4j-api` alongside `Gson` so JDBC drivers that depend on SLF4J load without missing-class errors.
+  * **SLF4J 同梱**: SLF4J を要求する JDBC ドライバーがそのまま動作するよう、`Db.jar` には `Gson` と共に `slf4j-api` が shade されています。
 
-## Requirements
+---
 
-## 要件
+## Requirements / 要件
 
- * a JDBC driver jar in the web/plugins/lib folder of the WebViewer
- * WebViewer の web/plugins/lib フォルダーの JDBC ドライバーの jar
- * the jar of the plug-in holds gson and the slf4j library, which the JDBC drivers of some databases read
- * プラグインの jar は gson と slf4j ライブラリを持ちます。slf4j はいくつかのデータベースの JDBC ドライバーが読みます
+* A JDBC driver JAR placed in `web/plugins/lib/`.
+  * `web/plugins/lib/` フォルダーに配置された対象データベースの JDBC ドライバー JAR。
 
-## Build
+---
 
-## ビルド
+## Build / ビルド
 
- * mvn -B -pl Db package : target/Db.jar, the shaded jar of the plug-in
- * mvn -B -pl Db package : 成果物は target/Db.jar です。プラグインの shaded jar です
+```bash
+mvn -B -pl Db -am package
+```
 
-## Licenses
+* Deliverable shaded JAR: `Db/target/Db.jar`.
+  * 配布用成果物（shaded JAR）: `Db/target/Db.jar`。
 
-## ライセンス
+---
 
- * db.licenses() shows the licenses kept in licenses.txt of the package of the plug-in : the gson library and the slf4j library, which the plug-in shades
- * db.licenses() はプラグインのパッケージの licenses.txt に保持するライセンスを表示します。プラグインが shade する gson ライブラリと slf4j ライブラリです
+## Licenses / ライセンス
+
+* `db.licenses()` displays the licenses stored in `licenses.txt`: **Gson** (Apache-2.0) and **SLF4J** (MIT).
+  * `db.licenses()` はパッケージ内の `licenses.txt` に保持されたライセンス（**Gson**: Apache-2.0、**SLF4J**: MIT）を表示します。

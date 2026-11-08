@@ -15,15 +15,13 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import javafx.concurrent.Worker;
-import javafx.scene.image.Image;
-import javafx.scene.web.WebEngine;
-import javafx.stage.Stage;
 import javax.print.PrintService;
 import javax.print.PrintServiceLookup;
 import javax.print.attribute.HashPrintServiceAttributeSet;
 import javax.print.attribute.standard.PrinterName;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
+import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
 import net.sf.jasperreports.engine.JRDataSource;
 import net.sf.jasperreports.engine.JRException;
 import net.sf.jasperreports.engine.JasperCompileManager;
@@ -110,6 +108,14 @@ public class Jasper extends PluginSupport {
         if (path == null) {
             write(FUNCTION_NAME, "Incorrect file path", true);
             return null;
+        }
+        Path root = webPath();
+        if (root != null) {
+            file = SandboxPath.resolve(root, null, path);
+            if (file == null) {
+                write(FUNCTION_NAME, "Incorrect file path [" + path + "]", true);
+            }
+            return file;
         }
         try {
             file = Paths.get(path);
@@ -319,6 +325,7 @@ public class Jasper extends PluginSupport {
 
     @Override
     public void close() {
+        report_ = null;
         clearParameters();
         clearJsonData();
     }

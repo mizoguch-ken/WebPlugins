@@ -50,9 +50,9 @@ public class Dbg extends PluginSupport {
      */
     private static final String FIREBUG_BUILD = "build";
 
-    private boolean isConsoleOut_;
-    private boolean isHook_;
-    private boolean isFirebug_;
+    private volatile boolean isConsoleOut_;
+    private volatile boolean isHook_;
+    private volatile boolean isFirebug_;
 
     private final Bridge bridge_ = new Bridge(this);
     private final Agent agent_ = new Agent(this);
@@ -60,7 +60,7 @@ public class Dbg extends PluginSupport {
 
     private Path filesDir_;
     private boolean isFilesWritten_;
-    private String version_;
+    private volatile String version_;
 
     /**
      * the page and the window of the test of the plug-in, kept when the plug-in is not loaded by a
@@ -479,7 +479,7 @@ public class Dbg extends PluginSupport {
     /**
      * remove the files of the plug-in written for the run of the WebViewer
      */
-    private void removeFiles() {
+    private synchronized void removeFiles() {
         Path local = filesDir_;
 
         filesDir_ = null;

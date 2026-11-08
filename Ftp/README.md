@@ -1,46 +1,54 @@
 # WebPlugins Ftp
 
-## Overview
+## Overview / 概要
 
-## 概要
+* **Ftp** is the FTP client plug-in for the `WebViewer`. It connects to an FTP server, lists and manages remote directories, uploads and downloads files, and reads or writes remote text files directly from JavaScript.
+* **Ftp** は、`WebViewer` 向けの FTP クライアントプラグインです。FTP サーバーへの接続、リモートディレクトリの一覧取得・移動・作成・削除・名前変更、ファイルの送受信（ダウンロード／アップロード）、およびリモートテキストファイルの直接読み書きを行います。
+* Built on **Apache Commons Net** (`commons-net`), which is shaded into `Ftp.jar`.
+* **Apache Commons Net** ライブラリの上に構築されており、`Ftp.jar` に shade されています。
 
- * The ftp server of the page : the plug-in connects a server, reads and writes its files and the list of its directories.
- * ページの ftp サーバーです。プラグインはサーバーに接続し、そのファイルとディレクトリの一覧を読み書きします。
- * The plug-in is built on the apache commons net library, which it shades in its jar.
- * プラグインは apache commons net ライブラリの上に作られ、それを jar に shade します。
+---
 
-## Functions
+## JavaScript Functions / JS 関数一覧
 
-## 関数
+```text
+void    ftp.licenses()
+Boolean ftp.open(String host, String username, String password)
+void    ftp.charset(String charset)
+Boolean ftp.passive()
+Boolean ftp.binary()
+Boolean ftp.ascii()
+String  ftp.getNewLineCharacter()
+void    ftp.setNewLineCharacter(String c)
+String  ftp.ls()
+String  ftp.pwd()
+Boolean ftp.cd(String path)
+Boolean ftp.mkdir(String path)
+Boolean ftp.delete(String path)
+Boolean ftp.rename(String from, String to)
+Boolean ftp.get(String from, String to)
+Boolean ftp.put(String from, String to)
+String  ftp.readAsText(String path, String charset)
+Boolean ftp.writeAsText(String path, String text, String charset)
+void    ftp.close()
+```
 
- * void ftp.licenses()
- * Boolean ftp.open(String host, String username, String password)
- * void ftp.charset(String charset)
- * Boolean ftp.passive()
- * Boolean ftp.binary()
- * Boolean ftp.ascii()
- * String ftp.getNewLineCharacter()
- * void ftp.setNewLineCharacter(String c)
- * String ftp.ls()
- * String ftp.pwd()
- * Boolean ftp.cd(String path)
- * Boolean ftp.mkdir(String path)
- * Boolean ftp.delete(String path)
- * Boolean ftp.rename(String from, String to)
- * Boolean ftp.get(String from, String to)
- * Boolean ftp.put(String from, String to)
- * String ftp.readAsText(String path, String charset)
- * Boolean ftp.writeAsText(String path, String text, String charset)
- * void ftp.close() : the log out and the end of the connection
- * void ftp.close() : ログアウトして接続を終えます
+| Function / 関数 | Description / 説明 |
+| :--- | :--- |
+| `ftp.open(host, username, password)` | Connects and logs in to the FTP server at `host`. Rejects `null` or empty `host`/`username`/`password` with `"Incorrect FTP argument"`. If login fails, the socket is immediately closed so a half-open connection never remains.<br>FTP サーバーに接続・ログインします。引数が `null` または空の場合は拒否し、ログイン失敗時は即座にソケットを閉じて半開きの接続が残らないようにします。 |
+| `ftp.charset(charset)` | Sets the control connection character encoding (call before `ftp.open(...)` if needed, or while connected).<br>FTP サーバーとの通信文字コードを設定します。 |
+| `ftp.passive()`, `ftp.binary()`, `ftp.ascii()` | Switches data connections to passive mode (`PASV`, recommended behind firewalls) and sets binary or ASCII file transfer mode.<br>データ接続をパッシブモード（ファイアウォール越しの接続で推奨）に切り替え、転送モードをバイナリまたは ASCII に設定します。 |
+| `ftp.ls()`, `ftp.pwd()`, `ftp.cd(path)`, `ftp.mkdir(path)`, `ftp.delete(path)`, `ftp.rename(from, to)` | Lists remote directory entries (JSON array), returns the current remote working directory, changes directory, creates a directory, deletes a remote file, or renames a remote file.<br>リモートディレクトリの一覧取得（JSON 配列）、カレントパス取得、ディレクトリ移動・作成、ファイル削除・名前変更を行います。 |
+| `ftp.get(from, to)`, `ftp.put(from, to)` | Downloads remote file `from` to local path `to`, or uploads local file `from` to remote path `to`. Local paths are sandboxed under the page's `webPath()`.<br>リモートファイルのダウンロード（`get`）およびローカルファイルのアップロード（`put`）を行います。ローカル側のパスはページの `web` フォルダー配下に制限されます。 |
+| `ftp.readAsText(path, charset)`, `ftp.writeAsText(path, text, charset)` | Reads or writes a remote text file directly in memory (with proper FTP `completePendingCommand()` handshake and a **16 MB** safety cap on `readAsText`).<br>リモート上のテキストファイルを直接読み書きします（`readAsText` にはメモリ保護のため **16 MB** の上限が設けられており、ストリーム終了後に `completePendingCommand()` で転送完了を確認します）。 |
+| `ftp.close()` | Logs out and disconnects from the FTP server.<br>FTP サーバーからログアウトし、接続を閉じます。 |
 
-## Usage
+---
 
-## 使い方
+## Usage / 使い方
 
-Put Ftp.jar in the web/plugins folder and restart the WebViewer.
-
-Ftp.jar を web/plugins フォルダーへ入れて WebViewer を再起動します。
+Place `Ftp.jar` in `web/plugins/` and restart the `WebViewer`.
+`Ftp.jar` を `web/plugins/` フォルダーに配置し、`WebViewer` を再起動します。
 
 ```javascript
 function setup() {
@@ -52,47 +60,39 @@ function setup() {
     dbg.log(ftp.readAsText('other.txt', 'UTF-8'));
   }
 }
+
 function close() {
   ftp.close();
 }
 ```
 
-## Notes
+---
 
-## 注記
+## Safety & Timeouts / 安全性とタイムアウト仕様
 
- * the local file of get(String from, String to) and put(String from, String to) is read under the web folder of the page : a path which goes out of that folder is refused
- * get(String from, String to) と put(String from, String to) のローカルのファイルはページの web フォルダーの下で読みます。そのフォルダーの外へ出るパスは拒否されます
- * passive() chooses the passive mode of the data connection, which a server behind a firewall needs ; binary() and ascii() choose the mode of the transfer, charset(String charset) the characters of the server
- * passive() はデータの接続の passive モードを選びます。firewall の後ろのサーバーには必要でした。binary() と ascii() は転送のモードを、charset(String charset) はサーバーの文字を選びます
- * the plug-in waits 30 seconds for the server of the page, at the connection and at the transfer
- * プラグインは接続と転送でページのサーバーを 30 秒待ちます
- * open(...) refuses a host which is null or empty and writes "Incorrect FTP argument" ; a connection which failed is closed before the error is told, so a failed open(...) never leaves the plug-in connected
- * open(...) は null または空の host を拒否し "Incorrect FTP argument" と書きます。失敗した接続はエラーを伝える前に閉じるので、open(...) が失敗した後に接続が残る事はありません
- * the tests read the control connection only : ls(), get() and put() are not covered yet
- * テストは制御の接続だけを読みます。ls()、get()、put() はまだカバーしていません
+* **Local Path Sandboxing (`SandboxPath`)**: Local paths passed to `ftp.get(from, to)` and `ftp.put(from, to)` are restricted to the page's `web` folder; any path escaping `webPath()` is rejected.
+  * **ローカルパスのサンドボックス化**: `get` / `put` のローカルファイルパスはページの `web` フォルダー配下に制限され、フォルダー外へのアクセスは拒否されます。
+* **30-Second Timeouts**: Connect, default, data, and control timeouts are configured to **30 seconds** (`30,000 ms`) so unresponsive servers cannot hang the application indefinitely.
+  * **30 秒タイムアウト**: 接続およびデータ転送のタイムアウトは **30 秒** に設定されています。
 
-## Requirements
+---
 
-## 要件
+## Requirements & Build / 要件とビルド
 
- * an ftp server the computer of the page reaches
- * ページのコンピューターが届く ftp サーバー
+* Requires an FTP server reachable from the `WebViewer` host.
+  * `WebViewer` ホストから到達可能な FTP サーバー。
 
-## Build
+```bash
+# Build deliverable shaded JAR (Ftp/target/Ftp.jar)
+mvn -B -pl Ftp -am package
 
-## ビルド
+# Run unit tests
+mvn -B -pl Ftp -am test
+```
 
- * mvn -B -pl Ftp package : target/Ftp.jar, the shaded jar of the plug-in, which holds its dependencies with no version in the name
- * mvn -B -pl Ftp package : 成果物は target/Ftp.jar です。依存を名前にバージョンなしで持つプラグインの shaded jar です
- * the thin target/Ftp-<version>.jar beside it is the unshaded artifact, not the deliverable
- * 一緒にできる target/Ftp-<version>.jar は unshaded の成果物で、納品物ではありません
- * mvn -B -pl Ftp test : surefire runs the tests with --add-modules javafx.base,javafx.graphics,javafx.web and with the plug-in on the classpath
- * mvn -B -pl Ftp test : surefire は --add-modules javafx.base,javafx.graphics,javafx.web と classpath のプラグインでテストを実行します
+---
 
-## Licenses
+## Licenses / ライセンス
 
-## ライセンス
-
- * ftp.licenses() shows the licenses kept in licenses.txt of the package of the plug-in : the apache commons net library and the gson library
- * ftp.licenses() はプラグインのパッケージの licenses.txt に保持するライセンスを表示します。apache commons net ライブラリと gson ライブラリです
+* `ftp.licenses()` displays the licenses stored in `licenses.txt`: **Apache Commons Net** (Apache-2.0) and **Gson** (Apache-2.0).
+  * `ftp.licenses()` はパッケージ内の `licenses.txt` に保持されたライセンス（**Apache Commons Net**: Apache-2.0、**Gson**: Apache-2.0）を表示します。

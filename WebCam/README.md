@@ -1,62 +1,78 @@
 # WebPlugins WebCam
 
-## Overview
+## Overview / 概要
 
-## 概要
+* **WebCam** is the camera capture and computer-vision preprocessing plug-in for the `WebViewer`. Built on **JavaCV** and **OpenCV**, it enumerates cameras connected to the computer, captures frames in a background service, saves snapshots under the page's `web` folder, streams encoded image bytes or OpenCV DNN blobs (`blobFromImage`) to JavaScript callbacks, and optionally displays a live preview window.
+* **WebCam** は、`WebViewer` 向けのカメラ撮影・画像前処理プラグインです。**JavaCV** および **OpenCV** の上に構築されており、コンピューターに接続されたカメラの列挙、バックグラウンドでのフレーム取得、`web` フォルダー配下への静止画保存、画像バイト列やディープラーニング入力用 Blob（`blobFromImage`）の JavaScript コールバック通知、および専用プレビューウィンドウの表示を行います。
+* **All-Platform Native Presets**: `WebCam.jar` shades the JavaCV/OpenCV/FFmpeg native presets for all major platforms, so its JAR size is approximately **1.2 GB**. Place `WebCam.jar` in `web/plugins/` only on deployments that use camera functionality.
+* **全プラットフォーム向けネイティブ同梱**: `WebCam.jar` には JavaCV / OpenCV / FFmpeg の全プラットフォーム向けネイティブプリセットが shade されているため、ファイルサイズが約 **1.2 GB** あります。カメラ機能を使用する環境の `web/plugins/` にのみ配置してください。
 
- * The camera of the page : the plug-in opens a camera, reads its images and gives the bytes of an image or a converted blob to the page, which can also show the image in a window of its own.
- * ページのカメラです。プラグインはカメラを開き、画像を読んで、画像のバイトデータまたは変換した blob をページに与えます。ページは画像を自身のウィンドウでも見せられます。
- * The plug-in is built on the javacv library, which carries the native library of the camera and of opencv : the plug-in shades them in its jar, so the jar is big and holds the preset of every platform.
- * プラグインは javacv ライブラリの上に作ります。カメラと opencv の native ライブラリが入るので、プラグインはそれを jar に shade します。jar は大きくなり、全プラットフォームの preset を持ちます。
+---
 
-## Functions
+## JavaScript Functions / JS 関数一覧
 
-## 関数
+```text
+void    webcam.licenses()
+String  webcam.getWebcams()
+Boolean webcam.open(int deviceNumber)
+Boolean webcam.isOpened()
+Boolean webcam.play()
+Boolean webcam.stop()
+Boolean webcam.isPlaying()
+Boolean webcam.save(String path)
+String  webcam.getImageType()
+Boolean webcam.setImageType(String type)
+String  webcam.getImageSize()
+void    webcam.setImageSize(int width, int height)
+int     webcam.getImageColor()
+void    webcam.setImageColor(String color)
+void    webcam.setNotifyResultImage(String func)
+void    webcam.setNotifyResultBlob(String func, String blobInfo)
+Boolean webcam.isShowing()
+Boolean webcam.show()
+Boolean webcam.hide()
+Double  webcam.getWidth()
+Double  webcam.getHeight()
+Boolean webcam.isFocused()
+Boolean webcam.requestFocus()
+Double  webcam.getOpacity()
+Boolean webcam.setOpacity(double value)
+Boolean webcam.isAlwaysOnTop()
+Boolean webcam.setAlwaysOnTop(boolean state)
+Double  webcam.getX()
+Boolean webcam.setX(double x)
+Double  webcam.getY()
+Boolean webcam.setY(double y)
+```
 
- * void webcam.licenses()
- * String webcam.getWebcams() : the cameras of the computer as a json array
- * String webcam.getWebcams() : コンピューターのカメラを json 配列として答えます
- * Boolean webcam.open(int deviceNumber)
- * Boolean webcam.isOpened()
- * Boolean webcam.play()
- * Boolean webcam.stop()
- * Boolean webcam.isPlaying()
- * Boolean webcam.save(String path) : write one image in a file under the web folder of the page
- * Boolean webcam.save(String path) : 1 枚の画像をページの web フォルダー下のファイルに書きます
- * String webcam.getImageType() , Boolean webcam.setImageType(String type) : "jpg", "png" ...
- * String webcam.getImageSize() , void webcam.setImageSize(int width, int height) : the pixels of the read image
- * String webcam.getImageSize() 、 void webcam.setImageSize(int width, int height) : 読む画像のピクセル数です
- * int webcam.getImageColor() , void webcam.setImageColor(String color) : the color conversion of opencv, "COLOR_BGR2GRAY" ...
- * void webcam.setNotifyResultImage(String func)
- * void webcam.setNotifyResultBlob(String func, String blobInfo)
- * Boolean webcam.isShowing() , Boolean webcam.show() , Boolean webcam.hide() : the window of the image
- * Boolean webcam.isShowing() 、 Boolean webcam.show() 、 Boolean webcam.hide() : 画像のウィンドウです
- * Double webcam.getWidth() , Double webcam.getHeight() : the size of that window
- * Double webcam.getWidth() 、 Double webcam.getHeight() : そのウィンドウのサイズです
- * Boolean webcam.isFocused() , Boolean webcam.requestFocus()
- * Double webcam.getOpacity() , Boolean webcam.setOpacity(double value)
- * Boolean webcam.isAlwaysOnTop() , Boolean webcam.setAlwaysOnTop(boolean state)
- * Double webcam.getX() , Boolean webcam.setX(double x) , Double webcam.getY() , Boolean webcam.setY(double y) : the place of that window
- * Double webcam.getX() 、 Boolean webcam.setX(double x) 、 Double webcam.getY() 、 Boolean webcam.setY(double y) : そのウィンドウの位置です
+| Function / 関数 | Description / 説明 |
+| :--- | :--- |
+| `webcam.getWebcams()` | Returns the descriptions of connected camera devices as a JSON array string (silencing verbose native `videoInput` console output).<br>コンピューターに接続されているカメラの一覧を JSON 配列文字列として返します。 |
+| `webcam.open(deviceNumber)`, `webcam.isOpened()` | Opens and starts the camera at `deviceNumber`. If starting fails, the grabber is immediately released and `isOpened()` remains `false` so subsequent `open(...)` calls succeed.<br>指定したデバイス番号のカメラを開きます。起動に失敗した場合は即座にリソースを解放し、`isOpened()` は `false` のまま保たれます。 |
+| `webcam.play()`, `webcam.stop()`, `webcam.isPlaying()` | Starts or stops frame capture, or checks whether capture is currently running.<br>フレーム撮影の開始・停止、および撮影中かどうかの確認を行います。 |
+| `webcam.save(path)` | Saves one captured frame to `path` under the page's `web` folder (`SandboxPath`).<br>撮影した 1 枚の画像をページの `web` フォルダー配下（`SandboxPath`）のファイルへ保存します。 |
+| `webcam.getImageType()`, `webcam.setImageType(type)` | Gets or sets the encoded image format (`"jpg"`, `"png"`, `"bmp"`, etc.).<br>エンコードする画像形式（`"jpg"`, `"png"` など）を取得・設定します。 |
+| `webcam.getImageSize()`, `webcam.setImageSize(width, height)` | Gets (JSON `{"width":...,"height":...}`) or sets the capture resolution in pixels.<br>取得する画像の解像度（幅・高さピクセル）を取得・設定します。 |
+| `webcam.getImageColor()`, `webcam.setImageColor(color)` | Gets or sets the OpenCV `cvtColor` color conversion constant name (e.g. `"COLOR_BGR2GRAY"`).<br>OpenCV の色空間変換コード（`"COLOR_BGR2GRAY"` など）を取得・設定します。 |
+| `webcam.setNotifyResultImage(func)` | Registers a callback `func(imageData, imageType)` receiving each frame's encoded bytes as a JSON array of numbers.<br>フレームごとにエンコード済みバイト配列（JSON 配列）を受け取るコールバック関数 `func(imageData, imageType)` を登録します。 |
+| `webcam.setNotifyResultBlob(func, blobInfo)` | Registers a callback `func(blobData)` receiving a 4D DNN blob (`blobFromImage`) configured by `blobInfo` JSON (`scalefactor`, `size`, `mean`, `swapRB`, `crop`, `ddepth`).<br>OpenCV の `blobFromImage` による変換結果を受け取るコールバック関数 `func(blobData)` と変換設定 JSON（`scalefactor`, `size`, `mean`, `swapRB`, `crop`, `ddepth`）を登録します。 |
+| `webcam.show()`, `webcam.hide()`, `webcam.isShowing()`, `getWidth()`, `getHeight()`, `isFocused()`, `requestFocus()`, `getOpacity()`, `setOpacity(value)`, `isAlwaysOnTop()`, `setAlwaysOnTop(state)`, `getX()`, `setX(x)`, `getY()`, `setY(y)` | Controls the standalone camera preview window (hidden by default unless `webcam.show()` is called).<br>カメラプレビュー用の独立ウィンドウの表示／非表示、位置、サイズ、最前面固定、不透明度を制御します（`show()` を呼ばない限りウィンドウは表示されません）。 |
 
-## Notifications
+---
 
-## 通知
+## Notifications / 通知コールバック
 
- * setNotifyResultImage(func) calls func(imageData, imageType) for every read image : the bytes of the image are told as a json array of numbers, so the page can turn them into the base64 url of an image element
- * setNotifyResultImage(func) は読む画像の毎に func(imageData, imageType) を呼びます。画像のバイト数は数値の json 配列として届くので、ページはそれを画像要素の base64 の url に変換できます
- * setNotifyResultBlob(func, blobInfo) calls func(blobData) : the conversion of the image into the numbers a model reads is described by the json text given with the name of the function (scalefactor, size, mean, swapRB, crop, ddepth)
- * setNotifyResultBlob(func, blobInfo) は func(blobData) を呼びます。画像をモデルが読む数値へ変換することは、関数名と一緒に与える json のテキストが指定します（scalefactor、size、mean、swapRB、crop、ddepth）
- * the notifications are asked for every read image : a heavy conversion in the page makes the picture late, so a page chooses a small size
- * 通知は読む画像の毎に依頼されます。ページで重い変換を行うと画像が遅れるので、ページは小さいサイズを選びます
+* `setNotifyResultImage(func)` and `setNotifyResultBlob(func, blobInfo)` validate `func` via `scriptFunction(func)` (`ScriptFunction.isValid`) before registering the callback.
+  * `setNotifyResultImage(func)` と `setNotifyResultBlob(func, blobInfo)` は、登録時に関数名を `scriptFunction(func)` で検証します。
+* Because notifications run on every captured frame, use a modest resolution (e.g. `320 × 240`) when streaming frames into the page DOM.
+  * 通知は撮影フレームごとに呼び出されるため、ページ側で Base64 変換等を行う場合は小さめの解像度（`320 × 240` など）を推奨します。
 
-## Usage
+---
 
-## 使い方
+## Usage / 使い方
 
-Put WebCam.jar in the web/plugins folder and restart the WebViewer.
-
-WebCam.jar を web/plugins フォルダーへ入れて WebViewer を再起動します。
+Place `WebCam.jar` in `web/plugins/` and restart the `WebViewer`.
+`WebCam.jar` を `web/plugins/` フォルダーに配置し、`WebViewer` を再起動します。
 
 ```javascript
 function resultImage(imageData, imageType) {
@@ -68,6 +84,7 @@ function resultImage(imageData, imageType) {
   }
   document.getElementById('image').src = 'data:image/' + imageType + ';base64,' + btoa(base64);
 }
+
 function setup() {
   dbg.log(webcam.getWebcams());
   webcam.setNotifyResultImage('resultImage');
@@ -76,48 +93,33 @@ function setup() {
   webcam.open(0);
   webcam.play();
 }
+
 function close() {
   webcam.stop();
 }
 ```
 
-## Notes
+---
 
-## 注記
+## Requirements & Build / 要件とビルド
 
- * the jar of the plug-in is about 1.2 GB because javacv bundles the preset of every platform : keep it only in the installation which reads a camera
- * プラグインの jar は javacv が全プラットフォームの preset（android、ios、linux、macosx、windows、gpl 版）を同梱するため約 1.2 GB です。カメラを使う導入先にだけ置いてください
- * open(int deviceNumber) gives the camera only after a successful start : a failed open(...) closes it and isOpened() stays false, so an other open(...) is not refused with "Camera device is already open"
- * open(int deviceNumber) は start() が成功した後にカメラを与えます。失敗した open(...) はカメラを閉じ、isOpened() は false のままなので、次の open(...) が "Camera device is already open" で拒否されません
- * stop() ends the capture but its answer carries no information : a page reads isPlaying()
- * stop() は撮影を終えますが答えに情報はありません。ページは isPlaying() を読んでください
- * the warning "Versions of org.bytedeco:javacpp:1.5.14 and org.bytedeco:videoinput:0.200-1.5.9 do not match" is harmless in this build
- * 「Versions of org.bytedeco:javacpp:1.5.14 and org.bytedeco:videoinput:0.200-1.5.9 do not match」の警告はこの構成では実害がありません
- * getWebcams() asks the library of the camera to keep quiet : the library writes the list of the devices it found in the stream of the virtual machine of the WebViewer when it is not asked to
- * getWebcams() はカメラのライブラリに静かに列挙を依頼します。依頼しない場合、ライブラリは見たデバイス一覧を WebViewer の仮想マシンのストリームに書き込みます
- * the window of the image is a window of its own : the page can place it, keep it before the other windows and make it transparent ; the plug-in shows no image unless the page asks show()
- * 画像のウィンドウは自身のウィンドウです。ページはその位置を変え、他のウィンドウより前に保ち、不透明度を変えられます。show() を依頼しない限りプラグインは画像を表示しません
+* A camera connected to the computer.
+  * コンピューターに接続されたカメラ。
+* Note: The build message `Versions of org.bytedeco:javacpp:1.5.14 and org.bytedeco:videoinput:0.200-1.5.9 do not match` emitted by JavaCPP is benign and does not affect functionality.
+  * 注記: JavaCPP が出力する `Versions of org.bytedeco:javacpp:1.5.14 and org.bytedeco:videoinput:0.200-1.5.9 do not match` の警告は動作に影響ありません。
 
-## Requirements
+```bash
+# Build deliverable shaded JAR (WebCam/target/WebCam.jar)
+mvn -B -pl WebCam -am package
 
-## 要件
+# Run unit tests (live capture test runs only when -Dwebcam.device=<index> is provided)
+mvn -B -pl WebCam -am test
+mvn -B -pl WebCam -am test -Dwebcam.device=0
+```
 
- * a camera of the computer
- * コンピューターのカメラ
+---
 
-## Build
+## Licenses / ライセンス
 
-## ビルド
-
- * mvn -B -pl WebCam package : target/WebCam.jar, the shaded jar of the plug-in, which holds the native libraries of javacv, opencv and ffmpeg
- * mvn -B -pl WebCam package : 成果物は target/WebCam.jar です。javacv、opencv、ffmpeg の native ライブラリを持つプラグインの shaded jar です
- * mvn -B -pl WebCam test : a real capture is read only when a device number is given, with mvn -B -pl WebCam test -Dwebcam.device=0
- * mvn -B -pl WebCam test : 本物の撮影はデバイス番号を与えた時にだけ読まれます。mvn -B -pl WebCam test -Dwebcam.device=0 です
-
-## Licenses
-
-## ライセンス
-
- * webcam.licenses() shows the licenses kept in licenses.txt of the package of the plug-in : javacv, javacpp, the presets of opencv and of videoinput and the gson library
- * webcam.licenses() はプラグインのパッケージの licenses.txt に保持するライセンスを表示します。javacv、javacpp、opencv と videoinput の preset と gson ライブラリです
-
+* `webcam.licenses()` displays the licenses stored in `licenses.txt`: **JavaCV**, **JavaCPP**, **OpenCV** presets, **videoInput** presets, and **Gson**.
+  * `webcam.licenses()` はパッケージ内の `licenses.txt` に保持されたライセンス（**JavaCV**、**JavaCPP**、**OpenCV** / **videoInput** プリセット、**Gson**）を表示します。

@@ -134,9 +134,7 @@ public final class Tensor {
      * @param out m rows of n values, an other array than a and b
      */
     public static void ab(float[] a, int m, int k, float[] b, int n, float[] out) {
-        for (int index = 0; index < (m * n); index++) {
-            out[index] = 0f;
-        }
+        java.util.Arrays.fill(out, 0, m * n, 0f);
         blocks(m, (long) m * k * n, (from, to) -> {
             for (int row = from; row < to; row++) {
                 int aOffset = row * k;
@@ -169,9 +167,7 @@ public final class Tensor {
      * @param out m rows of n values
      */
     public static void atb(float[] a, int m, int k, float[] b, int n, float[] out) {
-        for (int index = 0; index < (m * n); index++) {
-            out[index] = 0f;
-        }
+        java.util.Arrays.fill(out, 0, m * n, 0f);
         blocks(n, (long) m * k * n, (from, to) -> {
             for (int inner = 0; inner < k; inner++) {
                 int aOffset = inner * m;
@@ -204,9 +200,7 @@ public final class Tensor {
      * @param out m rows of n values
      */
     public static void abt(float[] a, int m, int k, float[] b, int n, float[] out) {
-        for (int index = 0; index < (m * n); index++) {
-            out[index] = 0f;
-        }
+        java.util.Arrays.fill(out, 0, m * n, 0f);
         blocks(m, (long) m * n * k, (from, to) -> {
             for (int row = from; row < to; row++) {
                 int aOffset = row * k;
@@ -286,9 +280,7 @@ public final class Tensor {
      * @param array array to clear
      */
     public static void zero(float[] array) {
-        for (int index = 0; index < array.length; index++) {
-            array[index] = 0f;
-        }
+        java.util.Arrays.fill(array, 0f);
     }
 
     /**
@@ -299,9 +291,7 @@ public final class Tensor {
      * @param size values to clear
      */
     public static void zeroSlice(float[] array, int offset, int size) {
-        for (int index = 0; index < size; index++) {
-            array[offset + index] = 0f;
-        }
+        java.util.Arrays.fill(array, offset, offset + size, 0f);
     }
 
     /**
@@ -500,8 +490,12 @@ public final class Tensor {
             float[] inverse, float[] scale, float[] gradient, float[] out, float[] scaleGradient,
             float[] shiftGradient) {
         columnSum(gradient, rows, width, shiftGradient);
-        for (int index = 0; index < centered.length; index++) {
-            scaleGradient[index % width] += gradient[index] * centered[index];
+        for (int row = 0; row < rows; row++) {
+            int offset = row * width;
+
+            for (int column = 0; column < width; column++) {
+                scaleGradient[column] += gradient[offset + column] * centered[offset + column];
+            }
         }
         blocks(rows, (long) rows * width, (first, last) -> {
             for (int row = first; row < last; row++) {

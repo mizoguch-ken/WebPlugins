@@ -446,11 +446,14 @@ public final class LlmCore {
     private TrainResult read(int epochs, double began, LlmCoreListener listener) {
         int context = model_.context();
         List<Integer> order = new ArrayList<>(dataset_.count());
+        List<List<int[]>> allWindows = new ArrayList<>(dataset_.count());
         int planned = 0;
 
         for (int index = 0; index < dataset_.count(); index++) {
             order.add(index);
-            planned += dataset_.windows(index, context).size();
+            List<int[]> windows = dataset_.windows(index, context);
+            allWindows.add(windows);
+            planned += windows.size();
         }
         long report = Math.max(1L, planned / 10L);
         Random random = new Random(model_.config().seed() + steps_);
@@ -468,7 +471,7 @@ public final class LlmCore {
             long each = 0L;
 
             for (int index : order) {
-                for (int[] window : dataset_.windows(index, context)) {
+                for (int[] window : allWindows.get(index)) {
                     TransformerModel.Step step = model_.newStep(window.length, true);
 
                     model_.forward(window, window.length, step);

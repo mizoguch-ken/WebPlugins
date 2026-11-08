@@ -24,7 +24,7 @@ final class Agent {
 
     private final Dbg host_;
 
-    private String source_;
+    private volatile String source_;
 
     /**
      * the agent of the page of the plug-in

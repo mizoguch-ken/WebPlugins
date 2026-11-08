@@ -28,6 +28,7 @@ public class Ftp extends PluginSupport {
 
     private static final String FUNCTION_NAME = "ftp";
     private static final int FTP_TIMEOUT_MILLIS = 30000;
+    private static final int TEXT_MAX_LENGTH = 16 * 1024 * 1024;
 
     private Path webPath_;
     private final FTPClient ftpClient_;
@@ -348,15 +349,30 @@ public class Ftp extends PluginSupport {
      */
     public String readAsText(String path, String charset) throws UnsupportedEncodingException, IOException {
         if (ftpClient_.isConnected()) {
+            if ((path == null) || path.isEmpty()) {
+                write(FUNCTION_NAME, "Incorrect FTP argument", true);
+                return null;
+            }
             if (charset == null) {
                 charset = "UTF-8";
             }
+            InputStream stream = ftpClient_.retrieveFileStream(path);
+            if (stream == null) {
+                write(FUNCTION_NAME, "Failed to FTPget", true);
+                return null;
+            }
+            String result;
             try (BufferedReader bufferedReader = new BufferedReader(
-                    new InputStreamReader(ftpClient_.retrieveFileStream(path), charset))) {
+                    new InputStreamReader(stream, charset))) {
                 StringBuilder stringBuilder = new StringBuilder();
                 String line;
                 boolean first = true;
                 while ((line = bufferedReader.readLine()) != null) {
+                    int added = (first ? 0 : newLineCharacter_.length()) + line.length();
+                    if ((stringBuilder.length() + added) > TEXT_MAX_LENGTH) {
+                        write(FUNCTION_NAME, "File is too large [" + path + "]", true);
+                        return null;
+                    }
                     if (!first) {
                         // the lines are separated by the character of the page : the reader is
                         // not asked if it is ready, which does not tell where a line ends
@@ -365,8 +381,12 @@ public class Ftp extends PluginSupport {
                     first = false;
                     stringBuilder.append(line);
                 }
-                return stringBuilder.toString();
+                result = stringBuilder.toString();
             }
+            if (ftpClient_.completePendingCommand()) {
+                return result;
+            }
+            write(FUNCTION_NAME, "Failed to FTPget", true);
         } else {
             write(FUNCTION_NAME, "Not FTP connection", true);
         }
@@ -383,10 +403,19 @@ public class Ftp extends PluginSupport {
      */
     public Boolean writeAsText(String path, String text, String charset) throws IOException {
         if (ftpClient_.isConnected()) {
+            if ((path == null) || path.isEmpty() || (text == null)) {
+                write(FUNCTION_NAME, "Incorrect FTP argument", true);
+                return false;
+            }
             if (charset == null) {
                 charset = "UTF-8";
             }
-            try (OutputStreamWriter outputStreamWriter = new OutputStreamWriter(ftpClient_.storeFileStream(path),
+            OutputStream stream = ftpClient_.storeFileStream(path);
+            if (stream == null) {
+                write(FUNCTION_NAME, "Failed to FTPput", true);
+                return false;
+            }
+            try (OutputStreamWriter outputStreamWriter = new OutputStreamWriter(stream,
                     charset);
                     BufferedReader bufferedReader = new BufferedReader(new StringReader(text))) {
                 String line;
@@ -400,8 +429,11 @@ public class Ftp extends PluginSupport {
                     first = false;
                     outputStreamWriter.write(line);
                 }
+            }
+            if (ftpClient_.completePendingCommand()) {
                 return true;
             }
+            write(FUNCTION_NAME, "Failed to FTPput", true);
         } else {
             write(FUNCTION_NAME, "Not FTP connection", true);
         }

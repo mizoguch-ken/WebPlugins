@@ -139,4 +139,22 @@ public abstract class ServiceSupport<V> extends Service<V> implements WebViewerP
     public void write(String name, String msg, boolean err) {
         host_.write(name, msg, err);
     }
+
+    /**
+     * name of a function of the page the plug-in has to execute : the plug-in writes the name in
+     * the javascript it executes in the page, so a name which comes from the page can not carry an
+     * other javascript.<br>
+     * The name is refused when it is not a name of function ; the plug-in of the page is written
+     * in the console of the WebViewer.
+     *
+     * @param func name of the function of the page, null when the page does not want a notification
+     * @return the name of the function, null when the name is refused or when the page wants none
+     */
+    protected String scriptFunction(String func) {
+        if ((func == null) || ScriptFunction.isValid(func)) {
+            return func;
+        }
+        write(functionName(), "Incorrect script function name", true);
+        return null;
+    }
 }

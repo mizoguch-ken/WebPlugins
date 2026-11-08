@@ -1,52 +1,61 @@
 # WebPlugins File
 
-## Overview
+## Overview / 概要
 
-## 概要
+* **File** is the local file and directory management plug-in for the `WebViewer`. It reads and writes files, lists and manipulates directories under the page's `web` folder, and provides native OS file open/save dialogs.
+* **File** は、`WebViewer` 向けのローカルファイル・ディレクトリ操作プラグインです。ページの `web` フォルダー配下のファイルやディレクトリの読み書き・一覧取得・移動・削除、および OS 標準のファイル選択／保存ダイアログの表示を行います。
+* **Path Sandboxing (`SandboxPath`)**: Every file path supplied by JavaScript is resolved and verified under the page's `webPath()` root folder. Any path that traverses outside `webPath()` is rejected unless explicitly chosen by the user through `openDialog(...)` or `saveDialog(...)`.
+* **パスサンドボックス保護 (`SandboxPath`)**: ページから渡されたパスはすべてページの `web` フォルダー（`webPath()`）配下で正規化・検証され、フォルダー外へ出るパスは拒否されます（ユーザーが `openDialog(...)` / `saveDialog(...)` ダイアログで明示的に選択したパスのみ例外として許可されます）。
 
- * The files of the page : the plug-in reads and writes the files and the directories under the web folder of the page, and it shows the dialog of the computer for a file the page chooses.
- * ページのファイルです。プラグインはページの web フォルダー下のファイルとディレクトリを読み書きし、ページが選ぶファイルのためにコンピューターのダイアログを表示します。
- * a path the page writes is read under the web folder of the page : the plug-in refuses a path which goes out of that folder, so a page can not read a file of the computer.
- * ページが書いたパスはページの web フォルダーの下で読みます。そのフォルダーの外へ出るパスはプラグインが拒否するので、ページはコンピューターのファイルを読めません。
+---
 
-## Functions
+## JavaScript Functions / JS 関数一覧
 
-## 関数
+```text
+void    file.licenses()
+String  file.getNewLineCharacter()
+void    file.setNewLineCharacter(String c)
+Boolean file.createNewFile(String path)
+Boolean file.exists(String path)
+String  file.ls()
+String  file.mv(String src, String dst)
+String  file.cd(String path)
+String  file.touch(String path, long time)
+String  file.mkdir(String path)
+Boolean file.rm(String path)
+Long    file.lastModifiedDate(String path)
+String  file.name(String path)
+String  file.path(String path)
+String  file.type(String path)
+Long    file.size(String path)
+String  file.openDialog(String title, String description, String extensions)
+String  file.saveDialog(String title, String description, String extensions)
+String  file.readAsText(String path, String charset)
+Boolean file.writeAsText(String path, String text, String charset)
+Boolean file.reader(String path, String charset)
+String  file.readerReadLine()
+Boolean file.writer(String path, String charset)
+Boolean file.writerWriteLine(String text)
+void    file.close()
+```
 
- * void file.licenses()
- * String file.getNewLineCharacter()
- * void file.setNewLineCharacter(String c)
- * Boolean file.createNewFile(String path)
- * Boolean file.exists(String path)
- * String file.ls()
- * String file.mv(String src, String dst)
- * String file.cd(String path)
- * String file.touch(String path, long time)
- * String file.mkdir(String path)
- * Boolean file.rm(String path)
- * Long file.lastModifiedDate(String path)
- * String file.name(String path)
- * String file.path(String path)
- * String file.type(String path)
- * Long file.size(String path)
- * String file.openDialog(String title, String description, String extensions)
- * String file.saveDialog(String title, String description, String extensions)
- * String file.readAsText(String path, String charset)
- * Boolean file.writeAsText(String path, String text, String charset)
- * Boolean file.reader(String path, String charset)
- * String file.readerReadLine()
- * Boolean file.writer(String path, String charset)
- * Boolean file.writerWriteLine(String text)
- * void file.close() : end the reader and the writer the page opened
- * void file.close() : ページが開いた reader と writer を終えます
+| Function / 関数 | Description / 説明 |
+| :--- | :--- |
+| `file.ls()` | Returns the file and directory names in the current working directory (changed via `file.cd(path)`) as a JSON array string.<br>現在の対象ディレクトリ（`file.cd(path)` で変更可能）内のファイル・ディレクトリ名を JSON 配列文字列で返します。 |
+| `file.cd(path)`, `file.mkdir(path)`, `file.mv(src, dst)`, `file.touch(path, time)` | Changes the current directory, creates a directory, moves/renames a file, or updates its timestamp, returning the resulting path.<br>ディレクトリ移動、ディレクトリ作成、ファイル移動／名前変更、タイムスタンプ更新を行います。 |
+| `file.createNewFile(path)`, `file.exists(path)`, `file.rm(path)` | Creates an empty file, checks whether a path exists, or deletes a file.<br>空ファイルの作成、存在確認、ファイルの削除を行います。 |
+| `file.lastModifiedDate(path)`, `file.size(path)`, `file.type(path)`, `file.name(path)`, `file.path(path)` | Returns the last modified timestamp in epoch milliseconds, size in bytes, OS MIME/probe content type, file name, or canonical path.<br>最終更新日時（ミリ秒）、バイトサイズ、ファイル種別、ファイル名、パスを返します。 |
+| `file.openDialog(title, description, extensions)`, `file.saveDialog(title, description, extensions)` | Opens the native OS file chooser dialog and returns the user-selected path (allowing access to that user-approved file outside `webPath()`).<br>OS のファイルを開く／保存ダイアログを表示し、ユーザーが選択したパスを返します。 |
+| `file.readAsText(path, charset)`, `file.writeAsText(path, text, charset)` | Reads or writes an entire text file using the specified character encoding (e.g. `'UTF-8'`).<br>指定した文字コード（`'UTF-8'` など）でファイル全体のテキストを一括で読み書きします。 |
+| `file.reader(path, charset)`, `file.readerReadLine()`, `file.writer(path, charset)`, `file.writerWriteLine(text)` | Opens a streaming line reader or writer and reads/writes one line at a time using the newline character configured by `getNewLineCharacter()` / `setNewLineCharacter(c)`.<br>ファイルをストリームとして開いたまま保持し、1 行ずつ読み書きします。改行文字は `getNewLineCharacter()` / `setNewLineCharacter(c)` で取得・設定できます。 |
+| `file.close()` | Closes any open line reader and writer streams.<br>開いている `reader` および `writer` を閉じます。 |
 
-## Usage
+---
 
-## 使い方
+## Usage / 使い方
 
-Put File.jar in the web/plugins folder and restart the WebViewer.
-
-File.jar を web/plugins フォルダーへ入れて WebViewer を再起動します。
+Place `File.jar` in `web/plugins/` and restart the `WebViewer`.
+`File.jar` を `web/plugins/` フォルダーに配置し、`WebViewer` を再起動します。
 
 ```javascript
 function setup() {
@@ -56,40 +65,28 @@ function setup() {
   if (file.writer('./other.txt', 'UTF-8')) {
     file.writerWriteLine('the first line');
     file.writerWriteLine('the second line');
+    file.close();
   }
 }
 ```
 
-## Notes
+---
 
-## 注記
+## Requirements & Build / 要件とビルド
 
- * ls() answers the files of the directory the plug-in reads, which cd(String path) changes ; the answer is a json array of the names
- * ls() はプラグインが読むディレクトリのファイルを一覧に答えます。cd(String path) がそれを変えます。答えは名前の json 配列です
- * reader(String path, String charset) and writer(String path, String charset) keep a file open, readerReadLine() and writerWriteLine(String text) read and write one line at a time ; getNewLineCharacter() and setNewLineCharacter(String c) answer and set the end of a line
- * reader(String path, String charset) と writer(String path, String charset) はファイルを開いたまま保持し、readerReadLine() と writerWriteLine(String text) は 1 行ずつ読み書きします。getNewLineCharacter() と setNewLineCharacter(String c) が行の終わりを答え / 設定します
- * openDialog(...) and saveDialog(...) show the dialog of the computer and answer the path the page chose, so the page can read a file out of the web folder only when a user chose it
- * openDialog(...) と saveDialog(...) はコンピューターのダイアログを表示し、ページが選んだパスを答えます。ユーザーが選んだ時のみに、ページは web フォルダー外のファイルを読めます
- * lastModifiedDate(String path) answers the milliseconds of the last change of a file, size(String path) its bytes, type(String path) the type the computer reads
- * lastModifiedDate(String path) はファイルの最後の変更のミリ秒を、size(String path) はバイト数を、type(String path) はコンピューターが読む種類を答えます
+* Requires no external JARs in `web/plugins/lib/`.
+  * `web/plugins/lib/` に外部 JAR を配置する必要はありません。
 
-## Requirements
+```bash
+mvn -B -pl File -am package
+```
 
-## 要件
+* Deliverable shaded JAR: `File/target/File.jar`.
+  * 配布用成果物（shaded JAR）: `File/target/File.jar`。
 
- * no other jar : the plug-in reads the files with the java language
- * 他の jar は要りません。プラグインは java 言語でファイルを読みます
+---
 
-## Build
+## Licenses / ライセンス
 
-## ビルド
-
- * mvn -B -pl File package : target/File.jar, the shaded jar of the plug-in
- * mvn -B -pl File package : 成果物は target/File.jar です。プラグインの shaded jar です
-
-## Licenses
-
-## ライセンス
-
- * file.licenses() shows the licenses kept in licenses.txt of the package of the plug-in : the gson library, which the plug-in shades
- * file.licenses() はプラグインのパッケージの licenses.txt に保持するライセンスを表示します。プラグインが shade する gson ライブラリです
+* `file.licenses()` displays the licenses stored in `licenses.txt`: **Gson** (Apache-2.0).
+  * `file.licenses()` はパッケージ内の `licenses.txt` に保持されたライセンス（**Gson**: Apache-2.0）を表示します。

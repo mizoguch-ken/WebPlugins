@@ -610,20 +610,20 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
      * @return true when the work started
      */
     private boolean start(String kind, boolean remote, Runnable job) {
-        ExecutorService work = worker_;
-
-        if (work == null) {
-            // the thread of a work tells the page what the plug-in reads : a work which asks a model
-            // of an other computer spends its time waiting the answer of that computer, so it is
-            // written on a virtual thread, while the work of a model of the plug-in reads the weights
-            // of the model on a thread of its own
-            ThreadFactory threads = remote
-                    ? Thread.ofVirtual().name(FUNCTION_NAME + "_" + kind, 0).factory()
-                    : Thread.ofPlatform().name(FUNCTION_NAME + "_" + kind, 0).factory();
-
-            work = Executors.newThreadPerTaskExecutor(threads);
-            worker_ = work;
+        ExecutorService previous = worker_;
+        if (previous != null) {
+            previous.shutdown();
         }
+        // the thread of a work tells the page what the plug-in reads : a work which asks a model
+        // of an other computer spends its time waiting the answer of that computer, so it is
+        // written on a virtual thread, while the work of a model of the plug-in reads the weights
+        // of the model on a thread of its own
+        ThreadFactory threads = remote
+                ? Thread.ofVirtual().name(FUNCTION_NAME + "_" + kind, 0).factory()
+                : Thread.ofPlatform().name(FUNCTION_NAME + "_" + kind, 0).factory();
+
+        ExecutorService work = Executors.newThreadPerTaskExecutor(threads);
+        worker_ = work;
         remoteWork_ = remote;
         try {
             work.execute(job);

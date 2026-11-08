@@ -6,7 +6,6 @@ import com.google.gson.JsonObject;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -14,7 +13,6 @@ import java.util.concurrent.atomic.AtomicReference;
 import javafx.application.Platform;
 import javafx.beans.property.ObjectProperty;
 import javafx.beans.property.SimpleObjectProperty;
-import javafx.concurrent.Service;
 import javafx.concurrent.Task;
 import javafx.concurrent.Worker;
 import javafx.embed.swing.SwingFXUtils;
@@ -54,8 +52,8 @@ public class WebCam extends ServiceSupport<Void> {
 
     private static final String FUNCTION_NAME = "webcam";
 
-    private WebEngine webEngine_;
-    private Worker.State state_;
+    private volatile WebEngine webEngine_;
+    private volatile Worker.State state_;
 
     /**
      * a camera the computer holds, told to the page
@@ -76,21 +74,21 @@ public class WebCam extends ServiceSupport<Void> {
         int ddepth;
     }
 
-    private OpenCVFrameGrabber webcam_;
+    private volatile OpenCVFrameGrabber webcam_;
 
     private final Stage webcamStage_;
     private final BorderPane webcamPane_;
     private final ImageView webcamImageView_;
     private final ObjectProperty<Image> imageProperty_;
 
-    private String funcResultImage_;
-    private String funcResultBlob_;
-    private String webcamImageType_;
+    private volatile String funcResultImage_;
+    private volatile String funcResultBlob_;
+    private volatile String webcamImageType_;
     private Size webcamImageSize_;
-    private int webcamImageColor_;
-    private String resultImage_;
-    private String resultBlob_;
-    private BlobInfo blobInfo_;
+    private volatile int webcamImageColor_;
+    private volatile String resultImage_;
+    private volatile String resultBlob_;
+    private volatile BlobInfo blobInfo_;
 
     private volatile boolean isPlay_;
 
@@ -104,10 +102,10 @@ public class WebCam extends ServiceSupport<Void> {
      * maximum time the cleanup waits a capture task which does not end
      */
     private static final int TASK_TERMINATION_MILLIS = 3000;
-    private boolean isUpdateWebcamView_;
-    private boolean isUpdateFuncResultImage_;
-    private boolean isUpdateFuncResultBlob_;
-    private String saveFilePath_;
+    private volatile boolean isUpdateWebcamView_;
+    private volatile boolean isUpdateFuncResultImage_;
+    private volatile boolean isUpdateFuncResultBlob_;
+    private volatile String saveFilePath_;
 
     private final Gson gson_ = new Gson();
 
@@ -158,7 +156,7 @@ public class WebCam extends ServiceSupport<Void> {
      * @param func
      */
     public void setNotifyResultImage(String func) {
-        funcResultImage_ = func;
+        funcResultImage_ = scriptFunction(func);
     }
 
     /**
@@ -167,13 +165,19 @@ public class WebCam extends ServiceSupport<Void> {
      * @param blobInfo
      */
     public void setNotifyResultBlob(String func, String blobInfo) {
-        funcResultBlob_ = func;
+        funcResultBlob_ = scriptFunction(func);
 
         if (blobInfo_ == null) {
             blobInfo_ = new BlobInfo();
         }
+        if (blobInfo == null) {
+            return;
+        }
 
         JsonObject info = gson_.fromJson(blobInfo, JsonObject.class);
+        if (info == null) {
+            return;
+        }
         if (info.has("scalefactor")) {
             blobInfo_.scalefactor = info.getAsJsonPrimitive("scalefactor").getAsDouble();
         }
@@ -334,6 +338,9 @@ public class WebCam extends ServiceSupport<Void> {
      * @param color
      */
     public void setImageColor(String color) {
+        if (color == null) {
+            return;
+        }
         switch (color) {
             case "COLOR_BGR2BGRA":
                 webcamImageColor_ = opencv_imgproc.COLOR_BGR2BGRA;
@@ -1051,6 +1058,9 @@ public class WebCam extends ServiceSupport<Void> {
      */
     public Boolean save(String path) throws FrameGrabber.Exception {
         if (webcam_ != null) {
+            if ((path == null) || path.isEmpty()) {
+                return false;
+            }
             if (isPlay_) {
                 if (saveFilePath_ == null) {
                     saveFilePath_ = path;
@@ -1151,8 +1161,7 @@ public class WebCam extends ServiceSupport<Void> {
      */
     public Boolean isFocused() {
         if (webcam_ != null) {
-            webcamStage_.isFocused();
-            return true;
+            return webcamStage_.isFocused();
         }
         write(FUNCTION_NAME, "Camera device is not open", true);
         return false;
@@ -1346,13 +1355,18 @@ public class WebCam extends ServiceSupport<Void> {
                                                             isUpdateFuncResultImage_ = true;
 
                                                             Platform.runLater(() -> {
-                                                                if (funcResultImage_ != null) {
+                                                                String func = funcResultImage_;
+                                                                WebEngine engine = webEngine_;
+                                                                String image = resultImage_;
+                                                                String type = webcamImageType_;
+                                                                if ((func != null) && (engine != null)
+                                                                        && (image != null)) {
                                                                     if (state_ == Worker.State.SUCCEEDED) {
                                                                         try {
-                                                                            webEngine_.executeScript(
-                                                                                    funcResultImage_ + "('"
-                                                                                            + resultImage_ + "', '"
-                                                                                            + webcamImageType_ + "');");
+                                                                            engine.executeScript(
+                                                                                    func + "('"
+                                                                                            + image + "', '"
+                                                                                            + type + "');");
                                                                         } catch (JSException ex) {
                                                                             writeStackTrace(FUNCTION_NAME,
                                                                                     ex);
@@ -1369,7 +1383,8 @@ public class WebCam extends ServiceSupport<Void> {
                                                 }
                                             }
 
-                                            if ((funcResultBlob_ != null) && !isUpdateFuncResultBlob_) {
+                                            if ((funcResultBlob_ != null) && !isUpdateFuncResultBlob_
+                                                    && (blobInfo_ != null)) {
                                                 matBlob = opencv_dnn.blobFromImage(matImage, blobInfo_.scalefactor,
                                                         blobInfo_.size, blobInfo_.mean, blobInfo_.swapRB,
                                                         blobInfo_.crop,
@@ -1381,11 +1396,14 @@ public class WebCam extends ServiceSupport<Void> {
                                                 isUpdateFuncResultBlob_ = true;
 
                                                 Platform.runLater(() -> {
-                                                    if (resultBlob_ != null) {
+                                                    String func = funcResultBlob_;
+                                                    WebEngine engine = webEngine_;
+                                                    String blob = resultBlob_;
+                                                    if ((func != null) && (engine != null) && (blob != null)) {
                                                         if (state_ == Worker.State.SUCCEEDED) {
                                                             try {
-                                                                webEngine_.executeScript(
-                                                                        funcResultBlob_ + "('" + resultBlob_ + "');");
+                                                                engine.executeScript(
+                                                                        func + "('" + blob + "');");
                                                             } catch (JSException ex) {
                                                                 writeStackTrace(FUNCTION_NAME, ex);
                                                             }
@@ -1395,8 +1413,9 @@ public class WebCam extends ServiceSupport<Void> {
                                                 });
                                             }
 
-                                            if (saveFilePath_ != null) {
-                                                opencv_imgcodecs.imwrite(saveFilePath_, matImage);
+                                            String savePath = saveFilePath_;
+                                            if (savePath != null) {
+                                                opencv_imgcodecs.imwrite(savePath, matImage);
                                                 saveFilePath_ = null;
                                             }
                                             matImage.release();
@@ -1414,6 +1433,8 @@ public class WebCam extends ServiceSupport<Void> {
                                     writeStackTrace(FUNCTION_NAME, ex);
                                 }
                             }
+                        } else {
+                            Thread.onSpinWait();
                         }
                     }
                 }

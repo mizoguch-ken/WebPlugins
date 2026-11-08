@@ -562,14 +562,22 @@ public abstract class LinkBoxClientPlugin extends PluginSupport implements LinkB
                     break;
             }
 
-            JsonArray buffer = gson_.fromJson(jsonElement, JsonArray.class);
-            for (JsonElement buff : buffer) {
-                units.add(buff.getAsJsonObject().get("unit").getAsInt());
-                views.add(buff.getAsJsonObject().get("view").getAsString());
-            }
+            try {
+                JsonArray buffer = gson_.fromJson(jsonElement, JsonArray.class);
+                if (buffer == null) {
+                    return false;
+                }
+                for (JsonElement buff : buffer) {
+                    units.add(buff.getAsJsonObject().get("unit").getAsInt());
+                    views.add(buff.getAsJsonObject().get("view").getAsString());
+                }
 
-            return linkBoxClient_.cmdSetL1(accNum, nmlDir, nmlLed, nmlSeg, nmlBuz, ansDir, ansLed, ansSeg, ansBuz,
-                    units, views);
+                return linkBoxClient_.cmdSetL1(accNum, nmlDir, nmlLed, nmlSeg, nmlBuz, ansDir, ansLed, ansSeg, ansBuz,
+                        units, views);
+            } catch (JsonSyntaxException | IllegalStateException | NullPointerException | NumberFormatException ex) {
+                writeStackTrace(functionName(), ex);
+            }
+            return false;
         }
         return null;
     }
@@ -598,6 +606,9 @@ public abstract class LinkBoxClientPlugin extends PluginSupport implements LinkB
                 List<Integer> units = new ArrayList<>();
                 try {
                     JsonArray buffer = gson_.fromJson(jsonElement, JsonArray.class);
+                    if (buffer == null) {
+                        return false;
+                    }
                     for (JsonElement buff : buffer) {
                         units.add(buff.getAsInt());
                     }
@@ -634,11 +645,14 @@ public abstract class LinkBoxClientPlugin extends PluginSupport implements LinkB
             try {
                 List<Integer> units = new ArrayList<>();
                 JsonArray buffer = gson_.fromJson(jsonElement, JsonArray.class);
+                if (buffer == null) {
+                    return false;
+                }
                 for (JsonElement buff : buffer) {
                     units.add(buff.getAsInt());
                 }
                 return linkBoxClient_.cmdClearAK(units);
-            } catch (JsonSyntaxException ex) {
+            } catch (JsonSyntaxException | NumberFormatException ex) {
                 writeStackTrace(functionName(), ex);
             }
             return false;

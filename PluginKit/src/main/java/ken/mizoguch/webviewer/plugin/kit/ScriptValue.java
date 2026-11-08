@@ -17,6 +17,8 @@ public final class ScriptValue {
      */
     public static final int MAX_LENGTH = 4096;
 
+    private static final char[] HEX = "0123456789abcdef".toCharArray();
+
     /**
      * use a message of the plug-in or of the network in a javascript literal : the characters
      * which end the literal are escaped, so a message can not carry an other javascript.<br>
@@ -76,7 +78,11 @@ public final class ScriptValue {
                 default:
                     // the line separator and the paragraph separator end a javascript literal
                     if ((ch < 0x20) || (ch == 0x2028) || (ch == 0x2029)) {
-                        script.append(String.format("\\u%04x", (int) ch));
+                        script.append("\\u")
+                                .append(HEX[(ch >>> 12) & 0xF])
+                                .append(HEX[(ch >>> 8) & 0xF])
+                                .append(HEX[(ch >>> 4) & 0xF])
+                                .append(HEX[ch & 0xF]);
                     } else {
                         script.append(ch);
                     }

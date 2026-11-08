@@ -1,55 +1,52 @@
 # WebPlugins PluginApi
 
-## Overview
+## Overview / 概要
 
-## 概要
+* **PluginApi** (`webviewer-plugin-api`) defines the `WebViewerPlugin` interface that connects the host `WebViewer` (in DecoTofu) and all `WebViewer` plug-ins.
+* **PluginApi**（`webviewer-plugin-api`）は、ホスト側の `WebViewer`（DecoTofu）とすべてのプラグインの間を繋ぐ `WebViewerPlugin` インターフェースを定義するモジュールです。
+* It is a plain library JAR (`webviewer-plugin-api-<version>.jar`). It is **not** placed in `web/plugins` and must **not** be shaded into a plug-in's JAR: the `WebViewer` loads plug-in JARs with itself as the parent class loader, so both host and plug-in must share the host's `WebViewerPlugin` class definition.
+* 通常のライブラリ JAR（`webviewer-plugin-api-<version>.jar`）であり、`web/plugins` フォルダーには配置せず、またプラグインの JAR にも shade しません。`WebViewer` は自身のクラスローダーを親としてプラグイン JAR を読み込むため、プラグイン側がインターフェースを二重に shade しないことで同一の型として認識されます。
 
- * The interface between the WebViewer and its plug-ins : the WebViewer holds it and every plug-in is compiled against it.
- * WebViewer とそのプラグインの間のインターフェースです。 WebViewer がこれを保持し、プラグインはこれを参照してコンパイルします。
- * It is a plain library : it is not shaded in the jar of a plug-in and it is not put in the [plugins] folder.
- * 通常のライブラリです。プラグインの jar に shade せず、[plugins]フォルダーには置きません。
- * The WebViewer loads the jar of a plug-in with itself as the parent loader, so the interface which the plug-in implements is the interface of the loader which reads it : a plug-in which shades its own copy of the interface would not implement it.
- * WebViewer はプラグインの jar を自身のローダーを親として読み込むので、プラグインの実装するインターフェースは読み込む側のインターフェースです。自身の jar にインターフェースを shade したプラグインはそれを実装した事にはなりません。
+---
 
-## Classes
+## Module & Interface / モジュールとインターフェース
 
-## クラス
+* **Java Module**: `ken.mizoguch.webviewer.plugin.api`
+* **Exported Package**: `ken.mizoguch.webviewer.plugin`
+* **Interface**: `ken.mizoguch.webviewer.plugin.WebViewerPlugin`
 
- * module ken.mizoguch.webviewer.plugin.api, which exports the package ken.mizoguch.webviewer.plugin
- * モジュール ken.mizoguch.webviewer.plugin.api はパッケージ ken.mizoguch.webviewer.plugin を exports します
- * WebViewerPlugin : the only interface of the module
- * WebViewerPlugin : モジュール唯一のインターフェース
- * what the plug-in gives to the WebViewer / プラグインが WebViewer に与える
- * public String functionName() : the name of the object of the plug-in in the javascript of the page
- * public String functionName() : ページの javascript でのプラグインのオブジェクトの名前
- * public void initialize(WebViewerPlugin webViewer) : the WebViewer gives itself to the plug-in
- * public void initialize(WebViewerPlugin webViewer) : WebViewer 自身がプラグインに渡されます
- * what the WebViewer gives to the plug-in / WebViewer がプラグインに与える
- * public void state(Worker.State state) : the state of the page, which begins at READY when the page can be used
- * public void state(Worker.State state) : ページの状態。ページが使えるようになると READY です
- * public void close() : the WebViewer closes the plug-in
- * public void close() : WebViewer がプラグインを閉じます
- * public Stage stage() , public List<Image> icons() : the window of the WebViewer and its icons
- * public Stage stage() 、 public List<Image> icons() : WebViewer のウィンドウとそのアイコン
- * public WebEngine webEngine() : the engine of the page
- * public WebEngine webEngine() : ページのエンジン
- * public Path webPath() : the web folder of the page, which the plug-in reads for its files
- * public Path webPath() : ページの web フォルダー。プラグインが自身のファイルに使うフォルダーです
- * public void write(String name, String msg, boolean err) , public void writeStackTrace(String name, Throwable throwable) : a message of the plug-in in the console of the WebViewer
- * public void write(String name, String msg, boolean err) 、 public void writeStackTrace(String name, Throwable throwable) : プラグインのメッセージや例外を WebViewer のコンソールに書きます
- * every public method of a plug-in becomes a function of the javascript of the page under the name given by functionName()
- * プラグインの public メソッドは全て、functionName() の名前の下にページの javascript の関数になります
+### Methods Implemented by the Plug-in for the Host / プラグインが WebViewer に提供するメソッド
 
-## Usage
+| Method / メソッド | Description / 説明 |
+| :--- | :--- |
+| `String functionName()` | Returns the JavaScript property name under `window` (e.g. `"db"`, `"serial"`, `"llm"`). Every `public` method of the plug-in class becomes callable from JavaScript on this object.<br>ページの JavaScript の `window` オブジェクトに登録するプロパティ名を返します。プラグインのすべての `public` メソッドがこのオブジェクトの関数として公開されます。 |
+| `void initialize(WebViewerPlugin webViewer)` | Called by the `WebViewer` when attaching the plug-in, passing the host reference (`webViewer`) to the plug-in.<br>プラグイン読み込み時に `WebViewer` から呼び出され、ホスト側の参照（`webViewer`）が渡されます。 |
+| `void state(Worker.State state)` | Notifies the plug-in of `WebEngine` page load state transitions (`READY`, `SCHEDULED`, `RUNNING`, `SUCCEEDED`, `CANCELLED`, `FAILED`).<br>`WebEngine` のページ読み込み状態の変化（`READY`、`SUCCEEDED` など）をプラグインに通知します。 |
+| `void close()` | Called when the `WebViewer` shuts down so the plug-in can release threads, sockets, ports, or files.<br>`WebViewer` の終了時に呼び出され、スレッド・ソケット・ポート・ファイル等のリソースを解放します。 |
 
-## 使い方
+### Host Methods Provided by the `WebViewer` / WebViewer がプラグインに提供するメソッド
 
- * A plug-in extends PluginSupport of webviewer-plugin-kit, which implements this interface ; the class of the plug-in is the Main-Class of its jar
- * プラグインはこのインターフェースを実装する webviewer-plugin-kit の PluginSupport を継承します。プラグインのクラスが jar の Main-Class です
+| Method / メソッド | Description / 説明 |
+| :--- | :--- |
+| `Stage stage()` | Returns the primary JavaFX `Stage` window of the `WebViewer`.<br>`WebViewer` のメイン JavaFX `Stage`（ウィンドウ）を返します。 |
+| `List<Image> icons()` | Returns the window icon images of the `WebViewer`.<br>`WebViewer` のウィンドウアイコン一覧を返します。 |
+| `WebEngine webEngine()` | Returns the JavaFX `WebEngine` rendering the page.<br>ページを描画している JavaFX `WebEngine` を返します。 |
+| `Path webPath()` | Returns the root `web` directory path used to sandbox file operations.<br>ページの `web` フォルダーのパスを返します（ファイル操作の基準フォルダーとして使用されます）。 |
+| `void write(String name, String msg, boolean err)` | Writes a log or error message to the `WebViewer` console.<br>`WebViewer` のコンソールにメッセージまたはエラーを出力します。 |
+| `void writeStackTrace(String name, Throwable throwable)` | Writes an exception stack trace to the `WebViewer` console.<br>`WebViewer` のコンソールに例外のスタックトレースを出力します。 |
 
-e.g.
+---
+
+## Usage / 使い方
+
+A plug-in typically extends `PluginSupport` from `PluginKit` (which implements `WebViewerPlugin`), and sets the plug-in class as the `Main-Class` in its JAR manifest:
+プラグインを作成する際は、このインターフェースを実装した `PluginKit` の `PluginSupport` を継承し、プラグインクラスを JAR マニフェストの `Main-Class` に指定します。
 
 ```java
+package example;
+
+import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
+
 public class MyPlugin extends PluginSupport {
 
     private static final String FUNCTION_NAME = "myplugin";
@@ -65,23 +62,27 @@ public class MyPlugin extends PluginSupport {
 }
 ```
 
-## Requirements
+---
 
-## 要件
+## Requirements / 要件
 
- * Java 21 or later, with the JavaFX modules javafx.base, javafx.graphics and javafx.web
- * Java 21 以上と JavaFX の javafx.base、javafx.graphics、javafx.web
+* **Java**: JDK 21 or later with JavaFX modules (`javafx.base`, `javafx.graphics`, `javafx.web`).
+  * **Java**: JavaFX モジュール（`javafx.base`, `javafx.graphics`, `javafx.web`）を含む JDK 21 以上。
 
-## Build
+---
 
-## ビルド
+## Build / ビルド
 
- * mvn -B -pl PluginApi package : target/webviewer-plugin-api-<version>.jar, a plain library jar which is not shaded
- * mvn -B -pl PluginApi package : 成果物は target/webviewer-plugin-api-<version>.jar です。shade しない通常のライブラリ jar です
+```bash
+mvn -B -pl PluginApi package
+```
 
-## Licenses
+* Produces the unshaded library JAR `PluginApi/target/webviewer-plugin-api-<version>.jar`.
+  * 通常のライブラリ JAR として `PluginApi/target/webviewer-plugin-api-<version>.jar` が生成されます。
 
-## ライセンス
+---
 
- * The module ships with no library of an other project
- * このモジュールは他のプロジェクトのライブラリを内包しません
+## Licenses / ライセンス
+
+* This module contains no third-party libraries.
+  * このモジュールは外部プロジェクトのライブラリを内包しません。

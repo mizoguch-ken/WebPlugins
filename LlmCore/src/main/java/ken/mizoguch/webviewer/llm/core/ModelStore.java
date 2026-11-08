@@ -103,7 +103,7 @@ public final class ModelStore {
             Files.createDirectories(directory);
 
             try (DataOutputStream out = new DataOutputStream(new BufferedOutputStream(
-                    Files.newOutputStream(temporary)))) {
+                    Files.newOutputStream(temporary), 65536))) {
                 out.writeInt(MAGIC);
                 out.writeInt(VERSION);
 
@@ -154,7 +154,7 @@ public final class ModelStore {
             return failure("No file given");
         }
         try (DataInputStream in = new DataInputStream(new BufferedInputStream(
-                Files.newInputStream(file)))) {
+                Files.newInputStream(file), 65536))) {
 
             if (in.readInt() != MAGIC) {
                 return failure("[" + file + "] is not a model of the Llm plug-in");

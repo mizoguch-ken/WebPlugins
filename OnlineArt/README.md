@@ -1,71 +1,95 @@
 # WebPlugins OnlineArt
 
-## Overview
+## Overview / 概要
 
-## 概要
+* **OnlineArt** is the Online Art serial link plug-in for the `WebViewer`. It cyclically exchanges relay and register data with units on an Online Art RS-232C/RS-485 serial link and maintains a local memory image that the page's JavaScript can read and write at any time.
+* **OnlineArt** は、`WebViewer` 向けのオンラインアート（Online Art）シリアルリンク通信プラグインです。シリアルリンク上の各ユニットとリレーおよびレジスタを周期的に交換してローカルメモリイメージを保持し、ページの JavaScript からいつでも読み書きできるようにします。
+* **Integration with `Serial` Plug-in**: `OnlineArt` operates over the serial port opened by the [`Serial`](../Serial/README.md) plug-in (`onlineArt.setSerialPort(serial.getSerialPort())`). Both `Serial.jar` and `OnlineArt.jar` must be placed in `web/plugins/`.
+* **`Serial` プラグインとの連携**: [`Serial`](../Serial/README.md) プラグインで開いたシリアルポートを `onlineArt.setSerialPort(serial.getSerialPort())` で受け取って通信を行います。`web/plugins/` フォルダーには `OnlineArt.jar` と `Serial.jar` の両方を配置してください。
+* **Frame Format**: `[STX][Destination Unit][Source Unit][Data Type][Command][Data...][4-char Hex CRC][CR][LF]`
+* **パケット形式**: `[STX][宛先ユニット][送信元ユニット][データ種別][コマンド][データ...][4文字CRC][CR][LF]`
 
- * The Online Art link of the page : the plug-in exchanges relays and registers with the units of a serial link, and it keeps a local image of them, which the page reads and writes.
- * ページのオンラインアートリンクです。プラグインはシリアルリンクのユニットとリレーとレジスタを交換し、それらのローカルのイメージを保持します。ページはそれを読み書きします。
- * The plug-in is built on the port of the Serial plug-in : the page opens a port with the Serial plug-in first and gives it to the OnlineArt plug-in.
- * プラグインは Serial プラグインのポートの上に作ります。ページは最初に Serial プラグインでポートを開き、それを OnlineArt プラグインに渡します。
- * the format of a packet of the link : STX, the unit of the destination, the unit of the source, the type of the data, the command, the data, the crc of 4 characters, CR and LF
- * リンクのパケットの形式です。STX、宛先のユニット、送信元のユニット、データの型、コマンド、データ、4 文字の crc、CR、LF
+---
 
-## Functions
+## JavaScript Functions / JS 関数一覧
 
-## 関数
+```text
+void    onlineArt.licenses()
+Boolean onlineArt.setSerialPort(Object serial)
+Boolean onlineArt.linkStart(int relayNumber, int registerNumber)
+String  onlineArt.getRelayAll()
+Boolean onlineArt.setRelayAll(String data)
+Boolean onlineArt.getRelayBit(int position, int bit)
+Boolean onlineArt.setRelayBit(boolean data, int position, int bit)
+Integer onlineArt.getRelay(int position)
+Boolean onlineArt.setRelay(int data, int position)
+String  onlineArt.getRegisterAll()
+Boolean onlineArt.setRegisterAll(String data)
+Boolean onlineArt.getRegisterBit(int position, int bit)
+Boolean onlineArt.setRegisterBit(boolean data, int position, int bit)
+Integer onlineArt.getRegister(int position)
+Boolean onlineArt.setRegister(int data, int position)
+Boolean onlineArt.cmdReadRelay(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset, int registerNumber)
+Boolean onlineArt.cmdReadRegister(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset, int registerNumber)
+Boolean onlineArt.cmdWriteRelay(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset, int registerNumber)
+Boolean onlineArt.cmdWriteRegister(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset, int registerNumber)
+int     onlineArt.getUnitNumber()
+void    onlineArt.setUnitNumber(int unitNumber)
+int     onlineArt.getMaxUnitNumber()
+void    onlineArt.setMaxUnitNumber(int maxUnitNumber)
+int     onlineArt.getMaxRegisterNumber()
+void    onlineArt.setMaxRegisterNumber(int maxRegisterNumber)
+int     onlineArt.getBaseTime()
+void    onlineArt.setBaseTime(int baseTime)
+int     onlineArt.getDelayTime()
+void    onlineArt.setDelayTime(int delayTime)
+int     onlineArt.getRetryNumber()
+void    onlineArt.setRetryNumber(int retryNumber)
+int     onlineArt.getReceiveAddressOffset()
+void    onlineArt.setReceiveAddressOffset(int receiveAddressOffset)
+int     onlineArt.getSendAddressOffset()
+void    onlineArt.setSendAddressOffset(int sendAddressOffset)
+int     onlineArt.getConnectionUnits()
+int     onlineArt.getTriggerUnitNumber()
+void    onlineArt.setTriggerUnitNumber(int triggerUnitNumber)
+long    onlineArt.getSynchronizeTime()
+long    onlineArt.getRequestWaitTime()
+long    onlineArt.getSendWaitTime()
+long    onlineArt.getSendDelayTime()
+long    onlineArt.getOneCycleTime()
+void    onlineArt.setNotifyReceiveRequest(String func)
+void    onlineArt.setNotifyReceiveResponse(String func)
+void    onlineArt.setNotifySendRequest(String func)
+void    onlineArt.setNotifySendResponse(String func)
+void    onlineArt.setNotifySendRetry(String func)
+```
 
- * void onlineArt.licenses()
- * Boolean onlineArt.setSerialPort(Object serial) : the port read by serial.getSerialPort() of the Serial plug-in
- * Boolean onlineArt.setSerialPort(Object serial) : Serial プラグインの serial.getSerialPort() で読んだポートです
- * Boolean onlineArt.linkStart(int relayNumber, int registerNumber) : begin the exchange of the given numbers of relays and registers
- * Boolean onlineArt.linkStart(int relayNumber, int registerNumber) : 指定した数のリレーとレジスタの交換を始めます
- * String onlineArt.getRelayAll() , Boolean onlineArt.setRelayAll(String data) : every relay as one text
- * String onlineArt.getRelayAll() 、 Boolean onlineArt.setRelayAll(String data) : 全てのリレーを 1 つのテキストとして扱います
- * Boolean onlineArt.getRelayBit(int position, int bit) , Boolean onlineArt.setRelayBit(boolean data, int position, int bit)
- * Integer onlineArt.getRelay(int position) , Boolean onlineArt.setRelay(int data, int position)
- * String onlineArt.getRegisterAll() , Boolean onlineArt.setRegisterAll(String data) : every register as one text
- * String onlineArt.getRegisterAll() 、 Boolean onlineArt.setRegisterAll(String data) : 全てのレジスタを 1 つのテキストとして扱います
- * Boolean onlineArt.getRegisterBit(int position, int bit) , Boolean onlineArt.setRegisterBit(boolean data, int position, int bit)
- * Integer onlineArt.getRegister(int position) , Boolean onlineArt.setRegister(int data, int position)
- * Boolean onlineArt.cmdReadRelay(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset, int registerNumber)
- * Boolean onlineArt.cmdReadRegister(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset, int registerNumber)
- * Boolean onlineArt.cmdWriteRelay(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset, int registerNumber)
- * Boolean onlineArt.cmdWriteRegister(int destination, int startAddress, int receiveAddressOffset, int sendAddressOffset, int registerNumber)
- * int onlineArt.getUnitNumber() , void onlineArt.setUnitNumber(int unitNumber) : the unit of this plug-in
- * int onlineArt.getUnitNumber() 、 void onlineArt.setUnitNumber(int unitNumber) : このプラグインのユニットです
- * int onlineArt.getMaxUnitNumber() , void onlineArt.setMaxUnitNumber(int maxUnitNumber)
- * int onlineArt.getMaxRegisterNumber() , void onlineArt.setMaxRegisterNumber(int maxRegisterNumber)
- * int onlineArt.getBaseTime() , void onlineArt.setBaseTime(int baseTime) , int onlineArt.getDelayTime() , void onlineArt.setDelayTime(int delayTime) , int onlineArt.getRetryNumber() , void onlineArt.setRetryNumber(int retryNumber) : the times and the retries of the link
- * int onlineArt.getBaseTime() 、 void onlineArt.setBaseTime(int baseTime) 、 int onlineArt.getDelayTime() 、 void onlineArt.setDelayTime(int delayTime) 、 int onlineArt.getRetryNumber() 、 void onlineArt.setRetryNumber(int retryNumber) : リンクの時間と再送の数です
- * int onlineArt.getReceiveAddressOffset() , void onlineArt.setReceiveAddressOffset(int receiveAddressOffset) , int onlineArt.getSendAddressOffset() , void onlineArt.setSendAddressOffset(int sendAddressOffset)
- * int onlineArt.getConnectionUnits() : the units the link reads
- * int onlineArt.getConnectionUnits() : リンクが読むユニットの数です
- * int onlineArt.getTriggerUnitNumber() , void onlineArt.setTriggerUnitNumber(int triggerUnitNumber)
- * long onlineArt.getSynchronizeTime() , onlineArt.getRequestWaitTime() , onlineArt.getSendWaitTime() , onlineArt.getSendDelayTime() , onlineArt.getOneCycleTime() : the times the link measured
- * long onlineArt.getSynchronizeTime() 、 onlineArt.getRequestWaitTime() 、 onlineArt.getSendWaitTime() 、 onlineArt.getSendDelayTime() 、 onlineArt.getOneCycleTime() : リンクが測った時間です
- * void onlineArt.setNotifyReceiveRequest(String func)
- * void onlineArt.setNotifyReceiveResponse(String func)
- * void onlineArt.setNotifySendRequest(String func)
- * void onlineArt.setNotifySendResponse(String func)
- * void onlineArt.setNotifySendRetry(String func)
+| Category / 分類 | Description / 説明 |
+| :--- | :--- |
+| **Port & Link Startup**<br>`setSerialPort`, `linkStart` | Attaches the open `NRSerialPort` from `serial.getSerialPort()` and starts the background periodic exchange service for `relayNumber` relays and `registerNumber` registers.<br>`serial.getSerialPort()` のポートを設定し、指定した数のリレー・レジスタの周期交換タスクを開始します。 |
+| **Local Image Access**<br>`getRelay*`, `setRelay*`, `getRegister*`, `setRegister*` | Reads or writes the local relay/register memory image (as a whole hex string, 16-bit word at `position`, or individual bit at `position, bit`).<br>プラグインが保持するリレー・レジスタのローカルイメージを全体文字列・ワード単位・ビット単位で読み書きします。 |
+| **Direct Unit Commands**<br>`cmdReadRelay`, `cmdReadRegister`, `cmdWriteRelay`, `cmdWriteRegister` | Sends a one-shot direct read or write command to a specific `destination` unit outside the periodic link cycle.<br>周期交換とは別に、指定した宛先ユニット（`destination`）に対して直接リレー／レジスタの読み書きコマンドを送信します。 |
+| **Link Configuration & Timing**<br>`*UnitNumber`, `*Time`, `*Offset`, `getConnectionUnits` | Configures unit numbers, timeouts, delays, retry counts, and address offsets, and reads measured link cycle timings (`getSynchronizeTime()`, `getOneCycleTime()`, etc.).<br>自局ユニット番号・最大ユニット数・基本時間・遅延時間・リトライ回数・オフセットの設定、および接続ユニット数や実測サイクル時間の取得を行います。 |
 
-## Notifications
+---
 
-## 通知
+## Notifications / 通知コールバック
 
- * setNotifyReceiveRequest(func) and setNotifyReceiveResponse(func) call func(destination, source, dataType, command) for a request or a response the link received
- * setNotifyReceiveRequest(func) と setNotifyReceiveResponse(func) はリンクが受信した要求や応答について func(destination, source, dataType, command) を呼びます
- * setNotifySendRequest(func) , setNotifySendResponse(func) and setNotifySendRetry(func) call func(destination, source, dataType, command) for a request or a response the link sent, and for a send the link sent again
- * setNotifySendRequest(func) 、setNotifySendResponse(func) 、setNotifySendRetry(func) はリンクが送った要求や応答、送り直した送信について func(destination, source, dataType, command) を呼びます
+All 5 notification setters validate `func` via `scriptFunction(func)` (`ScriptFunction.isValid`) and invoke `func(destination, source, dataType, command)` on the JavaFX thread:
+5 つの通知設定関数はいずれも関数名を `scriptFunction(func)` で検証し、イベント発生時に `func(destination, source, dataType, command)` を呼び出します：
 
-## Usage
+* `setNotifyReceiveRequest(func)`: Called when a request frame is received from another unit. / 他ユニットから要求フレームを受信した時。
+* `setNotifyReceiveResponse(func)`: Called when a response frame is received from another unit. / 他ユニットから応答フレームを受信した時。
+* `setNotifySendRequest(func)`: Called when this unit sends a request frame. / 自ユニットが要求フレームを送信した時。
+* `setNotifySendResponse(func)`: Called when this unit sends a response frame. / 自ユニットが応答フレームを送信した時。
+* `setNotifySendRetry(func)`: Called when this unit retries sending a frame. / フレームを再送した時。
 
-## 使い方
+---
 
-Put OnlineArt.jar and Serial.jar in the web/plugins folder, open a port with the Serial plug-in and give it to the OnlineArt plug-in.
+## Usage / 使い方
 
-OnlineArt.jar と Serial.jar を web/plugins フォルダーへ入れ、Serial プラグインでポートを開いて、それを OnlineArt プラグインに渡します。
+Place both `OnlineArt.jar` and `Serial.jar` in `web/plugins/` and restart the `WebViewer`.
+`OnlineArt.jar` と `Serial.jar` の両方を `web/plugins/` フォルダーに配置し、`WebViewer` を再起動します。
 
 ```javascript
 function setup() {
@@ -74,48 +98,34 @@ function setup() {
   onlineArt.setUnitNumber(1);
   onlineArt.linkStart(16, 16);
 }
+
 function lamp_click() {
   onlineArt.setRelayBit(true, 0, 0);
 }
+
 function read_click() {
   dbg.log(onlineArt.getRelayAll());
   dbg.log(onlineArt.getConnectionUnits() + ' : ' + onlineArt.getOneCycleTime());
 }
 ```
 
-## Notes
+---
 
-## 注記
+## Requirements & Build / 要件とビルド
 
- * the plug-in keeps a local image of the relays and of the registers : get... answers that image and set... writes it, while the link task moves it to the other units and reads the image of the other units
- * プラグインはリレーとレジスタのローカルのイメージを保持します。get... はそのイメージを答え、set... はそれを書きます。リンクのタスクはそのイメージを他のユニットへ運び、他のユニットのイメージを読みます
- * linkStart(...) begins the task of the exchange, which is periodic : the times of a cycle are read by the ...Time functions
- * linkStart(...) が交換のタスクを始めます。交換は周期的で、循環の時間は ...Time の関数で読めます
- * the cmd... commands read or write one unit directly, without the periodic image
- * cmd... のコマンドは定期的なイメージを使わず、1 つのユニットを直接読み書きします
- * setSerialPort(...) reads the port object the Serial plug-in holds, so Serial.jar must be in the web/plugins folder too
- * setSerialPort(...) は Serial プラグインが持つポートのオブジェクトを読むので、Serial.jar も web/plugins フォルダーにある必要がありました
+* Requires [`Serial.jar`](../Serial/README.md) in `web/plugins/` and a serial port connected to Online Art units.
+  * `web/plugins/` 内の [`Serial.jar`](../Serial/README.md) およびオンラインアートユニットが接続されたシリアルポート。
 
-## Requirements
+```bash
+mvn -B -pl OnlineArt -am package
+```
 
-## 要件
+* Deliverable shaded JAR: `OnlineArt/target/OnlineArt.jar`.
+  * 配布用成果物（shaded JAR）: `OnlineArt/target/OnlineArt.jar`。
 
- * the Serial plug-in and a serial link of Online Art units
- * Serial プラグインと、オンラインアートのユニットのシリアルリンク
- * the jar of the plug-in holds the nrjavaserial library, the apache commons net library, the java native access libraries and gson
- * プラグインの jar は nrjavaserial ライブラリ、apache commons net ライブラリ、java native access のライブラリ、gson を持ちます
+---
 
-## Build
+## Licenses / ライセンス
 
-## ビルド
-
- * mvn -B -pl OnlineArt package : target/OnlineArt.jar, the shaded jar of the plug-in
- * mvn -B -pl OnlineArt package : 成果物は target/OnlineArt.jar です。プラグインの shaded jar です
-
-## Licenses
-
-## ライセンス
-
- * onlineArt.licenses() shows the licenses kept in licenses.txt of the package of the plug-in : the gson library, the nrjavaserial library, the apache commons net library and the java native access libraries
- * onlineArt.licenses() はプラグインのパッケージの licenses.txt に保持するライセンスを表示します。gson ライブラリ、nrjavaserial ライブラリ、apache commons net ライブラリ、java native access のライブラリです
-
+* `onlineArt.licenses()` displays the licenses stored in `licenses.txt`: **Gson** (Apache-2.0), **nrjavaserial** (LGPL-2.1 with RXTX exception / BSD), **Apache Commons Net** (Apache-2.0), and **Java Native Access (JNA)** (Apache-2.0 / LGPL-2.1).
+  * `onlineArt.licenses()` はパッケージ内の `licenses.txt` に保持されたライセンス（**Gson**、**nrjavaserial**、**Apache Commons Net**、**JNA**）を表示します。

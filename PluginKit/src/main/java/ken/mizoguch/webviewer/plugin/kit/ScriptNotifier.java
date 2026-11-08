@@ -40,8 +40,8 @@ public final class ScriptNotifier {
     private final BlockingQueue<String> queue_;
 
     private volatile String function_;
-    private WebEngine engine_;
-    private Worker.State state_;
+    private volatile WebEngine engine_;
+    private volatile Worker.State state_;
 
     /**
      * a notification of a plug-in

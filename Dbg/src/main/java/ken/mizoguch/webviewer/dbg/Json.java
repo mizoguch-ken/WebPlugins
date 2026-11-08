@@ -11,6 +11,8 @@ package ken.mizoguch.webviewer.dbg;
  */
 final class Json {
 
+    private static final char[] HEX = "0123456789abcdef".toCharArray();
+
     /**
      * a text of the plug-in as a value of json, between double quotes
      *
@@ -62,7 +64,11 @@ final class Json {
                     break;
                 default:
                     if ((ch < 0x20) || (ch == 0x2028) || (ch == 0x2029)) {
-                        json.append(String.format("\\u%04x", (int) ch));
+                        json.append("\\u")
+                                .append(HEX[(ch >>> 12) & 0xF])
+                                .append(HEX[(ch >>> 8) & 0xF])
+                                .append(HEX[(ch >>> 4) & 0xF])
+                                .append(HEX[ch & 0xF]);
                     } else {
                         json.append(ch);
                     }

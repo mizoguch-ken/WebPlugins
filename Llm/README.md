@@ -1,108 +1,118 @@
 # WebPlugins Llm
 
-## Overview
+## Overview / 概要
 
-## 概要
+* **Llm** is the Large Language Model (LLM) plug-in for the `WebViewer`. It provides two capabilities under a unified `llm` JavaScript object:
+  1. **Local On-Device Transformer (`llm-core`)**: Builds, trains, saves, loads, and runs a lightweight pure-Java Transformer language model directly on the local CPU with zero native libraries or network access.
+  2. **Remote OpenAI-Compatible Client**: Connects to any OpenAI-compatible HTTP server (such as LM Studio, Ollama, vLLM, llama.cpp server, or OpenAI) for `/chat/completions`, `/completions`, `/responses`, `/embeddings`, and `/models` with streaming token notifications, tool call reassembly, and automatic retry/backoff.
+* **Llm** は、`WebViewer` 向けの言語モデル（LLM）プラグインです。単一の `llm` オブジェクトから以下の 2 つの機能を利用できます：
+  1. **プラグイン内蔵のローカル Transformer モデル (`llm-core`)**: ネットワークやネイティブライブラリ、GPU を一切必要とせず、純粋な Java のみで動作する小規模な Transformer モデルの作成・学習・保存・読込・推論（文章生成）を行います。
+  2. **OpenAI 互換リモートモデルのクライアント**: ローカルまたは別コンピューター上の OpenAI 互換 API サーバー（LM Studio、Ollama、vLLM、llama.cpp、OpenAI 等）に対し、`/chat/completions`・`/completions`・`/responses`・`/embeddings`・`/models` のリクエスト（ストリーミングおよびツール呼び出し結合に対応）を送信します。
+* **Non-Blocking Execution**: Local training and generation run on a dedicated background worker thread (with parallel matrix operations controlled by `-Dwebviewer.llm.threads=<N>`), and remote HTTP calls run on Java 21 virtual threads, keeping the `WebViewer` UI responsive at all times.
+* **非同期・並列実行**: ローカルモデルの学習・推論は専用ワーカースレッド（大きな行列演算はシステムプロパティ `webviewer.llm.threads` で指定したスレッド数で並列化）で動作し、リモートモデルへの通信は Java 21 の仮想スレッド（Virtual Thread）上で動作するため、ページの描画や UI 操作をブロックしません。
 
- * The language model of the page : the plug-in builds, trains, saves, reads and asks a small transformer of its own, and it asks a model of an other computer with the json of the Openai compatible interface.
- * ページの言語モデルです。プラグインは自身の小さな transformer を作成・学習・保存・読込・要求し、他のコンピューターのモデルも Openai 互換のインターフェースの json で要求します。
- * The plug-in is a client of an Openai compatible server : it is not an Openai server of its own, and the key of a remote model is kept by the plug-in, so llm.remoteInfo() tells only whether the plug-in holds one.
- * プラグインは Openai 互換サーバーのクライアントで、プラグイン自身が Openai のサーバーではありません。リモートモデルのキーはプラグインが保持するので、llm.remoteInfo() は保持しているかどうかだけを伝えます。
- * The jar of the plug-in holds the transformer of llm-core and the kit of the plug-ins. The interface and gson are held by the WebViewer which loads the plug-in, so they are not shaded.
- * プラグインの jar には llm-core の transformer とプラグインの kit が入ります。インターフェースと gson は読み込む WebViewer が持つので shade しません。
- * a training and an answer of a model of the plug-in run in a thread of the plug-in, and a work which asks a model of an other computer runs on a virtual thread : the page keeps showing what it shows while the model reads its weights or waits the answer of the other computer.
- * プラグインのモデルの学習と回答はプラグインのスレッドで動き、他のコンピューターのモデルを要求する仕事は仮想スレッドで動きます。モデルが重みを読む間、他のコンピューターの答えを待つ間も、ページは表示を保ちます。
- * the matrices of a model of the plug-in are read by several threads when the work is large enough : the system property webviewer.llm.threads gives the number of the threads the model may use, and zero or one keeps every operation on the thread which asked it.
- * プラグインのモデルの行列は、仕事が大きい時は複数のスレッドで読みます。システムプロパティ webviewer.llm.threads がモデルの使えるスレッド数で、0 または 1 の時は依頼したスレッドだけで演算します。
+---
 
-## Functions
+## JavaScript Functions / JS 関数一覧
 
-## 関数
+### 1. Local On-Device Model (`llm-core`) / プラグイン内蔵のローカルモデル
 
-model of the plug-in / プラグインのモデル :
+```text
+void    llm.licenses()
+String  llm.newModel(String config)
+String  llm.loadModel(String path)
+Boolean llm.saveModel(String path)
+Boolean llm.unloadModel()
+String  llm.modelInfo()
+Boolean llm.isIdle()
+Boolean llm.stop()
+Boolean llm.train(String texts, Integer epochs, Double learningRate)
+Boolean llm.answer(String prompt, Integer maxTokens, Double temperature, Integer topCount, Double topSum, Long seed)
+String  llm.result()
+```
 
- * void llm.licenses()
- * String llm.newModel(String config)
- * String llm.loadModel(String path)
- * Boolean llm.saveModel(String path)
- * Boolean llm.unloadModel()
- * String llm.modelInfo()
- * Boolean llm.isIdle()
- * Boolean llm.stop()
- * Boolean llm.train(String texts, Integer epochs, Double learningRate)
- * Boolean llm.answer(String prompt, Integer maxTokens, Double temperature, Integer topCount, Double topSum, Long seed)
- * String llm.result()
+### 2. Remote OpenAI-Compatible Model / OpenAI 互換リモートモデル
 
-model of an other computer / 他のコンピューターのモデル :
+```text
+String  llm.setRemote(String config)
+String  llm.remoteInfo()
+Boolean llm.chat(String request)
+Boolean llm.completions(String request)
+Boolean llm.response(String request)
+Boolean llm.embeddings(String request)
+Boolean llm.models()
+String  llm.result()
+```
 
- * String llm.setRemote(String config)
- * String llm.remoteInfo()
- * Boolean llm.chat(String request)
- * Boolean llm.completions(String request)
- * Boolean llm.response(String request)
- * Boolean llm.embeddings(String request)
- * Boolean llm.models()
- * String llm.result()
+### 3. Page Notifications / ページへの通知コールバック登録
 
-notifications of the page / ページの通知 :
+```text
+void    llm.setNotifyProgress(String func)
+void    llm.setNotifyToken(String func)
+void    llm.setNotifyDone(String func)
+void    llm.setNotifyLog(String func)
+```
 
- * void llm.setNotifyProgress(String func)
- * void llm.setNotifyToken(String func)
- * void llm.setNotifyDone(String func)
- * void llm.setNotifyLog(String func)
+---
 
-## Model of the plug-in
+## Local Model Details / ローカルモデルの仕様
 
-## プラグインのモデル
+* **`llm.newModel(config)`**: Accepts a JSON object configuring model hyperparameters (`"vocab"` as `"byte"` or `"char"`, `"vocabSize"`, `"dModel"`, `"heads"`, `"layers"`, `"context"`, `"seed"`), or `null` / `{}` for defaults.
+  * Bounds: `dModel` (`16..512`), `context` (`16..512`), `heads` (`1..16`), `layers` (`1..16`), `vocabSize` (`8..20000`), and maximum total parameters `24,000,000`.
+  * `newModel(config)` はモデルのサイズ設定 JSON（`"vocab"`: `"byte"` または `"char"`、`"vocabSize"`、`"dModel"`、`"heads"`、`"layers"`、`"context"`、`"seed"`）を受け取ります。上限は `dModel` / `context` が `16〜512`、`heads` / `layers` が `1〜16`、`vocabSize` が `8〜20000`、総重み数が最大 `24,000,000` です。
+* **`llm.train(texts, epochs, learningRate)`**: Trains the local model asynchronously on a single text string or a JSON array of strings (`epochs` up to `100,000`). Calls `setNotifyProgress` after each epoch and `setNotifyDone` when finished.
+  * 1 つの文字列または文字列の JSON 配列を読み込んで非同期で学習を開始します。各エポック終了時に `setNotifyProgress`、完了時に `setNotifyDone` が呼ばれます。
+* **`llm.answer(prompt, maxTokens, temperature, topCount, topSum, seed)`**: Generates up to `maxTokens` (`1..4096`) tokens from `prompt`, streaming each token piece to `setNotifyToken` and the final JSON summary to `setNotifyDone` / `llm.result()`.
+  * `prompt` に続くトークンを最大 `4096` トークンまで生成し、生成された断片ごとに `setNotifyToken` を呼び出します。
+* **`llm.saveModel(path)` / `llm.loadModel(path)`**: Saves or loads the model's configuration, tokenizer vocabulary, and weights to/from a file sandboxed under the page's `web` folder (`SandboxPath`).
+  * ページの `web` フォルダー配下（`SandboxPath`）のファイルへモデルの設定・トークナイザー・重みを保存／読み込みします。
+* **`llm.stop()`**: Requests graceful cancellation after the current token or training step so the model remains in a valid state.
+  * 現在処理中のステップまたはトークンの完了後に学習・推論を安全に停止します。
 
- * newModel(String config) reads a json object of the sizes ("vocab" as "byte" or "char", "vocabSize", "dModel", "heads", "layers", "context", "seed") ; a page which gives no size gets the sizes of a model of the plug-in. The sizes are limited : 16 to 512 for "dModel" and "context", 1 to 16 for "heads" and "layers", 8 to 20000 for "vocabSize", and a model carries at most 24000000 weights.
- * newModel(String config) はサイズの json オブジェクト（"vocab" は "byte" または "char"、"vocabSize"、"dModel"、"heads"、"layers"、"context"、"seed"）を読みます。サイズを書かないページはプラグイン既定のサイズになります。サイズには上限があります（"dModel" と "context" は 16〜512、"heads" と "layers" は 1〜16、"vocabSize" は 8〜20000、重みは最大 24000000）
- * train(String texts, Integer epochs, Double learningRate) reads one text or a json array of texts ; the steps of the training are told to the function given with setNotifyProgress() and its end to the function given with setNotifyDone()
- * train(String texts, Integer epochs, Double learningRate) は 1 つのテキスト、またはテキストの json 配列を読みます。学習の段階は setNotifyProgress() の関数に、終わりは setNotifyDone() の関数に届きます
- * answer(...) writes its answer piece by piece to the function given with setNotifyToken() ; maxTokens is at most 4096, and temperature, topCount, topSum and seed choose the next number of the answer
- * answer(...) は回答をピースごとに setNotifyToken() の関数に書きます。maxTokens は最大 4096 で、temperature、topCount、topSum、seed が回答の次の数値の選び方を選びます
- * saveModel(String path) and loadModel(String path) read a file under the web folder of the page ; the file keeps the sizes, the tokenizer and the weights of the model
- * saveModel(String path) と loadModel(String path) はページの web フォルダー下のファイルを読み、ファイルにはモデルのサイズ・tokenizer・重みが保持されます
- * stop() stops the training or the answer after the token or the step the model is reading, so the model keeps a state it can answer with
- * stop() はモデルが読んでいるトークンやステップの後に学習や回答を止めるので、モデルは回答できる状態を保ちます
+---
 
-## Model of an other computer
+## Remote Model Details / リモートモデルの仕様
 
-## 他のコンピューターのモデル
+* **`llm.setRemote(config)`**: Accepts either a base URL string or a JSON configuration object:
+  * `"baseUrl"`: Endpoint base URL (e.g. `"http://127.0.0.1:1234/v1"`).
+  * `"apiKey"` / `"apiKeyEnv"`: Direct API key or the name of an OS environment variable holding the API key (recommended so secrets are never stored in page JavaScript). `llm.remoteInfo()` only reports whether a key is configured (`hasApiKey`), never the key itself.
+  * `"model"`: Default model identifier.
+  * `"timeout"`: Request timeout in seconds (default `120`, max `3600`).
+  * `"retries"`: Automatic retry count on HTTP `429` or `5xx` server errors (default `2`, max `5`), respecting the server's `Retry-After` header.
+  * `"headers"`: Optional custom HTTP headers object.
+  * `setRemote(config)` は JSON オブジェクト（`"baseUrl"`, `"apiKey"`, `"apiKeyEnv"`, `"model"`, `"timeout"`, `"retries"`, `"headers"`）またはベース URL 文字列を受け取ります。`"apiKeyEnv"` を使うことで API キーをページの JavaScript に書かずに環境変数から読み込めます。また `llm.remoteInfo()` はキーの有無のみを返し、キー文字列自体は公開しません。
+* **Endpoints**:
+  * `llm.chat(request)` → `POST /chat/completions`
+  * `llm.completions(request)` → `POST /completions`
+  * `llm.response(request)` → `POST /responses`
+  * `llm.embeddings(request)` → `POST /embeddings`
+  * `llm.models()` → `GET /models`
+* **Streaming & Tool Calls**: When `"stream": true` is included in the request JSON, incremental text deltas are delivered to `setNotifyToken(func)`, and streamed `tool_calls` chunks are automatically reassembled into complete tool calls in the final JSON stored in `llm.result()`.
+  * リクエスト JSON に `"stream": true` を指定すると、テキストの断片ごとに `setNotifyToken(func)` が呼ばれ、分割受信された `tool_calls` も完了時に 1 つの呼び出し構造へ自動統合されて `llm.result()` に格納されます。
+* **Single Worker**: Local and remote jobs share a single worker lock; starting a new task while another is active logs `"The model is already working"` and returns `false`.
+  * ローカルモデルとリモートモデルのジョブは単一のワーカー状態を共有するため、実行中に別のジョブを依頼すると `"The model is already working"` を出力して `false` を返します。
 
- * setRemote(String config) reads a json object ("baseUrl", "apiKey", "apiKeyEnv", "model", "timeout", "retries", "headers") or only the address of the interface ; the answer of the function is the state of the remote model
- * setRemote(String config) は json オブジェクト（"baseUrl"、"apiKey"、"apiKeyEnv"、"model"、"timeout"、"retries"、"headers"）またはインターフェースのアドレスだけを読みます。関数の答えはリモートモデルの状態です
- * "apiKeyEnv" reads the key under the name the page gives in the environment of the computer, so the page keeps its secret out of its javascript ; "timeout" is in seconds, 120 by default and 3600 at most ; "retries" tells how many times a busy computer is asked again, 5 at most ; "headers" adds the headers the interface of the model needs
- * "apiKeyEnv" はページが与えた名前の環境変数からキーを読むので、ページは秘密を javascript に書きません。"timeout" は秒で既定 120、最大 3600。"retries" は混んだコンピューターを再訪する回数で最大 5。"headers" はインターフェースの必要とするヘッダーです
- * chat(), completions(), response(), embeddings() and models() take the json of a request of the interface or one text, and the end of the work is kept by llm.result() ; the chats read "/chat/completions", the texts to continue "/completions", the newer answers "/responses", the numbers of a text "/embeddings" and the models "/models"
- * chat()、completions()、response()、embeddings()、models() はインターフェースのリクエストの json またはテキストを読み、仕事の終わりは llm.result() が保持します。chats は "/chat/completions"、続きのテキストは "/completions"、新しい answer は "/responses"、text の numbers は "/embeddings"、models は "/models" を読みます
- * an answer written piece by piece is told to the function given with setNotifyToken() when the request writes "stream":true
- * リクエストに "stream":true を書くと、分割された回答は setNotifyToken() の関数に届きます
- * a remote model which calls a tool of the page writes that call piece by piece : the plug-in writes it again as one whole call in the json kept by llm.result()
- * リモートモデルがページのツールを呼ぶ呼び出しは分割されて書かれるので、プラグインはそれを一つの呼び出しにまとめて llm.result() の json に書きます
- * a computer which is busy (429 or a server failure) is asked again after a waiting time, which the Retry-After header of that computer can give
- * 混んでいるコンピューター（429 やサーバーの失敗）には待ってから再訪します。待時間は Retry-After ヘッダーが与える時間も読みます
- * the work of a remote model and the work of a model of the plug-in can not run at the same time : the plug-in reads one worker, so a page which asks an other work while one runs is told "The model is already working" in the console of the WebViewer
- * リモートモデルの仕事とプラグインのモデルの仕事を同時に実行できません。プラグインは一つの worker を読むので、仕事中に他の仕事を依頼されると WebViewer のコンソールに "The model is already working" と書かれます
+---
 
-## Notifications
+## Notifications / 通知コールバック
 
-## 通知
+* `setNotifyProgress(func)` → `func(epoch, epochs, steps, loss, seconds)` after every training epoch.
+  * 学習の各エポック完了時に `func(epoch, epochs, steps, loss, seconds)` を呼び出します。
+* `setNotifyToken(func)` → `func(piece)` for each generated token piece (both local and remote streaming).
+  * ローカルモデルまたはリモートストリーミングのトークン生成ごとに `func(piece)` を呼び出します。
+* `setNotifyDone(func)` → `func(kind, result)` when a job finishes (`kind` is `"train"`, `"answer"`, `"chat"`, `"completions"`, `"response"`, `"embeddings"`, or `"models"`; `result` is the JSON result string up to 64 KB, also available via `llm.result()`).
+  * ジョブ完了時に `func(kind, result)` を呼び出します（`result` は最大 64 KB の JSON 文字列で、`llm.result()` でも取得でき、失敗時は `"error"` フィールドを含みます）。
+* `setNotifyLog(func)` → `func(message)` when the plug-in writes a log message.
+  * プラグインのログ出力時に `func(message)` を呼び出します。
 
- * setNotifyProgress(func) calls func(epoch, epochs, steps, loss, seconds) at the end of every epoch of a training
- * setNotifyProgress(func) は学習の各 epoch の終わりに func(epoch, epochs, steps, loss, seconds) を呼びます
- * setNotifyToken(func) calls func(piece) for every piece of an answer, of a model of the plug-in or of a remote model
- * setNotifyToken(func) はプラグインまたはリモートのモデルの回答の各ピースについて func(piece) を呼びます
- * setNotifyDone(func) calls func(kind, result) at the end of a work : kind is "train", "answer", "chat", "completions", "response", "embeddings" or "models", and result is the json text of the end, which llm.result() keeps too ; a work which failed carries "error" in that json
- * setNotifyDone(func) は仕事の終わりに func(kind, result) を呼びます。kind は "train"、"answer"、"chat"、"completions"、"response"、"embeddings"、"models" で、result は終わりの json テキストです（llm.result() も保持し、失敗した仕事は json に "error" を含みます）
- * setNotifyLog(func) calls func(message) for a message the plug-in writes in the console
- * setNotifyLog(func) はプラグインがコンソールに書くメッセージについて func(message) を呼びます
+---
 
-## Usage
+## Usage / 使い方
 
-## 使い方
+Place `Llm.jar` in `web/plugins/` and restart the `WebViewer`.
+`Llm.jar` を `web/plugins/` フォルダーに配置し、`WebViewer` を再起動します。
 
-e.g. a model of the plug-in / プラグインのモデルの例
+### Local On-Device Model Example / ローカルモデルの例
 
 ```javascript
 function progress(epoch, epochs, steps, loss, seconds) {
@@ -125,7 +135,7 @@ function setup() {
 }
 ```
 
-e.g. a model of an other computer / 他のコンピューターのモデルの例
+### Remote OpenAI-Compatible Server Example / リモートモデルの例
 
 ```javascript
 function setup() {
@@ -133,56 +143,35 @@ function setup() {
   llm.setNotifyDone('done');
   llm.setRemote(JSON.stringify({
     baseUrl: 'http://127.0.0.1:1234/v1',
-    apiKeyEnv: 'A_KEY_OF_THE_COMPUTER',
-    model: 'a name of a model',
+    apiKeyEnv: 'OPENAI_API_KEY',
+    model: 'local-model',
     retries: 3
   }));
   llm.chat(JSON.stringify({
     stream: true,
-    messages: [{ role: 'user', content: 'a question of the page' }]
+    messages: [{ role: 'user', content: 'Hello!' }]
   }));
-  llm.embeddings('a text of the page');
-  dbg.log(llm.result());
 }
 ```
 
-## Notes
+---
 
-## 注記
+## Requirements & Build / 要件とビルド
 
- * the plug-in reads one worker : a page which asks an other work while a training, an answer of a model of the plug-in or an ask of a remote model runs is refused, and the console of the WebViewer tells "The model is already working"
- * プラグインは一つの worker を読むので、学習・プラグインのモデルの回答・リモートモデルへの要求の最中に他の仕事を依頼されると拒否され、WebViewer のコンソールに "The model is already working" と書かれます
- * the json of the end of a work is kept up to 64 KB : a longer answer of a remote model is cut, so a page which reads a very long answer asks it piece by piece with the notifications
- * 仕事の終わりの json は 64 KB まで保持します。それより長いリモートモデルの回答は切れるので、非常に長い回答を読むページは通知でピースごとに読む事を依頼します
- * a training of a model of the plug-in reads the texts of the page and runs in the computer of the page : a bigger model takes more time and more memory, so the sizes are limited
- * プラグインのモデルの学習はページのテキストをページのコンピューターで読むので、大きなモデルは時間とメモリをより多く取ります。そのためサイズには上限があります
+* No external JARs in `web/plugins/lib/` are needed (`llm-core` and `webviewer-plugin-kit` are shaded into `Llm.jar`, while `Gson` and `webviewer-plugin-api` are provided by the host `WebViewer`).
+  * `web/plugins/lib/` への JAR 配置は不要です（`llm-core` と `webviewer-plugin-kit` は `Llm.jar` に shade され、`Gson` とインターフェースはホスト側の `WebViewer` から提供されます）。
 
-## Requirements
+```bash
+# Build deliverable shaded JAR (Llm/target/Llm.jar)
+mvn -B -pl Llm -am package
 
-## 要件
+# Run unit tests (uses an in-process mock HTTP server; no network needed)
+mvn -B -pl Llm -am test
+```
 
- * No jar is needed in the web/plugins/lib folder : the transformer of llm-core and the kit are shaded in Llm.jar, and gson and the interface of the plug-ins are given by the WebViewer
- * web/plugins/lib フォルダーに jar を置く必要はありません。llm-core の transformer と kit は Llm.jar に shade され、gson とプラグインのインターフェースは WebViewer が与えます
- * a model of the plug-in needs no network, no native library and no graphic card : the transformer is written with the java language only
- * プラグインのモデルにはネットワークも native ライブラリもグラフィックカードも要りません。transformer は java 言語だけで書かれています
- * a remote model needs a server of the Openai compatible interface on an other computer or on the computer of the page
- * リモートのモデルには、他のコンピューターまたはページのコンピューターに Openai 互換インターフェースのサーバーが必要でした
+---
 
-## Build
+## Licenses / ライセンス
 
-## ビルド
-
- * mvn -B -pl Llm package : target/Llm.jar, the shaded jar of the plug-in
- * mvn -B -pl Llm package : 成果物は target/Llm.jar です。プラグインの shaded jar です
- * mvn -B -pl Llm test : the tests read a fake remote server of their own, so no network and no model of an other computer are needed
- * mvn -B -pl Llm test : テストは自身の偽のリモートサーバーを読むので、ネットワークも他のコンピューターのモデルも必要しません
-
-## Licenses
-
-## ライセンス
-
- * llm.licenses() shows the licenses kept in licenses.txt of the package of the plug-in : no library of an other project is shaded in the jar of the plug-in, and gson is shown by the WebViewer which holds it
- * llm.licenses() はプラグインのパッケージの licenses.txt に保持するライセンスを表示します。プラグインの jar には他のプロジェクトのライブラリは shade されず、gson はそれを持つ WebViewer が表示します
-
-
-
+* `llm.licenses()` displays `licenses.txt`. `Llm.jar` shades no third-party libraries of its own (`Gson` is provided and displayed by the host `WebViewer`).
+  * `llm.licenses()` はパッケージ内の `licenses.txt` を表示します（`Llm.jar` 自体は外部プロジェクトのライブラリを shade しておらず、`Gson` のライセンスはホスト側の `WebViewer` で表示されます）。

@@ -17,7 +17,7 @@ import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
  */
 public class HostRef {
 
-    private WebViewerPlugin webViewer_;
+    private volatile WebViewerPlugin webViewer_;
 
     /**
      * a reference which holds no WebViewer yet
@@ -73,7 +73,8 @@ public class HostRef {
      * @return the window, null when the plug-in is not initialized
      */
     public Stage stage() {
-        return isSet() ? webViewer_.stage() : null;
+        WebViewerPlugin viewer = webViewer_;
+        return (viewer != null) ? viewer.stage() : null;
     }
 
     /**
@@ -82,7 +83,8 @@ public class HostRef {
      * @return the icons, empty when the plug-in is not initialized
      */
     public List<Image> icons() {
-        return isSet() ? webViewer_.icons() : new ArrayList<>();
+        WebViewerPlugin viewer = webViewer_;
+        return (viewer != null) ? viewer.icons() : new ArrayList<>();
     }
 
     /**
@@ -91,7 +93,8 @@ public class HostRef {
      * @return the engine, null when the plug-in is not initialized
      */
     public WebEngine webEngine() {
-        return isSet() ? webViewer_.webEngine() : null;
+        WebViewerPlugin viewer = webViewer_;
+        return (viewer != null) ? viewer.webEngine() : null;
     }
 
     /**
@@ -100,7 +103,8 @@ public class HostRef {
      * @return the path, null when the plug-in is not initialized
      */
     public Path webPath() {
-        return isSet() ? webViewer_.webPath() : null;
+        WebViewerPlugin viewer = webViewer_;
+        return (viewer != null) ? viewer.webPath() : null;
     }
 
     /**
@@ -110,8 +114,9 @@ public class HostRef {
      * @param throwable the exception to write
      */
     public void writeStackTrace(String name, Throwable throwable) {
-        if (isSet()) {
-            webViewer_.writeStackTrace(name, throwable);
+        WebViewerPlugin viewer = webViewer_;
+        if (viewer != null) {
+            viewer.writeStackTrace(name, throwable);
         }
     }
 
@@ -123,8 +128,9 @@ public class HostRef {
      * @param err error flag of the console of the application
      */
     public void write(String name, String msg, boolean err) {
-        if (isSet()) {
-            webViewer_.write(name, msg, err);
+        WebViewerPlugin viewer = webViewer_;
+        if (viewer != null) {
+            viewer.write(name, msg, err);
         }
     }
 }

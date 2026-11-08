@@ -65,6 +65,9 @@ public final class TransformerModel {
     private final float[][] weights_;
     private final float[][] gradients_;
 
+    private Step forwardStep_;
+    private Step backwardStep_;
+
     /**
      * a model of the configuration given, of the weights the seed gives
      *
@@ -435,7 +438,20 @@ public final class TransformerModel {
      * @return the buffers
      */
     Step newStep(int length, boolean backward) {
-        return new Step(length, backward);
+        if (backward) {
+            Step cached = backwardStep_;
+            if ((cached == null) || (cached.length_ != length)) {
+                cached = new Step(length, true);
+                backwardStep_ = cached;
+            }
+            return cached;
+        }
+        Step cached = forwardStep_;
+        if ((cached == null) || (cached.length_ != length)) {
+            cached = new Step(length, false);
+            forwardStep_ = cached;
+        }
+        return cached;
     }
 
     /**

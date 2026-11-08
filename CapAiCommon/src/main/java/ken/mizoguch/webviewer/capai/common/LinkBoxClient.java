@@ -1448,6 +1448,7 @@ public final class LinkBoxClient {
         Integer ipAddress1 = null;
         String status = null;
 
+        try {
         if (response.startsWith("PortClose")) {
             switch (response.length()) {
                 case 11:
@@ -1546,15 +1547,6 @@ public final class LinkBoxClient {
                     errorCode = LinkBoxEnums.ERROR_REQUEST_DATA.getNumber();
                     break;
             }
-        } else if (response.startsWith("SetL1")) {
-            switch (response.length()) {
-                case 7:
-                    errorCode = Integer.parseInt(response.substring(5, 7), 16);
-                    break;
-                default:
-                    errorCode = LinkBoxEnums.ERROR_REQUEST_DATA.getNumber();
-                    break;
-            }
         } else if (response.startsWith("GetAK")) {
             switch (response.length()) {
                 case 8:
@@ -1579,15 +1571,6 @@ public final class LinkBoxClient {
             switch (response.length()) {
                 case 8:
                     errorCode = Integer.parseInt(response.substring(6, 8), 16);
-                    break;
-                default:
-                    errorCode = LinkBoxEnums.ERROR_REQUEST_DATA.getNumber();
-                    break;
-            }
-        } else if (response.startsWith("ClearAK")) {
-            switch (response.length()) {
-                case 9:
-                    errorCode = Integer.parseInt(response.substring(7, 9), 16);
                     break;
                 default:
                     errorCode = LinkBoxEnums.ERROR_REQUEST_DATA.getNumber();
@@ -1695,6 +1678,9 @@ public final class LinkBoxClient {
             }
         } else {
             errorCode = LinkBoxEnums.ERROR_REQUEST.getNumber();
+        }
+        } catch (NumberFormatException ex) {
+            errorCode = LinkBoxEnums.ERROR_REQUEST_DATA.getNumber();
         }
 
         for (LinkBoxClientListener listener : eventListenerList_.getListeners(LinkBoxClientListener.class)) {

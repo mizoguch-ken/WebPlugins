@@ -59,7 +59,7 @@ public class OnlineArtReceivePacket extends OnlineArtPacket {
      * @return
      */
     public int getData(int position) {
-        if ((0 <= position) && (position < data_.length)) {
+        if ((data_ != null) && (0 <= position) && (position < data_.length)) {
             return data_[position];
         }
         return -1;
@@ -74,6 +74,9 @@ public class OnlineArtReceivePacket extends OnlineArtPacket {
         boolean isEscape;
         int dataCrc, calculationCrc, count, i;
 
+        if ((data < 0) || (buffer_ == null) || (data_ == null)) {
+            return false;
+        }
         buffer_[index_++] = data;
         if (index_ >= 2) {
             // CRLF
@@ -86,6 +89,8 @@ public class OnlineArtReceivePacket extends OnlineArtPacket {
                             dataCrc |= (buffer_[i] - 0x30) << ((index_ - i - 3) * 4);
                         } else if ((0x41 <= buffer_[i]) && (buffer_[i] <= 0x46)) {
                             dataCrc |= (buffer_[i] - 0x37) << ((index_ - i - 3) * 4);
+                        } else if ((0x61 <= buffer_[i]) && (buffer_[i] <= 0x66)) {
+                            dataCrc |= (buffer_[i] - 0x57) << ((index_ - i - 3) * 4);
                         } else {
                             index_ = 0;
                             return false;
