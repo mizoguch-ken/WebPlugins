@@ -6,7 +6,9 @@
 package ken.mizoguch.webviewer.plugin.kit;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
+import java.nio.file.LinkOption;
 import java.nio.file.Path;
 
 /**
@@ -76,7 +78,34 @@ public final class SandboxPath {
         if (!file.startsWith(base)) {
             return null;
         }
+        // also refuse a symbolic link inside the sandbox pointing outside of it
+        if (Files.exists(base, LinkOption.NOFOLLOW_LINKS)) {
+            try {
+                Path realBase = base.toRealPath();
+                Path current = file;
+                while ((current != null) && !Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
+                    current = current.getParent();
+                }
+                if ((current == null) || !current.toRealPath().startsWith(realBase)) {
+                    return null;
+                }
+            } catch (IOException ex) {
+                return null;
+            }
+        }
         return file;
+    }
+
+    /**
+     * path used from the directory of the plug-in, refused by an exception when it can not be used
+     *
+     * @param directory directory of the plug-in
+     * @param path path given by the page
+     * @return the path to use
+     * @throws IOException when the path can not be used
+     */
+    public static Path require(Path directory, String path) throws IOException {
+        return require(directory, directory, path);
     }
 
     /**

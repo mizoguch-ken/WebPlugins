@@ -121,16 +121,17 @@ public final class OpenAiClient {
      * message of the console of the WebViewer
      */
     private static final int MESSAGE_MAX_LENGTH = 512;
+    private static final int MAX_TOOL_CALLS = 128;
 
     private final Gson gson_ = new GsonBuilder().serializeNulls().create();
 
-    private HttpClient client_;
-    private String baseUrl_;
-    private String apiKey_;
-    private String model_;
-    private int timeout_ = DEFAULT_TIMEOUT_SECONDS;
-    private int retries_;
-    private JsonObject headers_;
+    private volatile HttpClient client_;
+    private volatile String baseUrl_;
+    private volatile String apiKey_;
+    private volatile String model_;
+    private volatile int timeout_ = DEFAULT_TIMEOUT_SECONDS;
+    private volatile int retries_;
+    private volatile JsonObject headers_;
 
     private volatile boolean stopped_;
     private volatile boolean emitted_;
@@ -163,6 +164,31 @@ public final class OpenAiClient {
      */
     public String model() {
         return model_;
+    }
+
+    /**
+     * clear remote endpoint configuration, credentials and client reference when idle
+     *
+     * @throws OpenAiException when a remote request is active
+     */
+    public void clear() {
+        if (busy()) {
+            throw new OpenAiException("A remote model is already working");
+        }
+        HttpClient previous;
+        synchronized (this) {
+            previous = client_;
+            client_ = null;
+        }
+        baseUrl_ = null;
+        apiKey_ = null;
+        model_ = null;
+        timeout_ = DEFAULT_TIMEOUT_SECONDS;
+        retries_ = 0;
+        headers_ = null;
+        if (previous != null) {
+            previous.close();
+        }
     }
 
     /**
@@ -224,6 +250,9 @@ public final class OpenAiClient {
         if (headers != null) {
             headers_ = headers.deepCopy().getAsJsonObject();
         }
+        if ((apiKey != null) && ((apiKey.indexOf('\r') >= 0) || (apiKey.indexOf('\n') >= 0))) {
+            throw new OpenAiException("An apiKey with line breaks is refused");
+        }
         baseUrl_ = given.endsWith("/") ? given.substring(0, given.length() - 1) : given;
         if (apiKey != null) {
             apiKey_ = apiKey.isEmpty() ? null : apiKey;
@@ -231,11 +260,18 @@ public final class OpenAiClient {
         if (model != null) {
             model_ = model.isEmpty() ? null : model;
         }
-        client_ = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SECONDS))
-                .build();
+        HttpClient previous;
+        synchronized (this) {
+            previous = client_;
+            client_ = HttpClient.newBuilder()
+                    .version(HttpClient.Version.HTTP_1_1)
+                    .followRedirects(HttpClient.Redirect.NORMAL)
+                    .connectTimeout(Duration.ofSeconds(CONNECT_TIMEOUT_SECONDS))
+                    .build();
+        }
+        if (previous != null) {
+            previous.close();
+        }
     }
 
     /**
@@ -364,6 +400,21 @@ public final class OpenAiClient {
     }
 
     /**
+     * stop any running request and close the underlying HTTP client
+     */
+    public void close() {
+        stop();
+        HttpClient previous;
+        synchronized (this) {
+            previous = client_;
+            client_ = null;
+        }
+        if (previous != null) {
+            previous.close();
+        }
+    }
+
+    /**
      * the request of the interface the page gives : a json object is read as it is, an other text
      * becomes the request of one text of the interface, written the way the request of the interface
      * reads it
@@ -423,7 +474,10 @@ public final class OpenAiClient {
             }
             body.addProperty("model", model_);
         }
-        final boolean pieces = body.has("stream") && body.get("stream").getAsBoolean();
+        final boolean pieces = body.has("stream")
+                && body.get("stream").isJsonPrimitive()
+                && body.get("stream").getAsJsonPrimitive().isBoolean()
+                && body.get("stream").getAsBoolean();
 
         HttpRequest.Builder ask = HttpRequest.newBuilder(address(path))
                 .timeout(Duration.ofSeconds(timeout_))
@@ -478,7 +532,11 @@ public final class OpenAiClient {
      */
     private void withKey(HttpRequest.Builder ask) {
         if (apiKey_ != null) {
-            ask.header("Authorization", "Bearer " + apiKey_);
+            try {
+                ask.header("Authorization", "Bearer " + apiKey_);
+            } catch (IllegalArgumentException ex) {
+                throw new OpenAiException("An apiKey of a remote model is refused as an HTTP header");
+            }
         }
         if (headers_ == null) {
             return;
@@ -571,7 +629,11 @@ public final class OpenAiClient {
      * @throws OpenAiException when the remote model did not answer
      */
     private String read(HttpRequest ask, boolean pieces, boolean newest, OpenAiListener listener) {
-        CompletableFuture<HttpResponse<Stream<String>>> work = client_.sendAsync(ask,
+        HttpClient client = client_;
+        if (client == null) {
+            throw new OpenAiException("No remote model : ask setRemote() first");
+        }
+        CompletableFuture<HttpResponse<Stream<String>>> work = client.sendAsync(ask,
                 HttpResponse.BodyHandlers.ofLines());
 
         asked_ = work;
@@ -634,7 +696,11 @@ public final class OpenAiClient {
             return 0L;
         }
         try {
-            return Math.min(Long.parseLong(after.trim()) * 1000L, RETRY_MAX_MILLIS);
+            long seconds = Long.parseLong(after.trim());
+            if (seconds <= 0L) {
+                return 0L;
+            }
+            return Math.min(seconds, RETRY_MAX_MILLIS / 1000L) * 1000L;
         } catch (NumberFormatException ex) {
             return 0L;
         }
@@ -729,6 +795,9 @@ public final class OpenAiClient {
                 }
                 continue;
             }
+            if (chunk.has("error") && !chunk.get("error").isJsonNull()) {
+                throw new OpenAiException(errorOf(chunk));
+            }
             keep(kept, chunk, "id");
             keep(kept, chunk, "object");
             keep(kept, chunk, "created");
@@ -799,7 +868,7 @@ public final class OpenAiClient {
      * @param calls calls of the tools kept until now
      * @param given the calls of a piece of the answer
      */
-    private static void readCalls(List<JsonObject> calls, JsonArray given) {
+    static void readCalls(List<JsonObject> calls, JsonArray given) {
         for (JsonElement element : given) {
             if (!element.isJsonObject()) {
                 continue;
@@ -808,10 +877,14 @@ public final class OpenAiClient {
             int index = calls.size();
 
             if (read.has("index") && read.get("index").isJsonPrimitive()) {
-                index = read.get("index").getAsInt();
+                try {
+                    index = read.get("index").getAsInt();
+                } catch (NumberFormatException ex) {
+                    continue;
+                }
             }
-            if (index < 0) {
-                index = calls.size();
+            if ((index < 0) || (index >= MAX_TOOL_CALLS)) {
+                continue;
             }
             while (calls.size() <= index) {
                 calls.add(new JsonObject());
@@ -1010,6 +1083,14 @@ public final class OpenAiClient {
                 continue;
             }
             String kind = text(event, "type");
+            if ("response.failed".equals(kind) || "error".equals(kind)) {
+                JsonObject errSource = event;
+                JsonElement respEl = event.get("response");
+                if ((respEl != null) && respEl.isJsonObject() && respEl.getAsJsonObject().has("error")) {
+                    errSource = respEl.getAsJsonObject();
+                }
+                throw new OpenAiException(errorOf(errSource));
+            }
             JsonElement held = event.get("response");
 
             if ((held == null) || !held.isJsonObject()) {
@@ -1109,6 +1190,41 @@ public final class OpenAiClient {
             return value;
         }
         return value.substring(0, MESSAGE_MAX_LENGTH) + "...";
+    }
+
+    private static String errorOf(JsonObject obj) {
+        if (obj == null) {
+            return "Remote model returned an error";
+        }
+        JsonElement err = obj.get("error");
+        if (err != null) {
+            if (err.isJsonPrimitive()) {
+                String msg = err.getAsString();
+                if (!msg.isEmpty()) {
+                    return msg;
+                }
+            } else if (err.isJsonObject()) {
+                JsonObject errObj = err.getAsJsonObject();
+                String msg = text(errObj, "message");
+                if ((msg != null) && !msg.isEmpty()) {
+                    return msg;
+                }
+                String code = text(errObj, "code");
+                if ((code != null) && !code.isEmpty()) {
+                    return code;
+                }
+                String type = text(errObj, "type");
+                if ((type != null) && !type.isEmpty()) {
+                    return type;
+                }
+                return errObj.toString();
+            }
+        }
+        String msg = text(obj, "message");
+        if ((msg != null) && !msg.isEmpty()) {
+            return msg;
+        }
+        return obj.toString();
     }
 }
 

@@ -3,6 +3,7 @@ package ken.mizoguch.webviewer.plugin.kit;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import javafx.application.Platform;
 import javafx.scene.control.Alert;
 import javafx.scene.control.TextArea;
 
@@ -84,6 +85,14 @@ public class LicenseDialog {
      * keeps working while the licenses are read
      */
     public void show() {
+        if (Platform.isFxApplicationThread()) {
+            showAlert();
+        } else {
+            Platform.runLater(this::showAlert);
+        }
+    }
+
+    private void showAlert() {
         Alert alert = new Alert(Alert.AlertType.INFORMATION);
         TextArea textArea = new TextArea();
 

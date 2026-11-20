@@ -20,11 +20,21 @@ Boolean webcam.play()
 Boolean webcam.stop()
 Boolean webcam.isPlaying()
 Boolean webcam.save(String path)
+String  webcam.captureBase64()
+String  webcam.captureDataUrl()
+String  webcam.getResultImage()
+String  webcam.getResultImageBase64()
+String  webcam.getResultBlob()
 String  webcam.getImageType()
 Boolean webcam.setImageType(String type)
 String  webcam.getImageSize()
 void    webcam.setImageSize(int width, int height)
+Integer webcam.getCaptureWidth()
+Integer webcam.getCaptureHeight()
+Boolean webcam.setFrameRate(Double fps)
+Double  webcam.getFrameRate()
 int     webcam.getImageColor()
+String  webcam.getImageColorName()
 void    webcam.setImageColor(String color)
 void    webcam.setNotifyResultImage(String func)
 void    webcam.setNotifyResultBlob(String func, String blobInfo)
@@ -48,12 +58,14 @@ Boolean webcam.setY(double y)
 | Function / 関数 | Description / 説明 |
 | :--- | :--- |
 | `webcam.getWebcams()` | Returns the descriptions of connected camera devices as a JSON array string (silencing verbose native `videoInput` console output).<br>コンピューターに接続されているカメラの一覧を JSON 配列文字列として返します。 |
-| `webcam.open(deviceNumber)`, `webcam.isOpened()` | Opens and starts the camera at `deviceNumber`. If starting fails, the grabber is immediately released and `isOpened()` remains `false` so subsequent `open(...)` calls succeed.<br>指定したデバイス番号のカメラを開きます。起動に失敗した場合は即座にリソースを解放し、`isOpened()` は `false` のまま保たれます。 |
+| `webcam.open(deviceNumber)`, `webcam.isOpened()` | Opens and starts the camera at `deviceNumber` (applying configured `setImageSize` and `setFrameRate`). If starting fails, the grabber is immediately released and `isOpened()` remains `false`.<br>指定したデバイス番号のカメラを開きます（事前設定された解像度・フレームレートも適用）。起動失敗時は即座にリソースを解放します。 |
 | `webcam.play()`, `webcam.stop()`, `webcam.isPlaying()` | Starts or stops frame capture, or checks whether capture is currently running.<br>フレーム撮影の開始・停止、および撮影中かどうかの確認を行います。 |
 | `webcam.save(path)` | Saves one captured frame to `path` under the page's `web` folder (`SandboxPath`).<br>撮影した 1 枚の画像をページの `web` フォルダー配下（`SandboxPath`）のファイルへ保存します。 |
+| `webcam.captureBase64()`, `webcam.captureDataUrl()`, `webcam.getResultImage()`, `webcam.getResultImageBase64()`, `webcam.getResultBlob()` | Captures a single frame (synchronously when paused, or via snapshot latch when playing) as a Base64 string or `data:image/...;base64,...` URL, or reads the latest cached image/DNN blob payloads.<br>静止画 1 フレームの Base64 / Data URL 取得（再生中はスナップショットラッチ経由）、および直近の画像・Blob キャッシュの取得を行います。 |
 | `webcam.getImageType()`, `webcam.setImageType(type)` | Gets or sets the encoded image format (`"jpg"`, `"png"`, `"bmp"`, etc.).<br>エンコードする画像形式（`"jpg"`, `"png"` など）を取得・設定します。 |
-| `webcam.getImageSize()`, `webcam.setImageSize(width, height)` | Gets (JSON `{"width":...,"height":...}`) or sets the capture resolution in pixels.<br>取得する画像の解像度（幅・高さピクセル）を取得・設定します。 |
-| `webcam.getImageColor()`, `webcam.setImageColor(color)` | Gets or sets the OpenCV `cvtColor` color conversion constant name (e.g. `"COLOR_BGR2GRAY"`).<br>OpenCV の色空間変換コード（`"COLOR_BGR2GRAY"` など）を取得・設定します。 |
+| `webcam.getImageSize()`, `webcam.setImageSize(width, height)`, `webcam.getCaptureWidth()`, `webcam.getCaptureHeight()` | Gets (`{"width":...,"height":...}` JSON) or sets the target image size, or queries the open grabber's actual capture dimensions.<br>画像サイズの JSON 取得・設定、およびオープン中カメラの実際の取得幅・高さを取得します。 |
+| `webcam.setFrameRate(fps)`, `webcam.getFrameRate()` | Configures target capture frame rate (`>= 0`, `0` leaves capture uncapped).<br>目標フレームレート（`0` で制限なし）を設定・取得します。 |
+| `webcam.getImageColor()`, `webcam.getImageColorName()`, `webcam.setImageColor(color)` | Gets or sets the OpenCV `cvtColor` color conversion constant name (e.g. `"COLOR_BGR2GRAY"`); passing `null`, `""`, or `"NONE"` resets color conversion.<br>OpenCV の色空間変換設定（コード番号／定数名）を取得・設定します（`null`・空文字・`"NONE"` で変換を解除）。 |
 | `webcam.setNotifyResultImage(func)` | Registers a callback `func(imageData, imageType)` receiving each frame's encoded bytes as a JSON array of numbers.<br>フレームごとにエンコード済みバイト配列（JSON 配列）を受け取るコールバック関数 `func(imageData, imageType)` を登録します。 |
 | `webcam.setNotifyResultBlob(func, blobInfo)` | Registers a callback `func(blobData)` receiving a 4D DNN blob (`blobFromImage`) configured by `blobInfo` JSON (`scalefactor`, `size`, `mean`, `swapRB`, `crop`, `ddepth`).<br>OpenCV の `blobFromImage` による変換結果を受け取るコールバック関数 `func(blobData)` と変換設定 JSON（`scalefactor`, `size`, `mean`, `swapRB`, `crop`, `ddepth`）を登録します。 |
 | `webcam.show()`, `webcam.hide()`, `webcam.isShowing()`, `getWidth()`, `getHeight()`, `isFocused()`, `requestFocus()`, `getOpacity()`, `setOpacity(value)`, `isAlwaysOnTop()`, `setAlwaysOnTop(state)`, `getX()`, `setX(x)`, `getY()`, `setY(y)` | Controls the standalone camera preview window (hidden by default unless `webcam.show()` is called).<br>カメラプレビュー用の独立ウィンドウの表示／非表示、位置、サイズ、最前面固定、不透明度を制御します（`show()` を呼ばない限りウィンドウは表示されません）。 |

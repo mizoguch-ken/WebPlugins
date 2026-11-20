@@ -27,7 +27,7 @@ public final class LinkBoxServer extends Service<Void> {
     private volatile EventLoopGroup workerGroup_;
     private volatile Channel serverChannel_;
 
-    private int serverPort_;
+    private volatile int serverPort_;
 
     /**
      *
@@ -65,10 +65,23 @@ public final class LinkBoxServer extends Service<Void> {
 
     /**
      *
-     * @param port
+     * @return configured TCP listen port
      */
-    public void setListenPort(int port) {
+    public int getListenPort() {
+        return serverPort_;
+    }
+
+    /**
+     *
+     * @param port TCP listen port (50001..65535)
+     * @return true if valid and updated, false if out of range
+     */
+    public boolean setListenPort(int port) {
+        if ((port <= 50000) || (port > 65535)) {
+            return false;
+        }
         serverPort_ = port;
+        return true;
     }
 
     @Override
@@ -79,8 +92,8 @@ public final class LinkBoxServer extends Service<Void> {
                 for (LinkBoxServerListener listener : eventListenerList_.getListeners(LinkBoxServerListener.class)) {
                     listener.startLinkBoxServer();
                 }
-                if (serverPort_ > 50000) {
-                    try {
+                try {
+                    if (!isCancelled() && (serverPort_ > 50000)) {
                         bossGroup_ = new MultiThreadIoEventLoopGroup(1, NioIoHandler.newFactory());
                         workerGroup_ = new MultiThreadIoEventLoopGroup(NioIoHandler.newFactory());
                         ServerBootstrap b = new ServerBootstrap();
@@ -94,20 +107,25 @@ public final class LinkBoxServer extends Service<Void> {
                                 });
                         ChannelFuture f = b.bind(serverPort_).sync();
                         serverChannel_ = f.channel();
+                        if (isCancelled()) {
+                            serverChannel_.close();
+                        }
                         try {
                             serverChannel_.closeFuture().sync();
                         } finally {
                             serverChannel_ = null;
                         }
-                    } catch (InterruptedException ex) {
-                        Thread.currentThread().interrupt();
-                        exceptionCaught(ex);
-                    } finally {
-                        shutdownGroups();
                     }
-                }
-                for (LinkBoxServerListener listener : eventListenerList_.getListeners(LinkBoxServerListener.class)) {
-                    listener.stopLinkBoxServer();
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                    exceptionCaught(ex);
+                } catch (Exception ex) {
+                    exceptionCaught(ex);
+                } finally {
+                    shutdownGroups();
+                    for (LinkBoxServerListener listener : eventListenerList_.getListeners(LinkBoxServerListener.class)) {
+                        listener.stopLinkBoxServer();
+                    }
                 }
                 return null;
             }
@@ -151,8 +169,9 @@ public final class LinkBoxServer extends Service<Void> {
      * @param cause
      */
     public void exceptionCaught(Throwable cause) {
+        String message = (cause == null) ? "" : ((cause.getMessage() != null) ? cause.getMessage() : cause.toString());
         for (LinkBoxServerListener listener : eventListenerList_.getListeners(LinkBoxServerListener.class)) {
-            listener.errorLinkBoxServer(LinkBoxEnums.ERROR_EXCEPTION.getNumber(), cause.getMessage());
+            listener.errorLinkBoxServer(LinkBoxEnums.ERROR_EXCEPTION.getNumber(), message);
         }
     }
 

@@ -74,7 +74,7 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
      * @return
      */
     public int getBuffer(int position) {
-        if ((0 <= position) && (position < sendBuffer_.length)) {
+        if ((sendBuffer_ != null) && (0 <= position) && (position < sendBuffer_.length)) {
             return (sendBuffer_[position] & 0xff);
         }
         return -1;
@@ -163,13 +163,16 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
         setDataType(DATATYPE_REQUEST);
         setCommand(COMMAND_SYNCHRONIZE);
 
-        makeHeader();
-        sendIndex_ += setBuffer(maxUnitNumber, sendBuffer_, sendIndex_);
-        sendIndex_ += setBuffer(baseTime, sendBuffer_, sendIndex_);
-        sendIndex_ += setBuffer(delayTime, sendBuffer_, sendIndex_);
-        sendIndex_ += setBuffer(retryNumber, sendBuffer_, sendIndex_);
-        sendIndex_ += setBuffer(maxRegisterNumber, sendBuffer_, sendIndex_);
-        sendIndex_ += setBuffer(connectionUnits, sendBuffer_, sendIndex_);
+        if (!makeHeader()
+                || !appendWord(maxUnitNumber)
+                || !appendWord(baseTime)
+                || !appendWord(delayTime)
+                || !appendWord(retryNumber)
+                || !appendWord(maxRegisterNumber)
+                || !appendWord(connectionUnits)) {
+            sendIndex_ = 0;
+            return;
+        }
         makeFooter();
     }
 
@@ -185,7 +188,10 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
         setDataType(DATATYPE_REQUEST);
         setCommand(COMMAND_STATUS);
 
-        makeHeader();
+        if (!makeHeader()) {
+            sendIndex_ = 0;
+            return;
+        }
         makeFooter();
     }
 
@@ -206,9 +212,12 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
         setDataType(DATATYPE_REQUEST);
         setCommand(COMMAND_READ_RELAY);
 
-        makeHeader();
-        sendIndex_ += setBuffer(startAddress + addressOffset, sendBuffer_, sendIndex_);
-        sendIndex_ += setBuffer(registerNumber, sendBuffer_, sendIndex_);
+        if (!makeHeader()
+                || !appendWord(startAddress + addressOffset)
+                || !appendWord(registerNumber)) {
+            sendIndex_ = 0;
+            return;
+        }
         makeFooter();
     }
 
@@ -229,9 +238,12 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
         setDataType(DATATYPE_REQUEST);
         setCommand(COMMAND_READ_REGISTER);
 
-        makeHeader();
-        sendIndex_ += setBuffer(startAddress + addressOffset, sendBuffer_, sendIndex_);
-        sendIndex_ += setBuffer(registerNumber, sendBuffer_, sendIndex_);
+        if (!makeHeader()
+                || !appendWord(startAddress + addressOffset)
+                || !appendWord(registerNumber)) {
+            sendIndex_ = 0;
+            return;
+        }
         makeFooter();
     }
 
@@ -249,6 +261,10 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
         int index, data, count, i;
 
         isDivided_ = false;
+        if ((relay == null) || (startAddress < 0) || (registerNumber <= 0)) {
+            sendIndex_ = 0;
+            return;
+        }
         index = 0;
         data = 0;
         count = 0;
@@ -259,14 +275,25 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
         setCommand(COMMAND_WRITE_RELAY);
 
         for (i = 0; i < registerNumber; i++) {
-            if (((relay[(i + startAddress) / 16] >>> ((i + startAddress) % 16)) & 0x0001) == 0x0001) {
+            int bitAddress = i + startAddress;
+            int wordIndex = bitAddress / 16;
+            if ((wordIndex < 0) || (wordIndex >= relay.length)) {
+                sendIndex_ = 0;
+                return;
+            }
+            if (((relay[wordIndex] >>> (bitAddress % 16)) & 0x0001) == 0x0001) {
                 data |= 0x0001 << (i % 16);
             } else {
                 data &= (0x0001 << (i % 16)) ^ 0xffff;
             }
             count++;
             if (((i % 16) == 15) || (i >= (registerNumber - 1))) {
-                index += setBuffer(data, calculationBuffer_, index);
+                int written = setBuffer(data, calculationBuffer_, index);
+                if (written < 0) {
+                    sendIndex_ = 0;
+                    return;
+                }
+                index += written;
                 if ((maxRegisterNumber_ * 2) <= index) {
                     isDivided_ = true;
                     dividedStartAddress_ = startAddress + count;
@@ -278,9 +305,13 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
             }
         }
 
-        makeHeader();
-        sendIndex_ += setBuffer(startAddress + addressOffset, sendBuffer_, sendIndex_);
-        sendIndex_ += setBuffer(count, sendBuffer_, sendIndex_);
+        if (!makeHeader()
+                || !appendWord(startAddress + addressOffset)
+                || !appendWord(count)
+                || ((sendBuffer_ == null) || ((sendIndex_ + index) >= sendBuffer_.length))) {
+            sendIndex_ = 0;
+            return;
+        }
         System.arraycopy(calculationBuffer_, 0, sendBuffer_, sendIndex_, index);
         sendIndex_ += index;
         makeFooter();
@@ -300,6 +331,10 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
         int index, count, i;
 
         isDivided_ = false;
+        if ((register == null) || (startAddress < 0) || (registerNumber <= 0)) {
+            sendIndex_ = 0;
+            return;
+        }
         index = 0;
         count = 0;
 
@@ -309,7 +344,17 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
         setCommand(COMMAND_WRITE_REGISTER);
 
         for (i = 0; i < registerNumber; i++) {
-            index += setBuffer(register[i + startAddress], calculationBuffer_, index);
+            int regIndex = i + startAddress;
+            if ((regIndex < 0) || (regIndex >= register.length)) {
+                sendIndex_ = 0;
+                return;
+            }
+            int written = setBuffer(register[regIndex], calculationBuffer_, index);
+            if (written < 0) {
+                sendIndex_ = 0;
+                return;
+            }
+            index += written;
             count++;
             if ((maxRegisterNumber_ * 2) <= index) {
                 isDivided_ = true;
@@ -320,9 +365,13 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
             }
         }
 
-        makeHeader();
-        sendIndex_ += setBuffer(startAddress + addressOffset, sendBuffer_, sendIndex_);
-        sendIndex_ += setBuffer(count, sendBuffer_, sendIndex_);
+        if (!makeHeader()
+                || !appendWord(startAddress + addressOffset)
+                || !appendWord(count)
+                || ((sendBuffer_ == null) || ((sendIndex_ + index) >= sendBuffer_.length))) {
+            sendIndex_ = 0;
+            return;
+        }
         System.arraycopy(calculationBuffer_, 0, sendBuffer_, sendIndex_, index);
         sendIndex_ += index;
         makeFooter();
@@ -342,6 +391,10 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
         int index, data, count, i;
 
         isDivided_ = false;
+        if ((relay == null) || (startAddress < 0) || (registerNumber <= 0)) {
+            sendIndex_ = 0;
+            return;
+        }
         index = 0;
         data = 0;
         count = 0;
@@ -352,14 +405,25 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
         setCommand(COMMAND_READ_RELAY);
 
         for (i = 0; i < registerNumber; i++) {
-            if (((relay[(i + startAddress) / 16] >>> ((i + startAddress) % 16)) & 0x0001) == 0x0001) {
+            int bitAddress = i + startAddress;
+            int wordIndex = bitAddress / 16;
+            if ((wordIndex < 0) || (wordIndex >= relay.length)) {
+                sendIndex_ = 0;
+                return;
+            }
+            if (((relay[wordIndex] >>> (bitAddress % 16)) & 0x0001) == 0x0001) {
                 data |= 0x0001 << (i % 16);
             } else {
                 data &= (0x0001 << (i % 16)) ^ 0xffff;
             }
             count++;
             if (((i % 16) == 15) || (i >= (registerNumber - 1))) {
-                index += setBuffer(data, calculationBuffer_, index);
+                int written = setBuffer(data, calculationBuffer_, index);
+                if (written < 0) {
+                    sendIndex_ = 0;
+                    return;
+                }
+                index += written;
                 if ((maxRegisterNumber_ * 2) <= index) {
                     isDivided_ = true;
                     dividedStartAddress_ = startAddress + count;
@@ -371,9 +435,13 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
             }
         }
 
-        makeHeader();
-        sendIndex_ += setBuffer(startAddress + addressOffset, sendBuffer_, sendIndex_);
-        sendIndex_ += setBuffer(count, sendBuffer_, sendIndex_);
+        if (!makeHeader()
+                || !appendWord(startAddress + addressOffset)
+                || !appendWord(count)
+                || ((sendBuffer_ == null) || ((sendIndex_ + index) >= sendBuffer_.length))) {
+            sendIndex_ = 0;
+            return;
+        }
         System.arraycopy(calculationBuffer_, 0, sendBuffer_, sendIndex_, index);
         sendIndex_ += index;
         makeFooter();
@@ -393,6 +461,10 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
         int index, count, i;
 
         isDivided_ = false;
+        if ((register == null) || (startAddress < 0) || (registerNumber <= 0)) {
+            sendIndex_ = 0;
+            return;
+        }
         index = 0;
         count = 0;
 
@@ -402,7 +474,17 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
         setCommand(COMMAND_READ_REGISTER);
 
         for (i = 0; i < registerNumber; i++) {
-            index += setBuffer(register[i + startAddress], calculationBuffer_, index);
+            int regIndex = i + startAddress;
+            if ((regIndex < 0) || (regIndex >= register.length)) {
+                sendIndex_ = 0;
+                return;
+            }
+            int written = setBuffer(register[regIndex], calculationBuffer_, index);
+            if (written < 0) {
+                sendIndex_ = 0;
+                return;
+            }
+            index += written;
             count++;
             if ((maxRegisterNumber_ * 2) <= index) {
                 isDivided_ = true;
@@ -413,9 +495,13 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
             }
         }
 
-        makeHeader();
-        sendIndex_ += setBuffer(startAddress + addressOffset, sendBuffer_, sendIndex_);
-        sendIndex_ += setBuffer(count, sendBuffer_, sendIndex_);
+        if (!makeHeader()
+                || !appendWord(startAddress + addressOffset)
+                || !appendWord(count)
+                || ((sendBuffer_ == null) || ((sendIndex_ + index) >= sendBuffer_.length))) {
+            sendIndex_ = 0;
+            return;
+        }
         System.arraycopy(calculationBuffer_, 0, sendBuffer_, sendIndex_, index);
         sendIndex_ += index;
         makeFooter();
@@ -438,9 +524,12 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
         setDataType(DATATYPE_RESPONSE);
         setCommand(COMMAND_WRITE_RELAY);
 
-        makeHeader();
-        sendIndex_ += setBuffer(startAddress + addressOffset, sendBuffer_, sendIndex_);
-        sendIndex_ += setBuffer(registerNumber, sendBuffer_, sendIndex_);
+        if (!makeHeader()
+                || !appendWord(startAddress + addressOffset)
+                || !appendWord(registerNumber)) {
+            sendIndex_ = 0;
+            return;
+        }
         makeFooter();
     }
 
@@ -461,9 +550,12 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
         setDataType(DATATYPE_RESPONSE);
         setCommand(COMMAND_WRITE_REGISTER);
 
-        makeHeader();
-        sendIndex_ += setBuffer(startAddress + addressOffset, sendBuffer_, sendIndex_);
-        sendIndex_ += setBuffer(registerNumber, sendBuffer_, sendIndex_);
+        if (!makeHeader()
+                || !appendWord(startAddress + addressOffset)
+                || !appendWord(registerNumber)) {
+            sendIndex_ = 0;
+            return;
+        }
         makeFooter();
     }
 
@@ -502,15 +594,42 @@ public class OnlineArtSendPacket extends OnlineArtPacket {
         }
     }
 
-    private void makeHeader() {
+    private boolean makeHeader() {
+        if (sendBuffer_ == null) {
+            sendIndex_ = 0;
+            return false;
+        }
         sendIndex_ = 0;
         sendBuffer_[sendIndex_++] = START_CODE_STX;
-        sendIndex_ += setBuffer(getDestination(), getSource(), sendBuffer_, sendIndex_);
-        sendIndex_ += setBuffer(getDataType(), getCommand(), sendBuffer_, sendIndex_);
+        int n1 = setBuffer(getDestination(), getSource(), sendBuffer_, sendIndex_);
+        if (n1 < 0) {
+            sendIndex_ = 0;
+            return false;
+        }
+        sendIndex_ += n1;
+        int n2 = setBuffer(getDataType(), getCommand(), sendBuffer_, sendIndex_);
+        if (n2 < 0) {
+            sendIndex_ = 0;
+            return false;
+        }
+        sendIndex_ += n2;
+        return true;
+    }
+
+    private boolean appendWord(int data) {
+        if ((sendBuffer_ == null) || (sendIndex_ <= 0)) {
+            return false;
+        }
+        int written = setBuffer(data, sendBuffer_, sendIndex_);
+        if (written < 0) {
+            return false;
+        }
+        sendIndex_ += written;
+        return true;
     }
 
     private void makeFooter() {
-        if ((sendIndex_ + 6) < sendBuffer_.length) {
+        if ((sendBuffer_ != null) && (sendIndex_ > 0) && ((sendIndex_ + 6) < sendBuffer_.length)) {
             int calcCrc, i;
 
             calcCrc = 0;

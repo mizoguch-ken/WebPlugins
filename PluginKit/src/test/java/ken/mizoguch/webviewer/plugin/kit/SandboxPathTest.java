@@ -1,7 +1,9 @@
 package ken.mizoguch.webviewer.plugin.kit;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
+import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import static org.junit.jupiter.api.Assertions.*;
@@ -69,5 +71,20 @@ public class SandboxPathTest {
         assertEquals(page.resolve("ok.txt"), SandboxPath.require(directory, page, "~/ok.txt"));
         assertThrows(IOException.class, () -> SandboxPath.require(directory, page, "~/../escape.txt"));
         assertThrows(IOException.class, () -> SandboxPath.require(directory, page, null));
+        assertEquals(directory.resolve("ok.txt"), SandboxPath.require(directory, "ok.txt"));
+        assertThrows(IOException.class, () -> SandboxPath.require(directory, "../escape.txt"));
+    }
+
+    @Test
+    public void aSymbolicLinkPointingOutsideSandboxIsRefused(@TempDir Path outside) throws IOException {
+        Files.writeString(outside.resolve("secret.txt"), "secret");
+        Path link = directory.resolve("outside-link");
+        try {
+            Files.createSymbolicLink(link, outside);
+        } catch (UnsupportedOperationException | IOException ex) {
+            Assumptions.assumeTrue(false, "symbolic links are not permitted: " + ex.getMessage());
+        }
+        assertNull(SandboxPath.resolve(directory, null, "outside-link/secret.txt"));
+        assertNull(SandboxPath.resolve(directory, null, "outside-link/new.txt"));
     }
 }

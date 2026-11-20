@@ -12,7 +12,10 @@ import java.nio.charset.StandardCharsets;
  */
 public final class LinkBoxServerHandler extends ChannelInboundHandlerAdapter {
 
+    private static final int MAX_BUFFER_LENGTH = 4096;
+
     private final LinkBoxServer linkBoxServer_;
+    private final StringBuilder buffer_ = new StringBuilder();
 
     /**
      *
@@ -30,21 +33,26 @@ public final class LinkBoxServerHandler extends ChannelInboundHandlerAdapter {
         }
 
         ByteBuf in = (ByteBuf) msg;
-        StringBuilder buffer = new StringBuilder();
 
         try {
             while (in.isReadable()) {
                 byte data = in.readByte();
                 if (data == 0x0d) {
-                    String response = linkBoxServer_.createResponse(buffer.toString());
+                    String response = linkBoxServer_.createResponse(buffer_.toString());
                     if (response != null) {
                         ByteBuf out = ctx.alloc().buffer(response.length());
                         out.writeBytes(response.getBytes(StandardCharsets.US_ASCII));
                         ctx.writeAndFlush(out);
                     }
-                    buffer.setLength(0);
+                    buffer_.setLength(0);
                 } else if (data != 0x0a) {
-                    buffer.append((char) data);
+                    if (buffer_.length() >= MAX_BUFFER_LENGTH) {
+                        buffer_.setLength(0);
+                        linkBoxServer_.exceptionCaught(new IllegalStateException("LinkBox frame exceeds maximum length"));
+                        ctx.close();
+                        return;
+                    }
+                    buffer_.append((char) (data & 0xFF));
                 }
             }
         } finally {

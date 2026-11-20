@@ -1,6 +1,10 @@
 package ken.mizoguch.webviewer.serial;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonParser;
+import com.google.gson.JsonSyntaxException;
 import gnu.io.CommPort;
 import gnu.io.CommPortIdentifier;
 import gnu.io.NoSuchPortException;
@@ -9,27 +13,27 @@ import gnu.io.SerialPort;
 import gnu.io.SerialPortEvent;
 import gnu.io.SerialPortEventListener;
 import gnu.io.UnsupportedCommOperationException;
-import java.io.BufferedReader;
-import java.io.BufferedWriter;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.OutputStreamWriter;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.charset.Charset;
+import java.nio.charset.IllegalCharsetNameException;
 import java.nio.charset.StandardCharsets;
+import java.nio.charset.UnsupportedCharsetException;
 import java.util.ArrayList;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.TooManyListenersException;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
-import java.util.concurrent.TimeUnit;
-import javafx.application.Platform;
 import javafx.concurrent.Worker;
-import javafx.scene.web.WebEngine;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
 import ken.mizoguch.webviewer.plugin.kit.ScriptFunction;
-import netscape.javascript.JSException;
+import ken.mizoguch.webviewer.plugin.kit.ScriptNotifier;
 
 /**
  *
@@ -39,39 +43,61 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
 
     private static final String FUNCTION_NAME = "serial";
     private static final int MAX_BUFFER_SIZE = 65536;
+    private static final char[] HEX_CHARS = "0123456789ABCDEF".toCharArray();
 
-    private volatile WebEngine webEngine_;
-    private volatile Worker.State state_;
+    private final Object readLock_ = new Object();
+    private final Object writeLock_ = new Object();
+
     private volatile SerialPort port_;
     private volatile boolean owner_;
-    private volatile String funcDataAvailable_, funcOutputEmpty_, funcBreakInterrupt_, funcCarrierDetect_, funcCTS_,
-            funcDSR_, funcFramingError_, funcOverrunError_, funcParityError_, funcRingIndicator_;
     private volatile BlockingQueue<Integer> data_;
-    private volatile BufferedReader bufferedReader_;
-    private volatile BufferedWriter bufferedWriter_;
+    private volatile InputStream inputStream_;
+    private volatile OutputStream outputStream_;
+    private volatile Charset charset_;
+    private volatile String newLineCharacter_;
+
+    private final ScriptNotifier notifyDataAvailable_;
+    private final ScriptNotifier notifyOutputEmpty_;
+    private final ScriptNotifier notifyBreakInterrupt_;
+    private final ScriptNotifier notifyCarrierDetect_;
+    private final ScriptNotifier notifyCTS_;
+    private final ScriptNotifier notifyDSR_;
+    private final ScriptNotifier notifyFramingError_;
+    private final ScriptNotifier notifyOverrunError_;
+    private final ScriptNotifier notifyParityError_;
+    private final ScriptNotifier notifyRingIndicator_;
+    private final ScriptNotifier[] notifiers_;
+
     private final Gson gson_ = new Gson();
 
     /**
      *
      */
     public Serial() {
-        webEngine_ = null;
-        state_ = Worker.State.READY;
         port_ = null;
         owner_ = false;
-        funcDataAvailable_ = null;
-        funcOutputEmpty_ = null;
-        funcBreakInterrupt_ = null;
-        funcCarrierDetect_ = null;
-        funcCTS_ = null;
-        funcDSR_ = null;
-        funcFramingError_ = null;
-        funcOverrunError_ = null;
-        funcParityError_ = null;
-        funcRingIndicator_ = null;
         data_ = null;
-        bufferedReader_ = null;
-        bufferedWriter_ = null;
+        inputStream_ = null;
+        outputStream_ = null;
+        charset_ = StandardCharsets.UTF_8;
+        newLineCharacter_ = "\n";
+
+        notifyDataAvailable_ = new ScriptNotifier(this, "Notification of received data is dropped");
+        notifyOutputEmpty_ = new ScriptNotifier(this, "Notification of output buffer empty is dropped");
+        notifyBreakInterrupt_ = new ScriptNotifier(this, "Notification of break interrupt is dropped");
+        notifyCarrierDetect_ = new ScriptNotifier(this, "Notification of carrier detect is dropped");
+        notifyCTS_ = new ScriptNotifier(this, "Notification of CTS is dropped");
+        notifyDSR_ = new ScriptNotifier(this, "Notification of DSR is dropped");
+        notifyFramingError_ = new ScriptNotifier(this, "Notification of framing error is dropped");
+        notifyOverrunError_ = new ScriptNotifier(this, "Notification of overrun error is dropped");
+        notifyParityError_ = new ScriptNotifier(this, "Notification of parity error is dropped");
+        notifyRingIndicator_ = new ScriptNotifier(this, "Notification of ring indicator is dropped");
+        notifiers_ = new ScriptNotifier[]{
+            notifyDataAvailable_, notifyOutputEmpty_, notifyBreakInterrupt_,
+            notifyCarrierDetect_, notifyCTS_, notifyDSR_,
+            notifyFramingError_, notifyOverrunError_, notifyParityError_,
+            notifyRingIndicator_
+        };
     }
 
     /**
@@ -86,7 +112,7 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param state
      */
     public void setState(Worker.State state) {
-        state_ = state;
+        state(state);
     }
 
     /**
@@ -94,42 +120,47 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @return
      */
     public SerialPort getSerialPort() {
-        if (port_ != null) {
-            port_.notifyOnDataAvailable(false);
-            port_.notifyOnOutputEmpty(false);
-            port_.notifyOnBreakInterrupt(false);
-            port_.notifyOnCarrierDetect(false);
-            port_.notifyOnCTS(false);
-            port_.notifyOnDSR(false);
-            port_.notifyOnFramingError(false);
-            port_.notifyOnOverrunError(false);
-            port_.notifyOnParityError(false);
-            port_.notifyOnRingIndicator(false);
+        SerialPort port = port_;
+        if (port != null) {
+            port.notifyOnDataAvailable(false);
+            port.notifyOnOutputEmpty(false);
+            port.notifyOnBreakInterrupt(false);
+            port.notifyOnCarrierDetect(false);
+            port.notifyOnCTS(false);
+            port.notifyOnDSR(false);
+            port.notifyOnFramingError(false);
+            port.notifyOnOverrunError(false);
+            port.notifyOnParityError(false);
+            port.notifyOnRingIndicator(false);
+            port.removeEventListener();
         }
 
-        if (bufferedWriter_ != null) {
+        OutputStream writer = outputStream_;
+        outputStream_ = null;
+        if (writer != null) {
             try {
-                bufferedWriter_.close();
-                bufferedWriter_ = null;
+                writer.close();
             } catch (IOException ex) {
                 writeStackTrace(FUNCTION_NAME, ex);
             }
         }
 
-        if (bufferedReader_ != null) {
+        InputStream reader = inputStream_;
+        inputStream_ = null;
+        if (reader != null) {
             try {
-                bufferedReader_.close();
-                bufferedReader_ = null;
+                reader.close();
             } catch (IOException ex) {
                 writeStackTrace(FUNCTION_NAME, ex);
             }
         }
 
-        if (data_ != null) {
-            data_.clear();
-            data_ = null;
+        BlockingQueue<Integer> data = data_;
+        data_ = null;
+        if (data != null) {
+            data.clear();
         }
-        return port_;
+        return port;
     }
 
     /**
@@ -158,8 +189,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @return
      */
     public String getName() {
-        if (owner_) {
-            return port_.getName();
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            return port.getName();
         }
         return null;
     }
@@ -169,8 +201,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @return
      */
     public Integer getBaudRate() {
-        if (owner_) {
-            return port_.getBaudRate();
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            return port.getBaudRate();
         }
         return null;
     }
@@ -180,8 +213,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @return
      */
     public Integer getDataBits() {
-        if (owner_) {
-            return port_.getDataBits();
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            return port.getDataBits();
         }
         return null;
     }
@@ -191,8 +225,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @return
      */
     public Double getStopBits() {
-        if (owner_) {
-            switch (port_.getStopBits()) {
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            switch (port.getStopBits()) {
                 case SerialPort.STOPBITS_1:
                     return 1.0;
                 case SerialPort.STOPBITS_2:
@@ -211,8 +246,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @return
      */
     public String getParity() {
-        if (owner_) {
-            switch (port_.getParity()) {
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            switch (port.getParity()) {
                 case SerialPort.PARITY_NONE:
                     return "NONE";
                 case SerialPort.PARITY_ODD:
@@ -240,7 +276,8 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      */
     public void setFlowControlMode(boolean rtscts_in, boolean rtscts_out, boolean xonxoff_in, boolean xonxoff_out)
             throws UnsupportedCommOperationException {
-        if (owner_) {
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
             int flowcontrol = SerialPort.FLOWCONTROL_NONE;
 
             if (rtscts_in) {
@@ -256,7 +293,7 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
                 flowcontrol += SerialPort.FLOWCONTROL_XONXOFF_OUT;
             }
 
-            port_.setFlowControlMode(flowcontrol);
+            port.setFlowControlMode(flowcontrol);
         }
     }
 
@@ -265,8 +302,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @return
      */
     public String getFlowControlMode() {
-        if (owner_) {
-            int mode = port_.getFlowControlMode();
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            int mode = port.getFlowControlMode();
             HashMap<String, Boolean> flowcontrol = new HashMap<>();
 
             flowcontrol.put("NONE", mode == SerialPort.FLOWCONTROL_NONE);
@@ -285,8 +323,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @return
      */
     public Boolean isDTR() {
-        if (owner_) {
-            return port_.isDTR();
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            return port.isDTR();
         }
         return null;
     }
@@ -296,8 +335,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param state
      */
     public void setDTR(boolean state) {
-        if (owner_) {
-            port_.setDTR(state);
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            port.setDTR(state);
         }
     }
 
@@ -306,8 +346,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @return
      */
     public Boolean isRTS() {
-        if (owner_) {
-            return port_.isRTS();
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            return port.isRTS();
         }
         return null;
     }
@@ -317,8 +358,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param state
      */
     public void setRTS(boolean state) {
-        if (owner_) {
-            port_.setRTS(state);
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            port.setRTS(state);
         }
     }
 
@@ -327,8 +369,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @return
      */
     public Boolean isCTS() {
-        if (owner_) {
-            return port_.isCTS();
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            return port.isCTS();
         }
         return null;
     }
@@ -338,8 +381,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @return
      */
     public Boolean isDSR() {
-        if (owner_) {
-            return port_.isDSR();
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            return port.isDSR();
         }
         return null;
     }
@@ -349,8 +393,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @return
      */
     public Boolean isCD() {
-        if (owner_) {
-            return port_.isCD();
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            return port.isCD();
         }
         return null;
     }
@@ -360,8 +405,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @return
      */
     public Boolean isRI() {
-        if (owner_) {
-            return port_.isRI();
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            return port.isRI();
         }
         return null;
     }
@@ -371,8 +417,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param duration
      */
     public void sendBreak(int duration) {
-        if (owner_) {
-            port_.sendBreak(duration);
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            port.sendBreak(duration);
         }
     }
 
@@ -381,7 +428,7 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param func
      */
     public void setNotifyDataAvailable(String func) {
-        funcDataAvailable_ = scriptFunction(func);
+        notifyDataAvailable_.setFunction(scriptFunction(func));
     }
 
     /**
@@ -389,9 +436,10 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param func
      */
     public void setNotifyOutputEmpty(String func) {
-        funcOutputEmpty_ = scriptFunction(func);
-        if (owner_) {
-            port_.notifyOnOutputEmpty(funcOutputEmpty_ != null);
+        notifyOutputEmpty_.setFunction(scriptFunction(func));
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            port.notifyOnOutputEmpty(notifyOutputEmpty_.function() != null);
         }
     }
 
@@ -400,9 +448,10 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param func
      */
     public void setNotifyBreakInterrupt(String func) {
-        funcBreakInterrupt_ = scriptFunction(func);
-        if (owner_) {
-            port_.notifyOnBreakInterrupt(funcBreakInterrupt_ != null);
+        notifyBreakInterrupt_.setFunction(scriptFunction(func));
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            port.notifyOnBreakInterrupt(notifyBreakInterrupt_.function() != null);
         }
     }
 
@@ -411,9 +460,10 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param func
      */
     public void setNotifyCarrierDetect(String func) {
-        funcCarrierDetect_ = scriptFunction(func);
-        if (owner_) {
-            port_.notifyOnCarrierDetect(funcCarrierDetect_ != null);
+        notifyCarrierDetect_.setFunction(scriptFunction(func));
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            port.notifyOnCarrierDetect(notifyCarrierDetect_.function() != null);
         }
     }
 
@@ -422,9 +472,10 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param func
      */
     public void setNotifyCTS(String func) {
-        funcCTS_ = scriptFunction(func);
-        if (owner_) {
-            port_.notifyOnCTS(funcCTS_ != null);
+        notifyCTS_.setFunction(scriptFunction(func));
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            port.notifyOnCTS(notifyCTS_.function() != null);
         }
     }
 
@@ -433,9 +484,10 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param func
      */
     public void setNotifyDSR(String func) {
-        funcDSR_ = scriptFunction(func);
-        if (owner_) {
-            port_.notifyOnDSR(funcDSR_ != null);
+        notifyDSR_.setFunction(scriptFunction(func));
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            port.notifyOnDSR(notifyDSR_.function() != null);
         }
     }
 
@@ -444,9 +496,10 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param func
      */
     public void setNotifyFramingError(String func) {
-        funcFramingError_ = scriptFunction(func);
-        if (owner_) {
-            port_.notifyOnFramingError(funcFramingError_ != null);
+        notifyFramingError_.setFunction(scriptFunction(func));
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            port.notifyOnFramingError(notifyFramingError_.function() != null);
         }
     }
 
@@ -455,9 +508,10 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param func
      */
     public void setNotifyOverrunError(String func) {
-        funcOverrunError_ = scriptFunction(func);
-        if (owner_) {
-            port_.notifyOnOverrunError(funcOverrunError_ != null);
+        notifyOverrunError_.setFunction(scriptFunction(func));
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            port.notifyOnOverrunError(notifyOverrunError_.function() != null);
         }
     }
 
@@ -466,9 +520,10 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param func
      */
     public void setNotifyParityError(String func) {
-        funcParityError_ = scriptFunction(func);
-        if (owner_) {
-            port_.notifyOnParityError(funcParityError_ != null);
+        notifyParityError_.setFunction(scriptFunction(func));
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            port.notifyOnParityError(notifyParityError_.function() != null);
         }
     }
 
@@ -477,9 +532,10 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param func
      */
     public void setNotifyRingIndicator(String func) {
-        funcRingIndicator_ = scriptFunction(func);
-        if (owner_) {
-            port_.notifyOnRingIndicator(funcRingIndicator_ != null);
+        notifyRingIndicator_.setFunction(scriptFunction(func));
+        SerialPort port = port_;
+        if (owner_ && (port != null)) {
+            port.notifyOnRingIndicator(notifyRingIndicator_.function() != null);
         }
     }
 
@@ -512,125 +568,195 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
     public Boolean open(String name, int baud, int databits, double stopbits, String parity)
             throws TooManyListenersException, IOException, NoSuchPortException, PortInUseException,
             UnsupportedCommOperationException {
-        if (!owner_) {
-            if ((name != null) && (parity != null)) {
-                if ((!name.isEmpty()) && (!parity.isEmpty())) {
-                    CommPortIdentifier id = CommPortIdentifier.getPortIdentifier(name);
-                    CommPort com = id.open("WebSerial", -1);
-                    port_ = (SerialPort) com;
-
-                    int[] param = new int[4];
-
-                    param[0] = baud;
-                    switch (databits) {
-                        case 5:
-                            param[1] = SerialPort.DATABITS_5;
-                            break;
-                        case 6:
-                            param[1] = SerialPort.DATABITS_6;
-                            break;
-                        case 7:
-                            param[1] = SerialPort.DATABITS_7;
-                            break;
-                        case 8:
-                            param[1] = SerialPort.DATABITS_8;
-                            break;
-                        default:
-                            param[1] = 0;
-                            break;
-                    }
-                    switch ((int) (stopbits * 10)) {
-                        case 10:
-                            param[2] = SerialPort.STOPBITS_1;
-                            break;
-                        case 20:
-                            param[2] = SerialPort.STOPBITS_2;
-                            break;
-                        case 15:
-                            param[2] = SerialPort.STOPBITS_1_5;
-                            break;
-                        default:
-                            param[2] = 0;
-                    }
-                    switch (parity.trim()) {
-                        case "NONE":
-                            param[3] = SerialPort.PARITY_NONE;
-                            break;
-                        case "ODD":
-                            param[3] = SerialPort.PARITY_ODD;
-                            break;
-                        case "EVEN":
-                            param[3] = SerialPort.PARITY_EVEN;
-                            break;
-                        case "MARK":
-                            param[3] = SerialPort.PARITY_MARK;
-                            break;
-                        case "SPACE":
-                            param[3] = SerialPort.PARITY_SPACE;
-                            break;
-                        default:
-                            param[3] = 0;
-                            break;
-                    }
-
-                    boolean configured = false;
-                    try {
-                        port_.setSerialPortParams(
-                                param[0],
-                                param[1],
-                                param[2],
-                                param[3]);
-                        port_.setFlowControlMode(SerialPort.FLOWCONTROL_NONE);
-                        bufferedReader_ = new BufferedReader(
-                                new InputStreamReader(port_.getInputStream(), StandardCharsets.UTF_8));
-                        bufferedWriter_ = new BufferedWriter(
-                                new OutputStreamWriter(port_.getOutputStream(), StandardCharsets.UTF_8));
-                        // input buffer clear
-                        while (bufferedReader_.ready()) {
-                            bufferedReader_.read();
-                        }
-
-                        port_.addEventListener(this);
-                        port_.notifyOnDataAvailable(true);
-                        port_.notifyOnOutputEmpty(funcOutputEmpty_ != null);
-                        port_.notifyOnBreakInterrupt(funcBreakInterrupt_ != null);
-                        port_.notifyOnCarrierDetect(funcCarrierDetect_ != null);
-                        port_.notifyOnCTS(funcCTS_ != null);
-                        port_.notifyOnDSR(funcDSR_ != null);
-                        port_.notifyOnFramingError(funcFramingError_ != null);
-                        port_.notifyOnOverrunError(funcOverrunError_ != null);
-                        port_.notifyOnParityError(funcParityError_ != null);
-                        port_.notifyOnRingIndicator(funcRingIndicator_ != null);
-
-                        data_ = new LinkedBlockingQueue<>(MAX_BUFFER_SIZE);
-
-                        owner_ = true;
-                        configured = true;
-                        return true;
-                    } finally {
-                        if (!configured) {
-                            close();
-                        }
-                    }
-                } else {
-                    write(FUNCTION_NAME, "Incorrect serial argument", true);
-                }
-            } else {
-                write(FUNCTION_NAME, "Incorrect serial argument", true);
-            }
-            return false;
-        } else {
+        if (owner_) {
             write(FUNCTION_NAME, "Serial is already open", true);
+            return false;
+        }
+        if ((name == null) || name.trim().isEmpty() || (baud <= 0) || !Double.isFinite(stopbits)
+                || (parity == null)) {
+            write(FUNCTION_NAME, "Incorrect serial argument", true);
+            return false;
+        }
+
+        int dataBitsParam;
+        switch (databits) {
+            case 5:
+                dataBitsParam = SerialPort.DATABITS_5;
+                break;
+            case 6:
+                dataBitsParam = SerialPort.DATABITS_6;
+                break;
+            case 7:
+                dataBitsParam = SerialPort.DATABITS_7;
+                break;
+            case 8:
+                dataBitsParam = SerialPort.DATABITS_8;
+                break;
+            default:
+                write(FUNCTION_NAME, "Incorrect serial argument", true);
+                return false;
+        }
+
+        long scaledStop = Math.round(stopbits * 10.0);
+        if (Math.abs((stopbits * 10.0) - scaledStop) >= 1e-6) {
+            write(FUNCTION_NAME, "Incorrect serial argument", true);
+            return false;
+        }
+        int stopBitsParam;
+        switch ((int) scaledStop) {
+            case 10:
+                stopBitsParam = SerialPort.STOPBITS_1;
+                break;
+            case 15:
+                stopBitsParam = SerialPort.STOPBITS_1_5;
+                break;
+            case 20:
+                stopBitsParam = SerialPort.STOPBITS_2;
+                break;
+            default:
+                write(FUNCTION_NAME, "Incorrect serial argument", true);
+                return false;
+        }
+
+        int parityParam;
+        switch (parity.trim().toUpperCase(Locale.ROOT)) {
+            case "NONE":
+                parityParam = SerialPort.PARITY_NONE;
+                break;
+            case "ODD":
+                parityParam = SerialPort.PARITY_ODD;
+                break;
+            case "EVEN":
+                parityParam = SerialPort.PARITY_EVEN;
+                break;
+            case "MARK":
+                parityParam = SerialPort.PARITY_MARK;
+                break;
+            case "SPACE":
+                parityParam = SerialPort.PARITY_SPACE;
+                break;
+            default:
+                write(FUNCTION_NAME, "Incorrect serial argument", true);
+                return false;
+        }
+
+        CommPortIdentifier id = CommPortIdentifier.getPortIdentifier(name.trim());
+        CommPort com = id.open("WebSerial", -1);
+        if (!(com instanceof SerialPort)) {
+            if (com != null) {
+                com.close();
+            }
+            write(FUNCTION_NAME, "Serial is not supported", true);
+            return false;
+        }
+        port_ = (SerialPort) com;
+
+        boolean configured = false;
+        try {
+            port_.setSerialPortParams(baud, dataBitsParam, stopBitsParam, parityParam);
+            port_.setFlowControlMode(SerialPort.FLOWCONTROL_NONE);
+            inputStream_ = port_.getInputStream();
+            outputStream_ = port_.getOutputStream();
+
+            // input buffer clear
+            byte[] drain = new byte[256];
+            while (inputStream_.available() > 0) {
+                int n = inputStream_.read(drain, 0, Math.min(drain.length, inputStream_.available()));
+                if (n <= 0) {
+                    break;
+                }
+            }
+
+            port_.addEventListener(this);
+            port_.notifyOnDataAvailable(true);
+            port_.notifyOnOutputEmpty(notifyOutputEmpty_.function() != null);
+            port_.notifyOnBreakInterrupt(notifyBreakInterrupt_.function() != null);
+            port_.notifyOnCarrierDetect(notifyCarrierDetect_.function() != null);
+            port_.notifyOnCTS(notifyCTS_.function() != null);
+            port_.notifyOnDSR(notifyDSR_.function() != null);
+            port_.notifyOnFramingError(notifyFramingError_.function() != null);
+            port_.notifyOnOverrunError(notifyOverrunError_.function() != null);
+            port_.notifyOnParityError(notifyParityError_.function() != null);
+            port_.notifyOnRingIndicator(notifyRingIndicator_.function() != null);
+
+            data_ = new LinkedBlockingQueue<>(MAX_BUFFER_SIZE);
+
+            owner_ = true;
+            configured = true;
+            return true;
+        } finally {
+            if (!configured) {
+                close();
+            }
+        }
+    }
+
+    /**
+     *
+     * @return
+     */
+    public Boolean isOpen() {
+        return owner_ && (port_ != null);
+    }
+
+    /**
+     *
+     * @param charsetName
+     * @return
+     */
+    public Boolean setCharset(String charsetName) {
+        if ((charsetName == null) || charsetName.trim().isEmpty()) {
+            write(FUNCTION_NAME, "Incorrect charset name", true);
+            return false;
+        }
+        try {
+            charset_ = Charset.forName(charsetName.trim());
+            return true;
+        } catch (IllegalCharsetNameException | UnsupportedCharsetException ex) {
+            writeStackTrace(FUNCTION_NAME, ex);
             return false;
         }
     }
 
     /**
      *
+     * @return
+     */
+    public String getCharset() {
+        return charset_.name();
+    }
+
+    /**
+     *
+     * @param nl
+     * @return
+     */
+    public Boolean setNewLineCharacter(String nl) {
+        if ((nl == null) || nl.isEmpty()) {
+            write(FUNCTION_NAME, "Incorrect new line character", true);
+            return false;
+        }
+        newLineCharacter_ = nl;
+        return true;
+    }
+
+    /**
+     *
+     * @return
+     */
+    public String getNewLineCharacter() {
+        return newLineCharacter_;
+    }
+
+    /**
+     *
      */
     public void clear() {
-        if (data_ != null) {
-            data_.clear();
+        synchronized (readLock_) {
+            BlockingQueue<Integer> data = data_;
+            if (data != null) {
+                data.clear();
+            }
         }
     }
 
@@ -639,10 +765,13 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @return
      */
     public Integer available() {
-        if (data_ != null) {
-            return data_.size();
+        synchronized (readLock_) {
+            BlockingQueue<Integer> data = data_;
+            if (data != null) {
+                return data.size();
+            }
+            return null;
         }
-        return null;
     }
 
     /**
@@ -650,12 +779,231 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @return
      */
     public Integer read() {
-        if (data_ != null) {
-            if (!data_.isEmpty()) {
-                return data_.poll();
+        synchronized (readLock_) {
+            BlockingQueue<Integer> data = data_;
+            if (data != null) {
+                return data.poll();
+            }
+            return null;
+        }
+    }
+
+    /**
+     *
+     * @param maxBytes
+     * @return
+     */
+    public String readBytes(Integer maxBytes) {
+        synchronized (readLock_) {
+            BlockingQueue<Integer> data = data_;
+            if (data == null) {
+                return null;
+            }
+            if ((maxBytes != null) && (maxBytes <= 0)) {
+                return "[]";
+            }
+            int limit = (maxBytes == null) ? data.size() : maxBytes;
+            List<Integer> list = new ArrayList<>();
+            while (list.size() < limit) {
+                Integer b = data.poll();
+                if (b == null) {
+                    break;
+                }
+                list.add(b & 0xFF);
+            }
+            return gson_.toJson(list);
+        }
+    }
+
+    /**
+     *
+     * @param jsonArray
+     * @return
+     * @throws java.io.IOException
+     */
+    public Boolean writeBytes(String jsonArray) throws IOException {
+        if ((outputStream_ == null) || (jsonArray == null)) {
+            return false;
+        }
+        JsonElement parsed;
+        try {
+            parsed = JsonParser.parseString(jsonArray);
+        } catch (JsonSyntaxException ex) {
+            writeStackTrace(FUNCTION_NAME, ex);
+            return false;
+        }
+        if ((parsed == null) || !parsed.isJsonArray()) {
+            write(FUNCTION_NAME, "Incorrect byte array argument", true);
+            return false;
+        }
+        JsonArray array = parsed.getAsJsonArray();
+        byte[] bytes = new byte[array.size()];
+        for (int i = 0; i < array.size(); i++) {
+            JsonElement el = array.get(i);
+            if ((el == null) || !el.isJsonPrimitive() || !el.getAsJsonPrimitive().isNumber()) {
+                write(FUNCTION_NAME, "Incorrect byte value at index " + i, true);
+                return false;
+            }
+            double d = el.getAsDouble();
+            if (!Double.isFinite(d) || (d != Math.rint(d)) || (d < 0) || (d > 255)) {
+                write(FUNCTION_NAME, "Byte value out of range (0..255) at index " + i, true);
+                return false;
+            }
+            bytes[i] = (byte) ((int) d);
+        }
+        synchronized (writeLock_) {
+            OutputStream out = outputStream_;
+            if (out == null) {
+                return false;
+            }
+            out.write(bytes);
+            out.flush();
+            return true;
+        }
+    }
+
+    /**
+     *
+     * @param maxBytes
+     * @return
+     */
+    public String readHex(Integer maxBytes) {
+        synchronized (readLock_) {
+            BlockingQueue<Integer> data = data_;
+            if (data == null) {
+                return null;
+            }
+            if ((maxBytes != null) && (maxBytes <= 0)) {
+                return "";
+            }
+            int limit = (maxBytes == null) ? data.size() : maxBytes;
+            StringBuilder sb = new StringBuilder();
+            for (int i = 0; i < limit; i++) {
+                Integer b = data.poll();
+                if (b == null) {
+                    break;
+                }
+                int v = b & 0xFF;
+                sb.append(HEX_CHARS[(v >>> 4) & 0x0F]).append(HEX_CHARS[v & 0x0F]);
+            }
+            return sb.toString();
+        }
+    }
+
+    /**
+     *
+     * @param hex
+     * @return
+     * @throws java.io.IOException
+     */
+    public Boolean writeHex(String hex) throws IOException {
+        if ((outputStream_ == null) || (hex == null)) {
+            return false;
+        }
+        StringBuilder cleaned = new StringBuilder(hex.length());
+        for (int i = 0; i < hex.length(); i++) {
+            char c = hex.charAt(i);
+            if ((c != ' ') && (c != '\t') && (c != '\r') && (c != '\n')) {
+                cleaned.append(c);
             }
         }
-        return null;
+        if ((cleaned.length() == 0) || ((cleaned.length() % 2) != 0)) {
+            write(FUNCTION_NAME, "Incorrect hex argument", true);
+            return false;
+        }
+        byte[] bytes = new byte[cleaned.length() / 2];
+        for (int i = 0; i < bytes.length; i++) {
+            int hi = Character.digit(cleaned.charAt(i * 2), 16);
+            int lo = Character.digit(cleaned.charAt((i * 2) + 1), 16);
+            if ((hi < 0) || (lo < 0)) {
+                write(FUNCTION_NAME, "Incorrect hex character", true);
+                return false;
+            }
+            bytes[i] = (byte) ((hi << 4) | lo);
+        }
+        synchronized (writeLock_) {
+            OutputStream out = outputStream_;
+            if (out == null) {
+                return false;
+            }
+            out.write(bytes);
+            out.flush();
+            return true;
+        }
+    }
+
+    /**
+     *
+     * @param maxBytes
+     * @return
+     */
+    public String readString(Integer maxBytes) {
+        synchronized (readLock_) {
+            BlockingQueue<Integer> data = data_;
+            if (data == null) {
+                return null;
+            }
+            if ((maxBytes != null) && (maxBytes <= 0)) {
+                return "";
+            }
+            int limit = (maxBytes == null) ? data.size() : maxBytes;
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            for (int i = 0; i < limit; i++) {
+                Integer b = data.poll();
+                if (b == null) {
+                    break;
+                }
+                baos.write(b & 0xFF);
+            }
+            return new String(baos.toByteArray(), charset_);
+        }
+    }
+
+    /**
+     *
+     * @return
+     */
+    public String readLine() {
+        synchronized (readLock_) {
+            BlockingQueue<Integer> data = data_;
+            if (data == null) {
+                return null;
+            }
+            Charset cs = charset_;
+            byte[] delim = newLineCharacter_.getBytes(cs);
+            if (delim.length == 0) {
+                return null;
+            }
+            ByteArrayOutputStream baos = new ByteArrayOutputStream();
+            for (Integer b : data) {
+                if (b != null) {
+                    baos.write(b & 0xFF);
+                }
+            }
+            byte[] buf = baos.toByteArray();
+            int matchPos = -1;
+            for (int i = 0; i <= buf.length - delim.length; i++) {
+                boolean matched = true;
+                for (int j = 0; j < delim.length; j++) {
+                    if (buf[i + j] != delim[j]) {
+                        matched = false;
+                        break;
+                    }
+                }
+                if (matched) {
+                    matchPos = i;
+                    break;
+                }
+            }
+            if (matchPos < 0) {
+                return null;
+            }
+            int consume = matchPos + delim.length;
+            for (int i = 0; i < consume; i++) {
+                data.poll();
+            }
+            return new String(buf, 0, matchPos, cs);
+        }
     }
 
     /**
@@ -665,13 +1013,31 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @throws java.io.IOException
      */
     public Boolean write(String text) throws IOException {
-        BufferedWriter writer = bufferedWriter_;
-        if ((writer != null) && (text != null)) {
-            writer.write(text);
-            writer.flush();
+        if (text == null) {
+            return false;
+        }
+        synchronized (writeLock_) {
+            OutputStream out = outputStream_;
+            if (out == null) {
+                return false;
+            }
+            out.write(text.getBytes(charset_));
+            out.flush();
             return true;
         }
-        return false;
+    }
+
+    /**
+     *
+     * @param text
+     * @return
+     * @throws java.io.IOException
+     */
+    public Boolean writeLine(String text) throws IOException {
+        if (text == null) {
+            return false;
+        }
+        return write(text + newLineCharacter_);
     }
 
     /**
@@ -731,39 +1097,27 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      */
     protected void dataAvailable(SerialPortEvent spe) {
         BlockingQueue<Integer> data = data_;
-        BufferedReader reader = bufferedReader_;
-        if ((data != null) && (reader != null)) {
+        InputStream in = inputStream_;
+        boolean received = false;
+        if ((data != null) && (in != null)) {
             try {
-                while (reader.ready()) {
-                    data.offer(reader.read());
-                    if (!reader.ready()) {
-                        try {
-                            TimeUnit.MILLISECONDS.sleep(100);
-                        } catch (InterruptedException ex) {
-                            Thread.currentThread().interrupt();
-                            break;
-                        }
+                byte[] buf = new byte[4096];
+                while (in.available() > 0) {
+                    int n = in.read(buf, 0, Math.min(buf.length, in.available()));
+                    if (n <= 0) {
+                        break;
+                    }
+                    for (int i = 0; i < n; i++) {
+                        data.offer(buf[i] & 0xFF);
+                        received = true;
                     }
                 }
             } catch (IOException ex) {
                 writeStackTrace(FUNCTION_NAME, ex);
             }
         }
-
-        if (funcDataAvailable_ != null) {
-            Platform.runLater(() -> {
-                String func = funcDataAvailable_;
-                WebEngine engine = webEngine_;
-                if ((func != null) && (engine != null)) {
-                    if (state_ == Worker.State.SUCCEEDED) {
-                        try {
-                            engine.executeScript(func + "();");
-                        } catch (JSException ex) {
-                            writeStackTrace(FUNCTION_NAME, ex);
-                        }
-                    }
-                }
-            });
+        if (received) {
+            notifyDataAvailable_.send();
         }
     }
 
@@ -773,21 +1127,7 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param spe
      */
     protected void outputBufferEmpty(SerialPortEvent spe) {
-        if (funcOutputEmpty_ != null) {
-            Platform.runLater(() -> {
-                String func = funcOutputEmpty_;
-                WebEngine engine = webEngine_;
-                if ((func != null) && (engine != null)) {
-                    if (state_ == Worker.State.SUCCEEDED) {
-                        try {
-                            engine.executeScript(func + "();");
-                        } catch (JSException ex) {
-                            writeStackTrace(FUNCTION_NAME, ex);
-                        }
-                    }
-                }
-            });
-        }
+        notifyOutputEmpty_.send();
     }
 
     /**
@@ -796,21 +1136,7 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param spe
      */
     protected void breakInterrupt(SerialPortEvent spe) {
-        if (funcBreakInterrupt_ != null) {
-            Platform.runLater(() -> {
-                String func = funcBreakInterrupt_;
-                WebEngine engine = webEngine_;
-                if ((func != null) && (engine != null)) {
-                    if (state_ == Worker.State.SUCCEEDED) {
-                        try {
-                            engine.executeScript(func + "();");
-                        } catch (JSException ex) {
-                            writeStackTrace(FUNCTION_NAME, ex);
-                        }
-                    }
-                }
-            });
-        }
+        notifyBreakInterrupt_.send();
     }
 
     /**
@@ -819,21 +1145,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param spe
      */
     protected void carrierDetect(SerialPortEvent spe) {
-        if (funcCarrierDetect_ != null) {
-            Platform.runLater(() -> {
-                String func = funcCarrierDetect_;
-                WebEngine engine = webEngine_;
-                SerialPort port = port_;
-                if ((func != null) && (engine != null) && (port != null)) {
-                    if (state_ == Worker.State.SUCCEEDED) {
-                        try {
-                            engine.executeScript(func + "(" + port.isCD() + ");");
-                        } catch (JSException ex) {
-                            writeStackTrace(FUNCTION_NAME, ex);
-                        }
-                    }
-                }
-            });
+        SerialPort port = port_;
+        if (port != null) {
+            notifyCarrierDetect_.send(String.valueOf(port.isCD()));
         }
     }
 
@@ -843,21 +1157,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param spe
      */
     protected void clearToSend(SerialPortEvent spe) {
-        if (funcCTS_ != null) {
-            Platform.runLater(() -> {
-                String func = funcCTS_;
-                WebEngine engine = webEngine_;
-                SerialPort port = port_;
-                if ((func != null) && (engine != null) && (port != null)) {
-                    if (state_ == Worker.State.SUCCEEDED) {
-                        try {
-                            engine.executeScript(func + "(" + port.isCTS() + ");");
-                        } catch (JSException ex) {
-                            writeStackTrace(FUNCTION_NAME, ex);
-                        }
-                    }
-                }
-            });
+        SerialPort port = port_;
+        if (port != null) {
+            notifyCTS_.send(String.valueOf(port.isCTS()));
         }
     }
 
@@ -867,21 +1169,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param spe
      */
     protected void dataSetReady(SerialPortEvent spe) {
-        if (funcDSR_ != null) {
-            Platform.runLater(() -> {
-                String func = funcDSR_;
-                WebEngine engine = webEngine_;
-                SerialPort port = port_;
-                if ((func != null) && (engine != null) && (port != null)) {
-                    if (state_ == Worker.State.SUCCEEDED) {
-                        try {
-                            engine.executeScript(func + "(" + port.isDSR() + ");");
-                        } catch (JSException ex) {
-                            writeStackTrace(FUNCTION_NAME, ex);
-                        }
-                    }
-                }
-            });
+        SerialPort port = port_;
+        if (port != null) {
+            notifyDSR_.send(String.valueOf(port.isDSR()));
         }
     }
 
@@ -891,21 +1181,7 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param spe
      */
     protected void framingError(SerialPortEvent spe) {
-        if (funcFramingError_ != null) {
-            Platform.runLater(() -> {
-                String func = funcFramingError_;
-                WebEngine engine = webEngine_;
-                if ((func != null) && (engine != null)) {
-                    if (state_ == Worker.State.SUCCEEDED) {
-                        try {
-                            engine.executeScript(func + "();");
-                        } catch (JSException ex) {
-                            writeStackTrace(FUNCTION_NAME, ex);
-                        }
-                    }
-                }
-            });
-        }
+        notifyFramingError_.send();
     }
 
     /**
@@ -914,21 +1190,7 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param spe
      */
     protected void overrunError(SerialPortEvent spe) {
-        if (funcOverrunError_ != null) {
-            Platform.runLater(() -> {
-                String func = funcOverrunError_;
-                WebEngine engine = webEngine_;
-                if ((func != null) && (engine != null)) {
-                    if (state_ == Worker.State.SUCCEEDED) {
-                        try {
-                            engine.executeScript(func + "();");
-                        } catch (JSException ex) {
-                            writeStackTrace(FUNCTION_NAME, ex);
-                        }
-                    }
-                }
-            });
-        }
+        notifyOverrunError_.send();
     }
 
     /**
@@ -937,21 +1199,7 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param spe
      */
     protected void parityError(SerialPortEvent spe) {
-        if (funcParityError_ != null) {
-            Platform.runLater(() -> {
-                String func = funcParityError_;
-                WebEngine engine = webEngine_;
-                if ((func != null) && (engine != null)) {
-                    if (state_ == Worker.State.SUCCEEDED) {
-                        try {
-                            engine.executeScript(func + "();");
-                        } catch (JSException ex) {
-                            writeStackTrace(FUNCTION_NAME, ex);
-                        }
-                    }
-                }
-            });
-        }
+        notifyParityError_.send();
     }
 
     /**
@@ -960,21 +1208,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      * @param spe
      */
     protected void ringIndicator(SerialPortEvent spe) {
-        if (funcRingIndicator_ != null) {
-            Platform.runLater(() -> {
-                String func = funcRingIndicator_;
-                WebEngine engine = webEngine_;
-                SerialPort port = port_;
-                if ((func != null) && (engine != null) && (port != null)) {
-                    if (state_ == Worker.State.SUCCEEDED) {
-                        try {
-                            engine.executeScript(func + "(" + port.isRI() + ");");
-                        } catch (JSException ex) {
-                            writeStackTrace(FUNCTION_NAME, ex);
-                        }
-                    }
-                }
-            });
+        SerialPort port = port_;
+        if (port != null) {
+            notifyRingIndicator_.send(String.valueOf(port.isRI()));
         }
     }
 
@@ -985,7 +1221,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
     @Override
     public void initialize(WebViewerPlugin webViewer) {
         super.initialize(webViewer);
-        webEngine_ = webEngine();
+        for (ScriptNotifier notifier : notifiers_) {
+            notifier.setEngine(webEngine());
+        }
     }
 
     /**
@@ -1003,7 +1241,9 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      */
     @Override
     public void state(Worker.State state) {
-        state_ = state;
+        for (ScriptNotifier notifier : notifiers_) {
+            notifier.setState(state);
+        }
     }
 
     /**
@@ -1013,46 +1253,62 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
     public void close() {
         owner_ = false;
 
-        if (data_ != null) {
-            data_.clear();
+        synchronized (readLock_) {
+            BlockingQueue<Integer> data = data_;
             data_ = null;
+            if (data != null) {
+                data.clear();
+            }
         }
 
-        if (bufferedWriter_ != null) {
+        OutputStream writer;
+        synchronized (writeLock_) {
+            writer = outputStream_;
+            outputStream_ = null;
+        }
+        if (writer != null) {
             try {
-                bufferedWriter_.close();
+                writer.close();
             } catch (IOException ex) {
                 writeStackTrace(FUNCTION_NAME, ex);
             }
-            bufferedWriter_ = null;
         }
 
-        if (bufferedReader_ != null) {
+        InputStream reader = inputStream_;
+        inputStream_ = null;
+        if (reader != null) {
             try {
-                bufferedReader_.close();
+                reader.close();
             } catch (IOException ex) {
                 writeStackTrace(FUNCTION_NAME, ex);
             }
-            bufferedReader_ = null;
         }
 
-        if (port_ != null) {
-            port_.setRTS(false);
-            port_.setDTR(false);
+        for (ScriptNotifier notifier : notifiers_) {
+            notifier.clear();
+        }
 
-            port_.notifyOnDataAvailable(false);
-            port_.notifyOnOutputEmpty(false);
-            port_.notifyOnBreakInterrupt(false);
-            port_.notifyOnCarrierDetect(false);
-            port_.notifyOnCTS(false);
-            port_.notifyOnDSR(false);
-            port_.notifyOnFramingError(false);
-            port_.notifyOnOverrunError(false);
-            port_.notifyOnParityError(false);
-            port_.notifyOnRingIndicator(false);
-            port_.removeEventListener();
-            port_.close();
-            port_ = null;
+        SerialPort port = port_;
+        port_ = null;
+        if (port != null) {
+            try {
+                port.setRTS(false);
+                port.setDTR(false);
+
+                port.notifyOnDataAvailable(false);
+                port.notifyOnOutputEmpty(false);
+                port.notifyOnBreakInterrupt(false);
+                port.notifyOnCarrierDetect(false);
+                port.notifyOnCTS(false);
+                port.notifyOnDSR(false);
+                port.notifyOnFramingError(false);
+                port.notifyOnOverrunError(false);
+                port.notifyOnParityError(false);
+                port.notifyOnRingIndicator(false);
+                port.removeEventListener();
+            } finally {
+                port.close();
+            }
         }
     }
 

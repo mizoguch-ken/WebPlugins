@@ -133,6 +133,12 @@ public class AgentTest {
         page.executeScript("__seen.push('run|' + (typeof aWordOfThePanel));");
         page.executeScript("__dbg.exec('32', 'netFiles', '{}');");
         page.executeScript("__dbg.exec('33', 'readValue', '{\\\"area\\\":\\\"local\\\",\\\"key\\\":\\\"a key of the page\\\"}');");
+        page.executeScript("var __multi = document.createElement('div'); __multi.className = ' foo  bar '; document.body.appendChild(__multi);");
+        page.executeScript("__dbg.exec('34', 'search', '{\\\"query\\\":\\\"div.foo.bar\\\"}');");
+        page.executeScript("console.assert(true, 'kept quiet'); console.assert(false, 'assert failed msg');");
+        page.executeScript("console.time('t1'); console.timeEnd('t1');");
+        page.executeScript("console.count('c1'); console.count('c1');");
+        page.executeScript("__dbg.exec('35', 'exec', JSON.stringify({expr: '$0 ? $0.id : \"none\"', selected: __held}));");
     }
 
     /**
@@ -170,6 +176,8 @@ public class AgentTest {
                 PauseTransition wait = new PauseTransition(Duration.millis(600));
 
                 wait.setOnFinished(event -> {
+                    page.executeScript("__dbg.hook(false);");
+                    page.executeScript("__seen.push('unhookFetch|' + (!window.__dbgFetch));");
                     held[0] = seen(page);
                     read.countDown();
                 });
@@ -323,5 +331,18 @@ public class AgentTest {
         assertTrue(seen.contains("run|number"), "the page reads the javascript the panel wrote");
         assertTrue(seen.contains("\"files\":["), "the agent reads the files the engine of the page read");
         assertTrue(seen.contains("readValue"), "the agent reads the whole value of a key of the storage");
+    }
+
+    @Test
+    public void theAgentFormatsMultiClassElementsAndUnhooksFetch() {
+        String seen = all();
+
+        assertTrue(seen.contains("div.foo.bar"), "the agent formats multiple classes with dots");
+        assertTrue(seen.contains("unhookFetch|true"), "the agent removes its fetch hook on unhook");
+        assertFalse(seen.contains("kept quiet"), "console.assert with truthy condition does not log");
+        assertTrue(seen.contains("assert failed msg"), "console.assert with falsy condition logs error");
+        assertTrue(seen.contains("t1: "), "console.timeEnd logs elapsed milliseconds");
+        assertTrue(seen.contains("c1: 2"), "console.count tracks call count");
+        assertTrue(seen.contains("\"v\":\"held\""), "exec binds $0 to selected element id");
     }
 }

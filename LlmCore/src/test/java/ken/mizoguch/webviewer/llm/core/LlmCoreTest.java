@@ -252,6 +252,101 @@ class LlmCoreTest {
         assertThrows(LlmCoreException.class, () -> core.generate("ab", 4, new Sampler(), null));
     }
 
+    @Test
+    void samplerHandlesLargeLogitsAtLowTemperatureAndAdamWRejectsNaN() {
+        Sampler sampler = new Sampler(0.01d, 0, 1d, new java.util.Random(1L));
+        int picked = sampler.pick(new float[] { 1000f, 999f, 100f });
+        assertEquals(0, picked);
+
+        Sampler nanSampler = new Sampler(Double.NaN, 0, Double.NaN, new java.util.Random(1L));
+        assertEquals(0d, nanSampler.temperature());
+        assertEquals(1d, nanSampler.topSum());
+
+        AdamW optimizer = new AdamW(new float[][] { new float[] { 1f, 2f } });
+        assertFalse(optimizer.setLearningRate(Double.NaN));
+        assertFalse(optimizer.setWeightDecay(Double.NaN));
+        assertFalse(optimizer.setLargestGradient(Double.NaN));
+    }
+
+    @Test
+    void loadedCharModelRefusesUnseenVocabularyOnRetrain() {
+        LlmCore core = new LlmCore();
+        core.newModel(aModel());
+        core.train(List.of("abcdef"), 2, 0.02d, null);
+        Path file = tempDir.resolve("char-model.lmc");
+        core.save(file);
+
+        LlmCore reloaded = new LlmCore();
+        reloaded.load(file);
+        assertThrows(LlmCoreException.class, () -> reloaded.train(List.of("xyz123"), 2, 0.02d, null));
+    }
+
+    @Test
+    void tokenizeDetokenizeEvaluateOptimizerPreserveAndFlushWork() {
+        LlmCore core = new LlmCore();
+        assertTrue(Double.isNaN(core.learningRate()));
+        assertTrue(Double.isNaN(core.weightDecay()));
+        assertTrue(Double.isNaN(core.largestGradient()));
+
+        core.newModel(aModel());
+        core.setLearningRate(0.025d);
+        core.setWeightDecay(0.05d);
+        core.setLargestGradient(0.75d);
+        assertThrows(LlmCoreException.class, () -> core.setLearningRate(0d));
+        assertThrows(LlmCoreException.class, () -> core.setWeightDecay(-0.1d));
+        assertThrows(LlmCoreException.class, () -> core.setLargestGradient(-1d));
+
+        LlmCore.EvalResult before = core.evaluate(List.of("abcdefgh", "abcdefgh"));
+        assertTrue(Double.isFinite(before.loss));
+        assertEquals(Math.exp(before.loss), before.perplexity, 1e-9d);
+        assertTrue(before.tokens > 0L);
+        assertTrue(before.windows > 0);
+        // Evaluation before training must not pollute CharTokenizer vocabulary
+        assertEquals(CharTokenizer.FIRST, core.tokenizer().size());
+
+        core.train(List.of("abcdefgh", "abcdefgh"), 25, null, null);
+        // Vocabulary expansion preserves previously configured optimizer controls
+        assertEquals(0.025d, core.learningRate(), 1e-12d);
+        assertEquals(0.05d, core.weightDecay(), 1e-12d);
+        assertEquals(0.75d, core.largestGradient(), 1e-12d);
+
+        int vocabAfterTrain = core.tokenizer().size();
+        int[] encoded = core.tokenize("abcd");
+        assertEquals(4, encoded.length);
+        assertEquals("abcd", core.detokenize(encoded));
+        assertEquals(0, core.tokenize("").length);
+        assertEquals("", core.detokenize(new int[0]));
+
+        LlmCore.EvalResult after = core.evaluate(List.of("abcdefgh"));
+        assertTrue(after.loss < before.loss);
+        assertTrue(after.perplexity < before.perplexity);
+        // Evaluating unseen chars must not mutate vocabulary or change steps
+        LlmCore.EvalResult unseen = core.evaluate(List.of("xyz!@#"));
+        assertTrue(Double.isFinite(unseen.loss));
+        assertEquals(vocabAfterTrain, core.tokenizer().size());
+
+        // ByteTokenizer trailing incomplete multi-byte UTF-8 sequence is flushed cleanly on stop/limit
+        LlmCore byteCore = new LlmCore();
+        ModelConfig byteCfg = new ModelConfig();
+        byteCfg.setVocabType(ModelConfig.VOCAB_BYTE);
+        byteCfg.setDModel(32);
+        byteCfg.setHeads(4);
+        byteCfg.setLayers(2);
+        byteCfg.setContext(32);
+        byteCfg.setSeed(7L);
+        byteCore.newModel(byteCfg);
+        byteCore.train(List.of("a\u3042a\u3042a\u3042a\u3042"), 50, 0.03d, null);
+        List<String> pieces = new java.util.ArrayList<>();
+        LlmCore.AnswerResult partial = byteCore.generate("a", 1, new Sampler(), new LlmCoreListener() {
+            @Override
+            public void onToken(String piece) {
+                pieces.add(piece);
+            }
+        });
+        assertFalse(partial.text.isEmpty());
+        assertEquals(String.join("", pieces), partial.text);
+    }
+
     /**
      * the sizes of a small model, of the weights the seed always gives
      *

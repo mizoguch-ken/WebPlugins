@@ -59,7 +59,7 @@ public final class Sampler {
     }
 
     public final void setTemperature(double temperature) {
-        temperature_ = Math.max(temperature, 0d);
+        temperature_ = Double.isNaN(temperature) ? 0d : Math.max(temperature, 0d);
     }
 
     public double temperature() {
@@ -75,7 +75,7 @@ public final class Sampler {
     }
 
     public final void setTopSum(double topSum) {
-        topSum_ = Math.clamp(topSum, 0d, 1d);
+        topSum_ = Double.isNaN(topSum) ? 1d : Math.clamp(topSum, 0d, 1d);
     }
 
     public double topSum() {
@@ -95,21 +95,33 @@ public final class Sampler {
         if (temperature_ <= 0d) {
             return largest(logits);
         }
-        float[] probabilities = new float[logits.length];
+        float maxLogit = Float.NEGATIVE_INFINITY;
 
-        for (int index = 0; index < logits.length; index++) {
-            probabilities[index] = (float) Math.exp(logits[index] / temperature_);
+        for (float logit : logits) {
+            if (Float.isFinite(logit) && (logit > maxLogit)) {
+                maxLogit = logit;
+            }
         }
-        float sum = 0f;
-
-        for (float probability : probabilities) {
-            sum += probability;
-        }
-        if (sum <= 0f) {
+        if (!Float.isFinite(maxLogit)) {
             return largest(logits);
         }
+        float[] probabilities = new float[logits.length];
+        double sum = 0d;
+
+        for (int index = 0; index < logits.length; index++) {
+            double scaled = Float.isFinite(logits[index])
+                    ? Math.exp((logits[index] - maxLogit) / temperature_)
+                    : 0d;
+            probabilities[index] = (float) scaled;
+            sum += scaled;
+        }
+        if (!Double.isFinite(sum) || (sum <= 0d)) {
+            return largest(logits);
+        }
+        float invSum = (float) (1d / sum);
+
         for (int index = 0; index < probabilities.length; index++) {
-            probabilities[index] /= sum;
+            probabilities[index] *= invSum;
         }
         return chosen(probabilities);
     }

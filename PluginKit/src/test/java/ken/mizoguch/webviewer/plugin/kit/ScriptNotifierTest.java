@@ -112,4 +112,38 @@ public class ScriptNotifierTest {
         notifier.sendToPage("'a'");
         assertEquals(1, notifier.pending(), "the page has no engine, the notification is kept");
     }
+
+    @Test
+    public void sendToPageOnEmptyQueueSafelyReturnsWithoutThrowing() {
+        Host host = new Host();
+        ScriptNotifier notifier = new ScriptNotifier(host, "dropped");
+
+        notifier.setFunction("onData");
+        notifier.setState(State.SUCCEEDED);
+        assertDoesNotThrow(() -> notifier.sendToPage("'a'"));
+        assertEquals(0, notifier.pending());
+    }
+
+    @Test
+    public void drainRespectsPreReadyStateAndClearsPendingNotifications() {
+        Host host = new Host();
+        ScriptNotifier notifier = new ScriptNotifier(host, "dropped");
+
+        notifier.setFunction("onData");
+        notifier.setState(State.READY);
+        notifier.keep("'a'");
+        notifier.keep("'b'");
+        notifier.drain();
+        assertEquals(2, notifier.pending());
+
+        notifier.setState(State.SUCCEEDED);
+        notifier.drain();
+        assertEquals(2, notifier.pending());
+
+        assertDoesNotThrow(() -> notifier.send("'c'"));
+        assertEquals(3, notifier.pending());
+
+        notifier.clear();
+        assertEquals(0, notifier.pending());
+    }
 }

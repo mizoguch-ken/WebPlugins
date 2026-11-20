@@ -6,9 +6,7 @@ import com.google.gson.JsonObject;
 import java.net.InetAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
-import java.nio.file.Path;
 import java.util.Enumeration;
-import java.util.List;
 import javafx.concurrent.Worker.State;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
@@ -127,11 +125,31 @@ public class CapAiServer extends PluginSupport implements LinkBoxServerListener 
 
     /**
      *
+     * @return configured TCP listen port
+     */
+    public Integer getListenPort() {
+        return linkBoxServer_.getListenPort();
+    }
+
+    /**
+     * configure TCP listen port when server is stopped
+     *
+     * @param port TCP port (50001..65535)
+     * @return true if updated, false if invalid port, null if server is already running
+     */
+    public Boolean setListenPort(int port) {
+        if (!linkBoxServer_.isRunning()) {
+            return linkBoxServer_.setListenPort(port);
+        }
+        return null;
+    }
+
+    /**
+     *
      * @return
      */
     public Boolean openLinkBoxServer() {
         if (!linkBoxServer_.isRunning()) {
-            linkBoxServer_.setListenPort(50021);
             if (linkBoxServer_.getState() == State.READY) {
                 linkBoxServer_.start();
             } else {

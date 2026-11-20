@@ -128,4 +128,21 @@ public class JournalTest {
         assertTrue(net.contains("12 ms"), "the text holds the time of the request of the page");
         assertTrue(net.contains("120 bytes"), "the text holds the length of the answer of the page");
     }
+
+    @Test
+    public void consoleAndNetworkQueuesCanBeClearedIndependently() {
+        Journal journal = new Journal();
+
+        journal.add(Journal.CONSOLE, "{\"level\":\"log\",\"args\":[{\"t\":\"string\",\"v\":\"c1\"}]}");
+        journal.add(Journal.NETWORK, "{\"url\":\"n1\"}");
+
+        journal.clearConsole();
+        assertEquals(0, journal.size(Journal.CONSOLE));
+        assertEquals(1, journal.size(Journal.NETWORK));
+
+        journal.add(Journal.CONSOLE, "{\"level\":\"log\",\"args\":[{\"t\":\"string\",\"v\":\"c2\"}]}");
+        journal.clearNetwork();
+        assertEquals(1, journal.size(Journal.CONSOLE));
+        assertEquals(0, journal.size(Journal.NETWORK));
+    }
 }

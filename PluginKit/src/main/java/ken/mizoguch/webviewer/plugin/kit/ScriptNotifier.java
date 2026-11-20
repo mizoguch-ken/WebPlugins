@@ -2,6 +2,7 @@ package ken.mizoguch.webviewer.plugin.kit;
 
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javafx.application.Platform;
 import javafx.concurrent.Worker;
 import javafx.scene.web.WebEngine;
@@ -38,6 +39,8 @@ public final class ScriptNotifier {
     private final WebViewerPlugin host_;
     private final String dropped_;
     private final BlockingQueue<String> queue_;
+    private final AtomicBoolean drainScheduled_ = new AtomicBoolean(false);
+    private final AtomicBoolean pendingNoArg_ = new AtomicBoolean(false);
 
     private volatile String function_;
     private volatile WebEngine engine_;
@@ -62,6 +65,7 @@ public final class ScriptNotifier {
      */
     public void setFunction(String function) {
         function_ = function;
+        scheduleDrainIfReady();
     }
 
     /**
@@ -80,6 +84,7 @@ public final class ScriptNotifier {
      */
     public void setEngine(WebEngine engine) {
         engine_ = engine;
+        scheduleDrainIfReady();
     }
 
     /**
@@ -89,6 +94,7 @@ public final class ScriptNotifier {
      */
     public void setState(Worker.State state) {
         state_ = state;
+        scheduleDrainIfReady();
     }
 
     /**
@@ -104,6 +110,7 @@ public final class ScriptNotifier {
      * forget the notifications of the page which are not read yet
      */
     public void clear() {
+        pendingNoArg_.set(false);
         queue_.clear();
     }
 
@@ -121,10 +128,67 @@ public final class ScriptNotifier {
      * by ScriptValue
      */
     public void send(String arguments) {
-        if (!keep(arguments)) {
+        if (!enqueue(arguments)) {
             return;
         }
-        Platform.runLater(() -> sendToPage(arguments));
+        if (arguments == null) {
+            pendingNoArg_.set(true);
+        }
+        scheduleDrainIfReady();
+    }
+
+    private void scheduleDrainIfReady() {
+        if ((state_ == Worker.State.SUCCEEDED) && (engine_ != null) && (function_ != null)
+                && (!queue_.isEmpty() || pendingNoArg_.get())) {
+            scheduleDrain();
+        }
+    }
+
+    private void scheduleDrain() {
+        if (drainScheduled_.compareAndSet(false, true)) {
+            Platform.runLater(this::drain);
+        }
+    }
+
+    /**
+     * drain pending notifications onto the page when ready
+     */
+    void drain() {
+        try {
+            if ((function_ == null) || (state_ != Worker.State.SUCCEEDED) || (engine_ == null)) {
+                return;
+            }
+            if (pendingNoArg_.compareAndSet(true, false)) {
+                String function = function_;
+                WebEngine engine = engine_;
+                if ((function != null) && (engine != null) && (state_ == Worker.State.SUCCEEDED)) {
+                    try {
+                        engine.executeScript(function + "();");
+                    } catch (JSException ex) {
+                        host_.writeStackTrace(host_.functionName(), ex);
+                    }
+                }
+            }
+            while ((function_ != null) && (engine_ != null) && (state_ == Worker.State.SUCCEEDED)) {
+                String value = queue_.poll();
+                if (value == null) {
+                    break;
+                }
+                String function = function_;
+                WebEngine engine = engine_;
+                if ((function == null) || (engine == null) || (state_ != Worker.State.SUCCEEDED)) {
+                    break;
+                }
+                try {
+                    engine.executeScript(function + "(" + value + ");");
+                } catch (JSException ex) {
+                    host_.writeStackTrace(host_.functionName(), ex);
+                }
+            }
+        } finally {
+            drainScheduled_.set(false);
+            scheduleDrainIfReady();
+        }
     }
 
     /**
@@ -143,8 +207,21 @@ public final class ScriptNotifier {
             return false;
         }
 
+        enqueueArguments(arguments);
+        return true;
+    }
+
+    private boolean enqueue(String arguments) {
+        if (function_ == null) {
+            return false;
+        }
+        return enqueueArguments(arguments);
+    }
+
+    private boolean enqueueArguments(String arguments) {
         if ((arguments != null) && !queue_.offer(arguments)) {
             host_.write(host_.functionName(), dropped_, true);
+            return false;
         }
         return true;
     }
@@ -163,9 +240,6 @@ public final class ScriptNotifier {
         if (function == null) {
             return;
         }
-        if ((arguments != null) && queue_.isEmpty()) {
-            return;
-        }
         if (state_ != Worker.State.SUCCEEDED) {
             return;
         }
@@ -173,9 +247,16 @@ public final class ScriptNotifier {
             return;
         }
 
+        String value = "";
+        if (arguments != null) {
+            value = queue_.poll();
+            if (value == null) {
+                return;
+            }
+        }
+
         try {
-            engine.executeScript(function + "("
-                    + ((arguments == null) ? "" : queue_.poll()) + ");");
+            engine.executeScript(function + "(" + value + ");");
         } catch (JSException ex) {
             host_.writeStackTrace(host_.functionName(), ex);
         }

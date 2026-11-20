@@ -169,7 +169,13 @@ public final class ModelStore {
             }
             int size = in.readInt();
 
-            config.setVocabSize(size);
+            if (config.vocabType() == ModelConfig.VOCAB_CHAR) {
+                if (!config.setVocabSize(size)) {
+                    return failure("Incorrect sizes in [" + file + "]");
+                }
+            } else if (size != ByteTokenizer.SIZE) {
+                return failure("Incorrect sizes in [" + file + "]");
+            }
             if (!config.setDModel(in.readInt()) || !config.setHeads(in.readInt())) {
                 return failure("Incorrect sizes in [" + file + "]");
             }
@@ -189,13 +195,16 @@ public final class ModelStore {
                 return failure("Incorrect weights in [" + file + "]");
             }
             float[][] weights = new float[count][];
+            long totalValues = 0L;
 
             for (int index = 0; index < count; index++) {
                 int length = in.readInt();
 
-                if ((length < 0) || (length > MAX_VALUES)) {
+                if ((length < 0) || (length > MAX_VALUES)
+                        || ((totalValues + length) > ModelConfig.MAX_PARAMETERS)) {
                     return failure("Incorrect weights in [" + file + "]");
                 }
+                totalValues += length;
                 float[] values = new float[length];
 
                 for (int value = 0; value < length; value++) {

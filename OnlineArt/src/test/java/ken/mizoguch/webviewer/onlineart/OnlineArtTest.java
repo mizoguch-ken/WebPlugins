@@ -7,7 +7,6 @@ import java.io.OutputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -105,7 +104,7 @@ public class OnlineArtTest {
 
         @Override
         public Path webPath() {
-            return Paths.get("C:/Users/mizog");
+            return Path.of(System.getProperty("java.io.tmpdir"));
         }
 
         @Override
@@ -468,5 +467,69 @@ public class OnlineArtTest {
         assertEquals(0, counter().get());
         assertTrue(finished(state()));
         assertTrue(recorder_.writes().isEmpty());
+    }
+
+    @Test
+    @DisplayName("validation guards reject out-of-range inputs and headerless CRC-0 frames")
+    void protocolAndBoundsAndJsonGuards() {
+        OnlineArtEnums.ONLINEART.setLang(-1);
+        OnlineArtEnums.ONLINEART.setLang(99);
+        assertEquals("OnlineArt", OnlineArtEnums.ONLINEART.toString());
+
+        OnlineArtReceivePacket rx = new OnlineArtReceivePacket();
+        int[] bogus = { 0x02, '0', '0', '0', '0', 0x0d, 0x0a };
+        for (int b : bogus) {
+            assertFalse(rx.read(b));
+        }
+
+        assertEquals(Boolean.FALSE, callFx(() -> onlineArt_.linkStart(-1, 4)));
+        assertEquals(Boolean.FALSE, callFx(() -> onlineArt_.cmdReadRelay(1, 0, 0, 0, 1)));
+    }
+
+    @Test
+    @DisplayName("linkStop, status queries and error notifier lifecycle work safely")
+    void linkStopStatusQueriesAndErrorNotifierWork() throws Exception {
+        assertEquals(Boolean.FALSE, callFx(() -> onlineArt_.linkStop()));
+        assertFalse(onlineArt_.isLinkRunning());
+        assertFalse(onlineArt_.isSerialPortSet());
+        assertEquals(0, onlineArt_.getRelayCount());
+        assertEquals(0, onlineArt_.getRegisterCount());
+        assertFalse(onlineArt_.isCommandBusy());
+
+        CountingStream out = new CountingStream();
+        setStreams(new ByteArrayInputStream(new byte[0]), out);
+        assertTrue(onlineArt_.isSerialPortSet());
+
+        assertEquals(Boolean.TRUE, callFx(() -> onlineArt_.linkStart(6, 10)));
+        assertTrue(waitCounter(1, TASK_START_TIMEOUT_MILLIS));
+        assertTrue(onlineArt_.isLinkRunning());
+        assertEquals(6, onlineArt_.getRelayCount());
+        assertEquals(10, onlineArt_.getRegisterCount());
+        assertFalse(onlineArt_.isCommandBusy());
+
+        assertEquals(Boolean.TRUE, callFx(() -> onlineArt_.linkStop()));
+        assertTrue(waitCounter(0, TASK_END_TIMEOUT_MILLIS));
+        assertFalse(onlineArt_.isLinkRunning());
+        assertEquals(0, onlineArt_.getRelayCount());
+        assertEquals(0, onlineArt_.getRegisterCount());
+        // linkStop keeps the attached serial port streams open for subsequent linkStart()
+        assertTrue(onlineArt_.isSerialPortSet());
+        assertFalse(out.closed());
+
+        onlineArt_.setNotifyError("onOnlineArtError");
+        onlineArt_.setNotifyError("invalid fn()");
+        assertTrue(recorder_.writes().contains("Incorrect script function name"));
+    }
+
+    @Test
+    @DisplayName("malformed JSON in setRelayAll/setRegisterAll is caught without throwing")
+    void malformedJsonInSetAllReturnsFalse() throws Exception {
+        setStreams(new ByteArrayInputStream(new byte[0]), new CountingStream());
+        assertEquals(Boolean.TRUE, callFx(() -> onlineArt_.linkStart(4, 4)));
+        assertTrue(waitCounter(1, TASK_START_TIMEOUT_MILLIS));
+
+        assertEquals(Boolean.FALSE, callFx(() -> onlineArt_.setRelayAll("{bad")));
+        assertEquals(Boolean.FALSE, callFx(() -> onlineArt_.setRegisterAll("{bad")));
+        assertEquals(2, recorder_.traces().size());
     }
 }

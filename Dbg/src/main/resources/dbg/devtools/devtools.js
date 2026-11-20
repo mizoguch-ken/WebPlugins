@@ -425,7 +425,7 @@
         line.appendChild(make('span', 'body', '> ' + text));
         el('log').appendChild(line);
 
-        ask('exec', { expr: text }, function (answer) {
+        ask('exec', { expr: text, selected: chosen || 0 }, function (answer) {
             var row = make('div', 'row');
             var body = make('div', 'body');
 
@@ -815,8 +815,16 @@
 
         remove.onclick = function () {
             ask('removeNode', { id: answer.id }, function (held) {
-                if (held.removed && nodes[answer.id]) {
-                    nodes[answer.id].row.parentNode.removeChild(nodes[answer.id].row);
+                var entry = nodes[answer.id];
+
+                if (held.removed && entry) {
+                    if (entry.row && entry.row.parentNode) {
+                        entry.row.parentNode.removeChild(entry.row);
+                    }
+                    if (entry.holder && entry.holder.parentNode) {
+                        entry.holder.parentNode.removeChild(entry.holder);
+                    }
+                    delete nodes[answer.id];
                 }
             });
         };
@@ -824,7 +832,11 @@
 
         copy.onclick = function () {
             ask('html', { id: answer.id }, function (held) {
-                var code = make('pre', '', held.html || '');
+                var html = held.html || '';
+                if (dbg.copyText && dbg.copyText(html)) {
+                    told({ text: 'HTML copied to clipboard' });
+                }
+                var code = make('pre', '', html);
 
                 code.style.whiteSpace = 'pre-wrap';
                 code.style.wordWrap = 'break-word';
@@ -890,7 +902,7 @@
         if (answer.read) {
             box.appendChild(make('div', 'src', answer.read));
         }
-        if (answer.inline && answer.inline.length) {
+        if (answer.inline) {
             box.appendChild(make('h3', '', 'style of the element, which the user may write again'));
             for (index = 0; index < answer.inline.length; index++) {
                 (function (pair) {
@@ -1391,7 +1403,7 @@
         }
         if ((filter && (String(request.url).toLowerCase().indexOf(filter) < 0))
                 || (kind && (String(request.kind) !== kind))
-                || (bad && (request.status < 400))) {
+                || (bad && !((request.status >= 400) || ((request.status === 0) && request.id)))) {
             row.style.display = 'none';
         }
         row.onclick = function () {
@@ -1777,16 +1789,24 @@
     /**
      * the messages of the page the panel read, forgotten
      */
-    function emptied() {
+    function emptiedConsole() {
         logRows = [];
-        netRows = [];
         waiting = {};
         while (el('log').firstChild) {
             el('log').removeChild(el('log').firstChild);
         }
+    }
+
+    function emptiedNetwork() {
+        netRows = [];
         while (el('netbody').firstChild) {
             el('netbody').removeChild(el('netbody').firstChild);
         }
+    }
+
+    function emptied() {
+        emptiedConsole();
+        emptiedNetwork();
     }
 
     /**
@@ -1863,6 +1883,14 @@
         /* the messages of the page, forgotten by the plug-in */
         clear: function (json) {
             emptied();
+        },
+
+        clearConsole: function () {
+            emptiedConsole();
+        },
+
+        clearNetwork: function () {
+            emptiedNetwork();
         }
     };
 
@@ -1918,7 +1946,11 @@
 
     /* the console of the page */
     el('clear').onclick = function () {
-        dbg.clear();
+        if (dbg.clearConsole) {
+            dbg.clearConsole();
+        } else {
+            dbg.clear();
+        }
     };
     el('filter').onkeyup = redraw;
     el('level').onchange = redraw;

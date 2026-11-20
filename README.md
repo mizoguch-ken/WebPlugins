@@ -25,8 +25,8 @@ Plug-in modules are packaged as self-contained shaded JARs (`target/<Module>.jar
 | **Db** | `Db.jar` | `db` | JDBC database client / JDBC データベース接続・SQL 実行 | [Db](Db/README.md) |
 | **Dbg** | `Dbg.jar` | `dbg` | Built-in DevTools debugger panel & console logger / 開発者ツールパネル・デバッガー | [Dbg](Dbg/README.md) |
 | **File** | `File.jar` | `file` | Sandboxed local file & directory operations / Web フォルダー配下のファイル・ディレクトリ操作 | [File](File/README.md) |
-| **Ftp** | `Ftp.jar` | `ftp` | FTP client (Apache Commons Net) / FTP クライアント | [Ftp](Ftp/README.md) |
-| **Jasper** | `Jasper.jar` | `jasper` | JasperReports compilation, printing & PDF/HTML/XML export / JasperReports 帳票出力・印刷 | [Jasper](Jasper/README.md) |
+| **Ftp** | `Ftp.jar` | `ftp` | FTP / FTPS client (Apache Commons Net) / FTP・FTPS クライアント | [Ftp](Ftp/README.md) |
+| **Jasper** | `Jasper.jar` | `jasper` | JasperReports compilation, printing & HTML/XML/XLSX/CSV/DOCX/text/PDF export / JasperReports 帳票出力・印刷 | [Jasper](Jasper/README.md) |
 | **Llm** | `Llm.jar` | `llm` | Local pure-Java Transformer training/inference & OpenAI-compatible remote client / ローカル Transformer 学習・推論および OpenAI 互換クライアント | [Llm](Llm/README.md) |
 | **OnlineArt** | `OnlineArt.jar` | `onlineArt` | Online Art serial link relay/register exchange / オンラインアート通信リンク | [OnlineArt](OnlineArt/README.md) |
 | **Printer** | `Printer.jar` | `printer` | Page, text, and image printing via JavaFX Print API / ページ・テキスト・画像の印刷 | [Printer](Printer/README.md) |

@@ -9,6 +9,7 @@ import java.io.PrintWriter;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.net.UnknownHostException;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
@@ -21,18 +22,20 @@ import javax.swing.event.EventListenerList;
  */
 public final class LinkBoxClient {
 
+    private static final int MAX_RESPONSE_LENGTH = 8192;
+
     private final EventListenerList eventListenerList_;
 
-    private InetAddress serverAddress_;
+    private volatile InetAddress serverAddress_;
     private InetSocketAddress inetSocketAddress_;
     private Socket socket_;
     private BufferedReader bufferedReader_;
     private PrintWriter printWriter_;
 
-    private int clientPort_;
-    private int clientTimeout_;
+    private volatile int clientPort_;
+    private volatile int clientTimeout_;
 
-    private boolean isRunning_;
+    private volatile boolean isRunning_;
 
     /**
      *
@@ -129,10 +132,27 @@ public final class LinkBoxClient {
 
     /**
      *
+     * @return configured server IP address string, or null when unset
+     */
+    public String getServerAddress() {
+        InetAddress address = serverAddress_;
+        return (address == null) ? null : address.getHostAddress();
+    }
+
+    /**
+     *
      * @param port
      */
     public void setConnectionPort(int port) {
         clientPort_ = port;
+    }
+
+    /**
+     *
+     * @return configured socket timeout in milliseconds
+     */
+    public int getTimeout() {
+        return clientTimeout_;
     }
 
     /**
@@ -158,48 +178,30 @@ public final class LinkBoxClient {
      * @return
      */
     public boolean cmdPortClose(int port) {
-        InetSocketAddress inetSocketAddress;
-        Socket socket = new Socket();
-        BufferedReader bufferedReader = null;
-        PrintWriter printWriter = null;
+        InetAddress address = serverAddress_;
+        if (address == null) {
+            reportMissingAddress();
+            return false;
+        }
         StringBuilder request = new StringBuilder();
         boolean result = false;
 
-        try {
-            inetSocketAddress = new InetSocketAddress(serverAddress_, 50099);
-            socket.connect(inetSocketAddress, 5000);
-            bufferedReader = new BufferedReader(
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(address, 50099), 5000);
+            try (BufferedReader bufferedReader = new BufferedReader(
                     new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
-            printWriter = new PrintWriter(
-                    new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8)));
+                    PrintWriter printWriter = new PrintWriter(
+                            new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8)))) {
+                request.append("PortClose");
+                if (port > 50000) {
+                    request.append(Integer.toString(port));
+                }
 
-            request.append("PortClose");
-            if (port > 50000) {
-                request.append(Integer.toString(port));
+                result = checkErrorCode(sendRequest("PortClose", request.toString(), 5000 + clientTimeout_, 0, socket,
+                        bufferedReader, printWriter));
             }
-
-            result = checkErrorCode(sendRequest("PortClose", request.toString(), 5000 + clientTimeout_, 0, socket,
-                    bufferedReader, printWriter));
         } catch (IOException ex) {
             exceptionCaught(ex);
-        } finally {
-            if (bufferedReader != null) {
-                try {
-                    bufferedReader.close();
-                } catch (IOException ex) {
-                    exceptionCaught(ex);
-                }
-            }
-
-            if (printWriter != null) {
-                printWriter.close();
-            }
-
-            try {
-                socket.close();
-            } catch (IOException ex) {
-                exceptionCaught(ex);
-            }
         }
         return result;
     }
@@ -211,44 +213,26 @@ public final class LinkBoxClient {
      * @return
      */
     public boolean cmdGetPortInfo(int port) {
-        InetSocketAddress inetSocketAddress;
-        Socket socket = new Socket();
-        BufferedReader bufferedReader = null;
-        PrintWriter printWriter = null;
+        InetAddress address = serverAddress_;
+        if (address == null) {
+            reportMissingAddress();
+            return false;
+        }
         StringBuilder request = new StringBuilder();
         boolean result = false;
 
-        try {
-            inetSocketAddress = new InetSocketAddress(serverAddress_, 50099);
-            socket.connect(inetSocketAddress, 5000);
-            bufferedReader = new BufferedReader(
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(address, 50099), 5000);
+            try (BufferedReader bufferedReader = new BufferedReader(
                     new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
-            printWriter = new PrintWriter(
-                    new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8)));
-
-            request.append("GetPortInfo").append(Integer.toString(port));
-            result = checkErrorCode(sendRequest("GetPortInfo", request.toString(), clientTimeout_, 0, socket,
-                    bufferedReader, printWriter));
+                    PrintWriter printWriter = new PrintWriter(
+                            new BufferedWriter(new OutputStreamWriter(socket.getOutputStream(), StandardCharsets.UTF_8)))) {
+                request.append("GetPortInfo").append(Integer.toString(port));
+                result = checkErrorCode(sendRequest("GetPortInfo", request.toString(), clientTimeout_, 0, socket,
+                        bufferedReader, printWriter));
+            }
         } catch (IOException ex) {
             exceptionCaught(ex);
-        } finally {
-            if (bufferedReader != null) {
-                try {
-                    bufferedReader.close();
-                } catch (IOException ex) {
-                    exceptionCaught(ex);
-                }
-            }
-
-            if (printWriter != null) {
-                printWriter.close();
-            }
-
-            try {
-                socket.close();
-            } catch (IOException ex) {
-                exceptionCaught(ex);
-            }
         }
         return result;
     }
@@ -260,34 +244,21 @@ public final class LinkBoxClient {
      * @return
      */
     public boolean cmdConnect() {
-        InetSocketAddress inetSocketAddress;
-        Socket socket = new Socket();
-        BufferedReader bufferedReader = null;
+        InetAddress address = serverAddress_;
+        if (address == null) {
+            reportMissingAddress();
+            return false;
+        }
         boolean result = false;
 
-        try {
-            inetSocketAddress = new InetSocketAddress(serverAddress_, 50001);
-            socket.connect(inetSocketAddress, 30000);
-            bufferedReader = new BufferedReader(
-                    new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8));
-
-            result = checkErrorCode(sendRequest("Connect", null, clientTimeout_, 1000, socket, bufferedReader, null));
+        try (Socket socket = new Socket()) {
+            socket.connect(new InetSocketAddress(address, 50001), 30000);
+            try (BufferedReader bufferedReader = new BufferedReader(
+                    new InputStreamReader(socket.getInputStream(), StandardCharsets.UTF_8))) {
+                result = checkErrorCode(sendRequest("Connect", null, clientTimeout_, 1000, socket, bufferedReader, null));
+            }
         } catch (IOException ex) {
             exceptionCaught(ex);
-        } finally {
-            if (bufferedReader != null) {
-                try {
-                    bufferedReader.close();
-                } catch (IOException ex) {
-                    exceptionCaught(ex);
-                }
-            }
-
-            try {
-                socket.close();
-            } catch (IOException ex) {
-                exceptionCaught(ex);
-            }
         }
         return result;
     }
@@ -404,6 +375,12 @@ public final class LinkBoxClient {
             LinkBoxEnums answerLedR, LinkBoxEnums answerLedG, LinkBoxEnums answerLedB,
             LinkBoxEnums answerSeg, LinkBoxEnums answerBuz,
             int unit, String view) {
+        if ((normalDirection == null) || (normalLedR == null) || (normalLedG == null) || (normalLedB == null)
+                || (normalSeg == null) || (normalBuz == null)
+                || (answerDirection == null) || (answerLedR == null) || (answerLedG == null) || (answerLedB == null)
+                || (answerSeg == null) || (answerBuz == null) || (view == null)) {
+            return checkErrorCode(LinkBoxEnums.ERROR_REQUEST_DATA.getNumber());
+        }
         StringBuilder request = new StringBuilder();
 
         request.append("SetL1");
@@ -454,6 +431,13 @@ public final class LinkBoxClient {
             LinkBoxEnums answerLedR, LinkBoxEnums answerLedG, LinkBoxEnums answerLedB,
             LinkBoxEnums answerSeg, LinkBoxEnums answerBuz,
             List<Integer> units, List<String> views) {
+        if ((normalDirection == null) || (normalLedR == null) || (normalLedG == null) || (normalLedB == null)
+                || (normalSeg == null) || (normalBuz == null)
+                || (answerDirection == null) || (answerLedR == null) || (answerLedG == null) || (answerLedB == null)
+                || (answerSeg == null) || (answerBuz == null)
+                || (units == null) || (views == null) || (units.size() != views.size())) {
+            return checkErrorCode(LinkBoxEnums.ERROR_REQUEST_DATA.getNumber());
+        }
         StringBuilder request = new StringBuilder();
 
         request.append("SetL1");
@@ -471,8 +455,13 @@ public final class LinkBoxClient {
         request.append(answerSeg.getString());
         request.append(answerBuz.getString());
         for (int i = 0; i < units.size(); i++) {
-            request.append(String.format("%04d", units.get(i)));
-            request.append(String.format("%5s", views.get(i)));
+            Integer unit = units.get(i);
+            String view = views.get(i);
+            if ((unit == null) || (view == null)) {
+                return checkErrorCode(LinkBoxEnums.ERROR_REQUEST_DATA.getNumber());
+            }
+            request.append(String.format("%04d", unit));
+            request.append(String.format("%5s", view));
         }
         return checkErrorCode(
                 sendRequest("SetL1", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
@@ -498,264 +487,16 @@ public final class LinkBoxClient {
             LinkBoxEnums normalDirection, LinkBoxEnums normalLed, LinkBoxEnums normalSeg, LinkBoxEnums normalBuz,
             LinkBoxEnums answerDirection, LinkBoxEnums answerLed, LinkBoxEnums answerSeg, LinkBoxEnums answerBuz,
             int unit, String view) {
-        LinkBoxEnums normalLedR, normalLedG, normalLedB;
-        LinkBoxEnums answerLedR, answerLedG, answerLedB;
-
-        // Normal
-        switch (normalLed) {
-            case LED_OFF:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_RED:
-                normalLedR = LinkBoxEnums.LEDR_LIGHT;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_GREEN:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_LIGHT;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_BLUE:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_LIGHT;
-                break;
-            case LED_YELLOW:
-                normalLedR = LinkBoxEnums.LEDR_LIGHT;
-                normalLedG = LinkBoxEnums.LEDG_LIGHT;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_CYAN:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_LIGHT;
-                normalLedB = LinkBoxEnums.LEDB_LIGHT;
-                break;
-            case LED_MAGENTA:
-                normalLedR = LinkBoxEnums.LEDR_LIGHT;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_LIGHT;
-                break;
-            case LED_WHITE:
-                normalLedR = LinkBoxEnums.LEDR_LIGHT;
-                normalLedG = LinkBoxEnums.LEDG_LIGHT;
-                normalLedB = LinkBoxEnums.LEDB_LIGHT;
-                break;
-            case LED_RED_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_BLINK;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_GREEN_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_BLINK;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_BLUE_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_BLINK;
-                break;
-            case LED_YELLOW_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_BLINK;
-                normalLedG = LinkBoxEnums.LEDG_BLINK;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_CYAN_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_BLINK;
-                normalLedB = LinkBoxEnums.LEDB_BLINK;
-                break;
-            case LED_MAGENTA_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_BLINK;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_BLINK;
-                break;
-            case LED_WHITE_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_BLINK;
-                normalLedG = LinkBoxEnums.LEDG_BLINK;
-                normalLedB = LinkBoxEnums.LEDB_BLINK;
-                break;
-            case LED_RED_FAST_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_FAST_BLINK;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_GREEN_FAST_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_FAST_BLINK;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_BLUE_FAST_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_FAST_BLINK;
-                break;
-            case LED_YELLOW_FAST_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_FAST_BLINK;
-                normalLedG = LinkBoxEnums.LEDG_FAST_BLINK;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_CYAN_FAST_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_FAST_BLINK;
-                normalLedB = LinkBoxEnums.LEDB_FAST_BLINK;
-                break;
-            case LED_MAGENTA_FAST_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_FAST_BLINK;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_FAST_BLINK;
-                break;
-            case LED_WHITE_FAST_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_FAST_BLINK;
-                normalLedG = LinkBoxEnums.LEDG_FAST_BLINK;
-                normalLedB = LinkBoxEnums.LEDB_FAST_BLINK;
-                break;
-            case LED_NO_CHANGE:
-                normalLedR = LinkBoxEnums.LEDR_NO_CHANGE;
-                normalLedG = LinkBoxEnums.LEDG_NO_CHANGE;
-                normalLedB = LinkBoxEnums.LEDB_NO_CHANGE;
-                break;
-            default:
-                normalLedR = LinkBoxEnums.LEDR_NO_CHANGE;
-                normalLedG = LinkBoxEnums.LEDG_NO_CHANGE;
-                normalLedB = LinkBoxEnums.LEDB_NO_CHANGE;
-                break;
-        }
-
-        // Answer
-        switch (answerLed) {
-            case LED_OFF:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_RED:
-                answerLedR = LinkBoxEnums.LEDR_LIGHT;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_GREEN:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_LIGHT;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_BLUE:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_LIGHT;
-                break;
-            case LED_YELLOW:
-                answerLedR = LinkBoxEnums.LEDR_LIGHT;
-                answerLedG = LinkBoxEnums.LEDG_LIGHT;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_CYAN:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_LIGHT;
-                answerLedB = LinkBoxEnums.LEDB_LIGHT;
-                break;
-            case LED_MAGENTA:
-                answerLedR = LinkBoxEnums.LEDR_LIGHT;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_LIGHT;
-                break;
-            case LED_WHITE:
-                answerLedR = LinkBoxEnums.LEDR_LIGHT;
-                answerLedG = LinkBoxEnums.LEDG_LIGHT;
-                answerLedB = LinkBoxEnums.LEDB_LIGHT;
-                break;
-            case LED_RED_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_BLINK;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_GREEN_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_BLINK;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_BLUE_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_BLINK;
-                break;
-            case LED_YELLOW_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_BLINK;
-                answerLedG = LinkBoxEnums.LEDG_BLINK;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_CYAN_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_BLINK;
-                answerLedB = LinkBoxEnums.LEDB_BLINK;
-                break;
-            case LED_MAGENTA_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_BLINK;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_BLINK;
-                break;
-            case LED_WHITE_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_BLINK;
-                answerLedG = LinkBoxEnums.LEDG_BLINK;
-                answerLedB = LinkBoxEnums.LEDB_BLINK;
-                break;
-            case LED_RED_FAST_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_FAST_BLINK;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_GREEN_FAST_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_FAST_BLINK;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_BLUE_FAST_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_FAST_BLINK;
-                break;
-            case LED_YELLOW_FAST_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_FAST_BLINK;
-                answerLedG = LinkBoxEnums.LEDG_FAST_BLINK;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_CYAN_FAST_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_FAST_BLINK;
-                answerLedB = LinkBoxEnums.LEDB_FAST_BLINK;
-                break;
-            case LED_MAGENTA_FAST_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_FAST_BLINK;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_FAST_BLINK;
-                break;
-            case LED_WHITE_FAST_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_FAST_BLINK;
-                answerLedG = LinkBoxEnums.LEDG_FAST_BLINK;
-                answerLedB = LinkBoxEnums.LEDB_FAST_BLINK;
-                break;
-            case LED_NO_CHANGE:
-                answerLedR = LinkBoxEnums.LEDR_NO_CHANGE;
-                answerLedG = LinkBoxEnums.LEDG_NO_CHANGE;
-                answerLedB = LinkBoxEnums.LEDB_NO_CHANGE;
-                break;
-            default:
-                answerLedR = LinkBoxEnums.LEDR_NO_CHANGE;
-                answerLedG = LinkBoxEnums.LEDG_NO_CHANGE;
-                answerLedB = LinkBoxEnums.LEDB_NO_CHANGE;
-                break;
-        }
+        LinkBoxEnums[] normalRgb = ledToRgb(normalLed);
+        LinkBoxEnums[] answerRgb = ledToRgb(answerLed);
 
         return cmdSetL1(
                 accNumber,
                 normalDirection,
-                normalLedR, normalLedG, normalLedB,
+                normalRgb[0], normalRgb[1], normalRgb[2],
                 normalSeg, normalBuz,
                 answerDirection,
-                answerLedR, answerLedG, answerLedB,
+                answerRgb[0], answerRgb[1], answerRgb[2],
                 answerSeg, answerBuz,
                 unit, view);
     }
@@ -780,266 +521,121 @@ public final class LinkBoxClient {
             LinkBoxEnums normalDirection, LinkBoxEnums normalLed, LinkBoxEnums normalSeg, LinkBoxEnums normalBuz,
             LinkBoxEnums answerDirection, LinkBoxEnums answerLed, LinkBoxEnums answerSeg, LinkBoxEnums answerBuz,
             List<Integer> units, List<String> views) {
-        LinkBoxEnums normalLedR, normalLedG, normalLedB;
-        LinkBoxEnums answerLedR, answerLedG, answerLedB;
-
-        // Normal
-        switch (normalLed) {
-            case LED_OFF:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_RED:
-                normalLedR = LinkBoxEnums.LEDR_LIGHT;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_GREEN:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_LIGHT;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_BLUE:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_LIGHT;
-                break;
-            case LED_YELLOW:
-                normalLedR = LinkBoxEnums.LEDR_LIGHT;
-                normalLedG = LinkBoxEnums.LEDG_LIGHT;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_CYAN:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_LIGHT;
-                normalLedB = LinkBoxEnums.LEDB_LIGHT;
-                break;
-            case LED_MAGENTA:
-                normalLedR = LinkBoxEnums.LEDR_LIGHT;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_LIGHT;
-                break;
-            case LED_WHITE:
-                normalLedR = LinkBoxEnums.LEDR_LIGHT;
-                normalLedG = LinkBoxEnums.LEDG_LIGHT;
-                normalLedB = LinkBoxEnums.LEDB_LIGHT;
-                break;
-            case LED_RED_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_BLINK;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_GREEN_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_BLINK;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_BLUE_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_BLINK;
-                break;
-            case LED_YELLOW_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_BLINK;
-                normalLedG = LinkBoxEnums.LEDG_BLINK;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_CYAN_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_BLINK;
-                normalLedB = LinkBoxEnums.LEDB_BLINK;
-                break;
-            case LED_MAGENTA_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_BLINK;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_BLINK;
-                break;
-            case LED_WHITE_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_BLINK;
-                normalLedG = LinkBoxEnums.LEDG_BLINK;
-                normalLedB = LinkBoxEnums.LEDB_BLINK;
-                break;
-            case LED_RED_FAST_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_FAST_BLINK;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_GREEN_FAST_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_FAST_BLINK;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_BLUE_FAST_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_FAST_BLINK;
-                break;
-            case LED_YELLOW_FAST_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_FAST_BLINK;
-                normalLedG = LinkBoxEnums.LEDG_FAST_BLINK;
-                normalLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_CYAN_FAST_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_OFF;
-                normalLedG = LinkBoxEnums.LEDG_FAST_BLINK;
-                normalLedB = LinkBoxEnums.LEDB_FAST_BLINK;
-                break;
-            case LED_MAGENTA_FAST_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_FAST_BLINK;
-                normalLedG = LinkBoxEnums.LEDG_OFF;
-                normalLedB = LinkBoxEnums.LEDB_FAST_BLINK;
-                break;
-            case LED_WHITE_FAST_BLINK:
-                normalLedR = LinkBoxEnums.LEDR_FAST_BLINK;
-                normalLedG = LinkBoxEnums.LEDG_FAST_BLINK;
-                normalLedB = LinkBoxEnums.LEDB_FAST_BLINK;
-                break;
-            case LED_NO_CHANGE:
-                normalLedR = LinkBoxEnums.LEDR_NO_CHANGE;
-                normalLedG = LinkBoxEnums.LEDG_NO_CHANGE;
-                normalLedB = LinkBoxEnums.LEDB_NO_CHANGE;
-                break;
-            default:
-                normalLedR = LinkBoxEnums.LEDR_NO_CHANGE;
-                normalLedG = LinkBoxEnums.LEDG_NO_CHANGE;
-                normalLedB = LinkBoxEnums.LEDB_NO_CHANGE;
-                break;
-        }
-
-        // Answer
-        switch (answerLed) {
-            case LED_OFF:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_RED:
-                answerLedR = LinkBoxEnums.LEDR_LIGHT;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_GREEN:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_LIGHT;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_BLUE:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_LIGHT;
-                break;
-            case LED_YELLOW:
-                answerLedR = LinkBoxEnums.LEDR_LIGHT;
-                answerLedG = LinkBoxEnums.LEDG_LIGHT;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_CYAN:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_LIGHT;
-                answerLedB = LinkBoxEnums.LEDB_LIGHT;
-                break;
-            case LED_MAGENTA:
-                answerLedR = LinkBoxEnums.LEDR_LIGHT;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_LIGHT;
-                break;
-            case LED_WHITE:
-                answerLedR = LinkBoxEnums.LEDR_LIGHT;
-                answerLedG = LinkBoxEnums.LEDG_LIGHT;
-                answerLedB = LinkBoxEnums.LEDB_LIGHT;
-                break;
-            case LED_RED_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_BLINK;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_GREEN_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_BLINK;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_BLUE_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_BLINK;
-                break;
-            case LED_YELLOW_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_BLINK;
-                answerLedG = LinkBoxEnums.LEDG_BLINK;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_CYAN_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_BLINK;
-                answerLedB = LinkBoxEnums.LEDB_BLINK;
-                break;
-            case LED_MAGENTA_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_BLINK;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_BLINK;
-                break;
-            case LED_WHITE_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_BLINK;
-                answerLedG = LinkBoxEnums.LEDG_BLINK;
-                answerLedB = LinkBoxEnums.LEDB_BLINK;
-                break;
-            case LED_RED_FAST_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_FAST_BLINK;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_GREEN_FAST_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_FAST_BLINK;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_BLUE_FAST_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_FAST_BLINK;
-                break;
-            case LED_YELLOW_FAST_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_FAST_BLINK;
-                answerLedG = LinkBoxEnums.LEDG_FAST_BLINK;
-                answerLedB = LinkBoxEnums.LEDB_OFF;
-                break;
-            case LED_CYAN_FAST_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_OFF;
-                answerLedG = LinkBoxEnums.LEDG_FAST_BLINK;
-                answerLedB = LinkBoxEnums.LEDB_FAST_BLINK;
-                break;
-            case LED_MAGENTA_FAST_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_FAST_BLINK;
-                answerLedG = LinkBoxEnums.LEDG_OFF;
-                answerLedB = LinkBoxEnums.LEDB_FAST_BLINK;
-                break;
-            case LED_WHITE_FAST_BLINK:
-                answerLedR = LinkBoxEnums.LEDR_FAST_BLINK;
-                answerLedG = LinkBoxEnums.LEDG_FAST_BLINK;
-                answerLedB = LinkBoxEnums.LEDB_FAST_BLINK;
-                break;
-            case LED_NO_CHANGE:
-                answerLedR = LinkBoxEnums.LEDR_NO_CHANGE;
-                answerLedG = LinkBoxEnums.LEDG_NO_CHANGE;
-                answerLedB = LinkBoxEnums.LEDB_NO_CHANGE;
-                break;
-            default:
-                answerLedR = LinkBoxEnums.LEDR_NO_CHANGE;
-                answerLedG = LinkBoxEnums.LEDG_NO_CHANGE;
-                answerLedB = LinkBoxEnums.LEDB_NO_CHANGE;
-                break;
-        }
+        LinkBoxEnums[] normalRgb = ledToRgb(normalLed);
+        LinkBoxEnums[] answerRgb = ledToRgb(answerLed);
 
         return cmdSetL1(
                 accNumber,
                 normalDirection,
-                normalLedR, normalLedG, normalLedB,
+                normalRgb[0], normalRgb[1], normalRgb[2],
                 normalSeg, normalBuz,
                 answerDirection,
-                answerLedR, answerLedG, answerLedB,
+                answerRgb[0], answerRgb[1], answerRgb[2],
                 answerSeg, answerBuz,
                 units, views);
+    }
+
+    private static LinkBoxEnums[] ledToRgb(LinkBoxEnums led) {
+        if (led == null) {
+            return new LinkBoxEnums[] {
+                LinkBoxEnums.LEDR_NO_CHANGE, LinkBoxEnums.LEDG_NO_CHANGE, LinkBoxEnums.LEDB_NO_CHANGE
+            };
+        }
+        switch (led) {
+            case LED_OFF:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_OFF, LinkBoxEnums.LEDG_OFF, LinkBoxEnums.LEDB_OFF
+                };
+            case LED_RED:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_LIGHT, LinkBoxEnums.LEDG_OFF, LinkBoxEnums.LEDB_OFF
+                };
+            case LED_GREEN:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_OFF, LinkBoxEnums.LEDG_LIGHT, LinkBoxEnums.LEDB_OFF
+                };
+            case LED_BLUE:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_OFF, LinkBoxEnums.LEDG_OFF, LinkBoxEnums.LEDB_LIGHT
+                };
+            case LED_YELLOW:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_LIGHT, LinkBoxEnums.LEDG_LIGHT, LinkBoxEnums.LEDB_OFF
+                };
+            case LED_CYAN:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_OFF, LinkBoxEnums.LEDG_LIGHT, LinkBoxEnums.LEDB_LIGHT
+                };
+            case LED_MAGENTA:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_LIGHT, LinkBoxEnums.LEDG_OFF, LinkBoxEnums.LEDB_LIGHT
+                };
+            case LED_WHITE:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_LIGHT, LinkBoxEnums.LEDG_LIGHT, LinkBoxEnums.LEDB_LIGHT
+                };
+            case LED_RED_BLINK:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_BLINK, LinkBoxEnums.LEDG_OFF, LinkBoxEnums.LEDB_OFF
+                };
+            case LED_GREEN_BLINK:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_OFF, LinkBoxEnums.LEDG_BLINK, LinkBoxEnums.LEDB_OFF
+                };
+            case LED_BLUE_BLINK:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_OFF, LinkBoxEnums.LEDG_OFF, LinkBoxEnums.LEDB_BLINK
+                };
+            case LED_YELLOW_BLINK:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_BLINK, LinkBoxEnums.LEDG_BLINK, LinkBoxEnums.LEDB_OFF
+                };
+            case LED_CYAN_BLINK:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_OFF, LinkBoxEnums.LEDG_BLINK, LinkBoxEnums.LEDB_BLINK
+                };
+            case LED_MAGENTA_BLINK:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_BLINK, LinkBoxEnums.LEDG_OFF, LinkBoxEnums.LEDB_BLINK
+                };
+            case LED_WHITE_BLINK:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_BLINK, LinkBoxEnums.LEDG_BLINK, LinkBoxEnums.LEDB_BLINK
+                };
+            case LED_RED_FAST_BLINK:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_FAST_BLINK, LinkBoxEnums.LEDG_OFF, LinkBoxEnums.LEDB_OFF
+                };
+            case LED_GREEN_FAST_BLINK:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_OFF, LinkBoxEnums.LEDG_FAST_BLINK, LinkBoxEnums.LEDB_OFF
+                };
+            case LED_BLUE_FAST_BLINK:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_OFF, LinkBoxEnums.LEDG_OFF, LinkBoxEnums.LEDB_FAST_BLINK
+                };
+            case LED_YELLOW_FAST_BLINK:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_FAST_BLINK, LinkBoxEnums.LEDG_FAST_BLINK, LinkBoxEnums.LEDB_OFF
+                };
+            case LED_CYAN_FAST_BLINK:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_OFF, LinkBoxEnums.LEDG_FAST_BLINK, LinkBoxEnums.LEDB_FAST_BLINK
+                };
+            case LED_MAGENTA_FAST_BLINK:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_FAST_BLINK, LinkBoxEnums.LEDG_OFF, LinkBoxEnums.LEDB_FAST_BLINK
+                };
+            case LED_WHITE_FAST_BLINK:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_FAST_BLINK, LinkBoxEnums.LEDG_FAST_BLINK, LinkBoxEnums.LEDB_FAST_BLINK
+                };
+            case LED_NO_CHANGE:
+            default:
+                return new LinkBoxEnums[] {
+                    LinkBoxEnums.LEDR_NO_CHANGE, LinkBoxEnums.LEDG_NO_CHANGE, LinkBoxEnums.LEDB_NO_CHANGE
+                };
+        }
     }
 
     /**
@@ -1113,12 +709,18 @@ public final class LinkBoxClient {
      * @return
      */
     public boolean cmdClearAK(List<Integer> units) {
+        if (units == null) {
+            return checkErrorCode(LinkBoxEnums.ERROR_REQUEST_DATA.getNumber());
+        }
         StringBuilder request = new StringBuilder();
 
         request.append("ClearAK");
-        units.stream().forEach((unit) -> {
+        for (Integer unit : units) {
+            if (unit == null) {
+                return checkErrorCode(LinkBoxEnums.ERROR_REQUEST_DATA.getNumber());
+            }
             request.append(String.format("%04d", unit));
-        });
+        }
         return checkErrorCode(
                 sendRequest("ClearAK", request.toString(), clientTimeout_, 0, socket_, bufferedReader_, printWriter_));
     }
@@ -1209,11 +811,20 @@ public final class LinkBoxClient {
      * @return
      */
     public boolean cmdSetIPAddr(String address, String mask, String gateway) {
+        if ((address == null) || (mask == null) || (gateway == null)) {
+            exceptionCaught(new IllegalArgumentException("Address, mask, and gateway must not be null"));
+            return false;
+        }
         try {
             StringBuilder request = new StringBuilder();
-            byte adr[] = InetAddress.getByName(address).getAddress();
-            byte msk[] = InetAddress.getByName(mask).getAddress();
-            byte gwy[] = InetAddress.getByName(gateway).getAddress();
+            byte[] adr = InetAddress.getByName(address).getAddress();
+            byte[] msk = InetAddress.getByName(mask).getAddress();
+            byte[] gwy = InetAddress.getByName(gateway).getAddress();
+
+            if ((adr.length != 4) || (msk.length != 4) || (gwy.length != 4)) {
+                exceptionCaught(new IllegalArgumentException("IPv4 address is required"));
+                return false;
+            }
 
             request.append("SetIPAddr");
             request.append("<").append(String.format("%03d%03d%03d%03d", Byte.toUnsignedInt(adr[0]),
@@ -1238,12 +849,25 @@ public final class LinkBoxClient {
      * @return
      */
     public boolean cmdSetHostAddr(List<String> address) {
+        if (address == null) {
+            exceptionCaught(new IllegalArgumentException("Host address list must not be null"));
+            return false;
+        }
         try {
             StringBuilder request = new StringBuilder();
 
             request.append("SetHostAddr");
             for (int i = 0; i < address.size(); i++) {
-                byte adr[] = InetAddress.getByName(address.get(i)).getAddress();
+                String host = address.get(i);
+                if (host == null) {
+                    exceptionCaught(new IllegalArgumentException("Host address must not be null"));
+                    return false;
+                }
+                byte[] adr = InetAddress.getByName(host).getAddress();
+                if (adr.length != 4) {
+                    exceptionCaught(new IllegalArgumentException("IPv4 address is required"));
+                    return false;
+                }
 
                 request.append("<")
                         .append(String.format("%03d%03d%03d%03d", Byte.toUnsignedInt(adr[0]),
@@ -1277,13 +901,12 @@ public final class LinkBoxClient {
      * @return
      */
     public boolean start() {
-        if (serverAddress_ != null) {
+        InetAddress address = serverAddress_;
+        if (address != null) {
             if (cmdConnect()) {
                 try {
-                    inetSocketAddress_ = new InetSocketAddress(serverAddress_, clientPort_);
-                    if (socket_ != null) {
-                        socket_.close();
-                    }
+                    closeConnectionResources();
+                    inetSocketAddress_ = new InetSocketAddress(address, clientPort_);
                     socket_ = new Socket();
                     socket_.connect(inetSocketAddress_, 30000);
 
@@ -1291,7 +914,11 @@ public final class LinkBoxClient {
                     try {
                         TimeUnit.MILLISECONDS.sleep(3000);
                     } catch (InterruptedException ex) {
+                        Thread.currentThread().interrupt();
                         exceptionCaught(ex);
+                        closeConnectionResources();
+                        isRunning_ = false;
+                        return false;
                     }
 
                     bufferedReader_ = new BufferedReader(
@@ -1306,6 +933,7 @@ public final class LinkBoxClient {
                     }
                     return true;
                 } catch (IOException ex) {
+                    closeConnectionResources();
                     exceptionCaught(ex);
                 }
             } else {
@@ -1315,10 +943,7 @@ public final class LinkBoxClient {
                 }
             }
         } else {
-            for (LinkBoxClientListener listener : eventListenerList_.getListeners(LinkBoxClientListener.class)) {
-                listener.errorLinkBoxClient(LinkBoxEnums.ERROR_SET_ADDRESS.getNumber(),
-                        CapAiSystemEnums.SET_ADDRESS.toString());
-            }
+            reportMissingAddress();
         }
         isRunning_ = false;
         return false;
@@ -1332,32 +957,48 @@ public final class LinkBoxClient {
             cmdDisconnect();
         }
 
+        closeConnectionResources();
+
+        isRunning_ = false;
+        for (LinkBoxClientListener listener : eventListenerList_.getListeners(LinkBoxClientListener.class)) {
+            listener.stopLinkBoxClient();
+        }
+    }
+
+    private void reportMissingAddress() {
+        for (LinkBoxClientListener listener : eventListenerList_.getListeners(LinkBoxClientListener.class)) {
+            listener.errorLinkBoxClient(LinkBoxEnums.ERROR_SET_ADDRESS.getNumber(),
+                    CapAiSystemEnums.SET_ADDRESS.toString());
+        }
+    }
+
+    private void closeConnectionResources() {
         if (bufferedReader_ != null) {
             try {
                 bufferedReader_.close();
-                bufferedReader_ = null;
             } catch (IOException ex) {
                 exceptionCaught(ex);
+            } finally {
+                bufferedReader_ = null;
             }
         }
 
         if (printWriter_ != null) {
-            printWriter_.close();
-            printWriter_ = null;
+            try {
+                printWriter_.close();
+            } finally {
+                printWriter_ = null;
+            }
         }
 
         if (socket_ != null) {
             try {
                 socket_.close();
-                socket_ = null;
             } catch (IOException ex) {
                 exceptionCaught(ex);
+            } finally {
+                socket_ = null;
             }
-        }
-
-        isRunning_ = false;
-        for (LinkBoxClientListener listener : eventListenerList_.getListeners(LinkBoxClientListener.class)) {
-            listener.stopLinkBoxClient();
         }
     }
 
@@ -1366,16 +1007,16 @@ public final class LinkBoxClient {
      * @param cause
      */
     public void exceptionCaught(Throwable cause) {
+        String message = (cause == null) ? "" : ((cause.getMessage() != null) ? cause.getMessage() : cause.toString());
         for (LinkBoxClientListener listener : eventListenerList_.getListeners(LinkBoxClientListener.class)) {
-            listener.errorLinkBoxClient(LinkBoxEnums.ERROR_EXCEPTION.getNumber(), cause.getMessage());
+            listener.errorLinkBoxClient(LinkBoxEnums.ERROR_EXCEPTION.getNumber(), message);
         }
     }
 
     synchronized private int sendRequest(String command, String request, int timeout, int wait, Socket sock,
             BufferedReader br, PrintWriter pw) {
         StringBuilder buffer = new StringBuilder();
-        long currentTime;
-        int data = 0;
+        int effectiveTimeout = Math.max(0, timeout);
         int result = LinkBoxEnums.ERROR_REQUEST.getNumber();
 
         for (LinkBoxClientListener listener : eventListenerList_.getListeners(LinkBoxClientListener.class)) {
@@ -1383,42 +1024,33 @@ public final class LinkBoxClient {
         }
 
         try {
-            sock.setSoTimeout(timeout);
+            sock.setSoTimeout(effectiveTimeout);
 
             if (pw != null) {
                 pw.write(request + "\r");
                 pw.flush();
+                if (pw.checkError()) {
+                    exceptionCaught(new IOException("Failed to write request: " + command));
+                    return result;
+                }
             }
 
-            currentTime = System.currentTimeMillis() + timeout;
-            while (data != 0x0d) {
-                while (br.ready()) {
-                    data = br.read();
-
-                    switch (data) {
-                        case -1:
-                        case 0x0d:
-                            break;
-                        default:
-                            if (timeout > 0) {
-                                currentTime = System.currentTimeMillis() + timeout;
-                            }
-                            buffer.append((char) data);
-                            break;
-                    }
-                }
-
-                if ((currentTime > 0) && (currentTime < System.currentTimeMillis())) {
-                    currentTime = 0;
-                    data = 0x0d;
-                    buffer.delete(0, buffer.length());
-                }
-
+            while (!Thread.currentThread().isInterrupted()) {
+                int data;
                 try {
-                    TimeUnit.MILLISECONDS.sleep(100);
-                } catch (InterruptedException ex) {
-                    exceptionCaught(ex);
+                    data = br.read();
+                } catch (SocketTimeoutException ex) {
+                    buffer.setLength(0);
+                    break;
                 }
+                if ((data == -1) || (data == 0x0d)) {
+                    break;
+                }
+                if (buffer.length() >= MAX_RESPONSE_LENGTH) {
+                    buffer.setLength(0);
+                    break;
+                }
+                buffer.append((char) data);
             }
 
             if (buffer.length() == 0) {
@@ -1431,6 +1063,7 @@ public final class LinkBoxClient {
                 try {
                     TimeUnit.MILLISECONDS.sleep(wait);
                 } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
                     exceptionCaught(ex);
                 }
             }

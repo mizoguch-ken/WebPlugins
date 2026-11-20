@@ -17,6 +17,12 @@
 void    onlineArt.licenses()
 Boolean onlineArt.setSerialPort(Object serial)
 Boolean onlineArt.linkStart(int relayNumber, int registerNumber)
+Boolean onlineArt.linkStop()
+Boolean onlineArt.isLinkRunning()
+Boolean onlineArt.isSerialPortSet()
+Integer onlineArt.getRelayCount()
+Integer onlineArt.getRegisterCount()
+Boolean onlineArt.isCommandBusy()
 String  onlineArt.getRelayAll()
 Boolean onlineArt.setRelayAll(String data)
 Boolean onlineArt.getRelayBit(int position, int bit)
@@ -62,11 +68,12 @@ void    onlineArt.setNotifyReceiveResponse(String func)
 void    onlineArt.setNotifySendRequest(String func)
 void    onlineArt.setNotifySendResponse(String func)
 void    onlineArt.setNotifySendRetry(String func)
+void    onlineArt.setNotifyError(String func)
 ```
 
 | Category / 分類 | Description / 説明 |
 | :--- | :--- |
-| **Port & Link Startup**<br>`setSerialPort`, `linkStart` | Attaches the open `NRSerialPort` from `serial.getSerialPort()` and starts the background periodic exchange service for `relayNumber` relays and `registerNumber` registers.<br>`serial.getSerialPort()` のポートを設定し、指定した数のリレー・レジスタの周期交換タスクを開始します。 |
+| **Port & Link Lifecycle & Status**<br>`setSerialPort`, `linkStart`, `linkStop`, `isLinkRunning`, `isSerialPortSet`, `getRelayCount`, `getRegisterCount`, `isCommandBusy` | Attaches the open `NRSerialPort` from `serial.getSerialPort()`, starts/stops the periodic exchange task (`linkStop()` preserves the serial streams for a later `linkStart()`), and queries link, port, buffer, and command state.<br>`serial.getSerialPort()` のポートを設定して周期交換を開始／停止し（`linkStop()` はシリアルストリームを保持したまま停止）、リンク稼働状態・バッファ数・コマンド実行中かを確認します。 |
 | **Local Image Access**<br>`getRelay*`, `setRelay*`, `getRegister*`, `setRegister*` | Reads or writes the local relay/register memory image (as a whole hex string, 16-bit word at `position`, or individual bit at `position, bit`).<br>プラグインが保持するリレー・レジスタのローカルイメージを全体文字列・ワード単位・ビット単位で読み書きします。 |
 | **Direct Unit Commands**<br>`cmdReadRelay`, `cmdReadRegister`, `cmdWriteRelay`, `cmdWriteRegister` | Sends a one-shot direct read or write command to a specific `destination` unit outside the periodic link cycle.<br>周期交換とは別に、指定した宛先ユニット（`destination`）に対して直接リレー／レジスタの読み書きコマンドを送信します。 |
 | **Link Configuration & Timing**<br>`*UnitNumber`, `*Time`, `*Offset`, `getConnectionUnits` | Configures unit numbers, timeouts, delays, retry counts, and address offsets, and reads measured link cycle timings (`getSynchronizeTime()`, `getOneCycleTime()`, etc.).<br>自局ユニット番号・最大ユニット数・基本時間・遅延時間・リトライ回数・オフセットの設定、および接続ユニット数や実測サイクル時間の取得を行います。 |
@@ -75,14 +82,15 @@ void    onlineArt.setNotifySendRetry(String func)
 
 ## Notifications / 通知コールバック
 
-All 5 notification setters validate `func` via `scriptFunction(func)` (`ScriptFunction.isValid`) and invoke `func(destination, source, dataType, command)` on the JavaFX thread:
-5 つの通知設定関数はいずれも関数名を `scriptFunction(func)` で検証し、イベント発生時に `func(destination, source, dataType, command)` を呼び出します：
+All 6 notification setters validate `func` via `scriptFunction(func)` (`ScriptFunction.isValid`) and dispatch via `ScriptNotifier` on the JavaFX thread (queues are cleared on `close()`):
+6 つの通知設定関数はいずれも関数名を `scriptFunction(func)` で検証し、`ScriptNotifier` を通じてページへ非同期通知します：
 
-* `setNotifyReceiveRequest(func)`: Called when a request frame is received from another unit. / 他ユニットから要求フレームを受信した時。
-* `setNotifyReceiveResponse(func)`: Called when a response frame is received from another unit. / 他ユニットから応答フレームを受信した時。
-* `setNotifySendRequest(func)`: Called when this unit sends a request frame. / 自ユニットが要求フレームを送信した時。
-* `setNotifySendResponse(func)`: Called when this unit sends a response frame. / 自ユニットが応答フレームを送信した時。
-* `setNotifySendRetry(func)`: Called when this unit retries sending a frame. / フレームを再送した時。
+* `setNotifyReceiveRequest(func)`: `func(destination, source, dataType, command)` when a request frame is received. / 他ユニットから要求フレームを受信した時。
+* `setNotifyReceiveResponse(func)`: `func(destination, source, dataType, command)` when a response frame is received. / 他ユニットから応答フレームを受信した時。
+* `setNotifySendRequest(func)`: `func(destination, source, dataType, command)` when this unit sends a request frame. / 自ユニットが要求フレームを送信した時。
+* `setNotifySendResponse(func)`: `func(destination, source, dataType, command)` when this unit sends a response frame. / 自ユニットが応答フレームを送信した時。
+* `setNotifySendRetry(func)`: `func(destination, source, dataType, command)` when this unit retries sending a frame. / フレームを再送した時。
+* `setNotifyError(func)`: `func(code, message)` on `DATATYPE_EXCEPTION_RESPONSE` frames (`"exception_response"`) or rate-limited stream I/O failures (`"io"`). / 例外応答フレームやシリアル I/O エラー発生時に `func(code, message)` を呼び出します。
 
 ---
 

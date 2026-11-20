@@ -31,9 +31,12 @@
     /* the functions of the page the agent keeps to write them back */
     var consoleNative = {};
     var CONSOLE_NAMES = ['log', 'info', 'warn', 'error', 'debug', 'trace', 'dir', 'dirxml', 'table',
-        'assert', 'group', 'groupCollapsed', 'groupEnd', 'time', 'timeEnd', 'count'];
+        'assert', 'group', 'groupCollapsed', 'groupEnd', 'time', 'timeEnd', 'count', 'countReset'];
+    var timers = {};
+    var counts = {};
 
     var errorBefore = window.onerror;
+    var rejectionHandler = null;
     var xhrOpenBefore = null;
     var xhrSendBefore = null;
     var xhrHeaderBefore = null;
@@ -228,7 +231,10 @@
             name += '#' + element.id;
         }
         if (element.className && typeof element.className === 'string') {
-            name += element.className.replace(/\s+/g, ' ').replace(/(^ | $)/g, '.');
+            var classes = element.className.replace(/^\s+|\s+$/g, '');
+            if (classes) {
+                name += '.' + classes.replace(/\s+/g, '.');
+            }
         }
         return name;
     }
@@ -737,6 +743,45 @@
      *
      * @param state state of the hook of the page
      */
+    function handleConsoleCall(level, args) {
+        if (level === 'assert') {
+            if (!args.length || !args[0]) {
+                var out = ['Assertion failed:'];
+                for (var idx = 1; idx < args.length; idx++) {
+                    out.push(args[idx]);
+                }
+                message('error', out);
+            }
+            return;
+        }
+        if (level === 'time') {
+            var timeLabel = (args.length > 0 && (typeof args[0] !== 'undefined')) ? String(args[0]) : 'default';
+            timers[timeLabel] = (new Date()).getTime();
+            return;
+        }
+        if (level === 'timeEnd') {
+            var endLabel = (args.length > 0 && (typeof args[0] !== 'undefined')) ? String(args[0]) : 'default';
+            if (typeof timers[endLabel] === 'number') {
+                var elapsed = (new Date()).getTime() - timers[endLabel];
+                delete timers[endLabel];
+                message('log', [endLabel + ': ' + elapsed + 'ms']);
+            }
+            return;
+        }
+        if (level === 'count') {
+            var countLabel = (args.length > 0 && (typeof args[0] !== 'undefined')) ? String(args[0]) : 'default';
+            counts[countLabel] = (counts[countLabel] || 0) + 1;
+            message('log', [countLabel + ': ' + counts[countLabel]]);
+            return;
+        }
+        if (level === 'countReset') {
+            var resetLabel = (args.length > 0 && (typeof args[0] !== 'undefined')) ? String(args[0]) : 'default';
+            delete counts[resetLabel];
+            return;
+        }
+        message(level, args);
+    }
+
     function hookConsole(state) {
         for (var index = 0; index < CONSOLE_NAMES.length; index++) {
             var name = CONSOLE_NAMES[index];
@@ -747,7 +792,7 @@
                     consoleNative[name] = window.console[name];
                     window.console[name] = (function (level) {
                         return function () {
-                            message(level, arguments);
+                            handleConsoleCall(level, arguments);
                             var held = consoleNative[level];
 
                             if (typeof held === 'function') {
@@ -771,16 +816,16 @@
      */
     function hookError(state) {
         if (state) {
-            window.onerror = function (text, file, line) {
-                failure(text, file, line, null);
+            window.onerror = function (text, file, line, col, error) {
+                failure(text, file, line, error || null);
                 if (typeof errorBefore === 'function') {
-                    return errorBefore(text, file, line);
+                    return errorBefore(text, file, line, col, error);
                 }
                 return false;
             };
-            if (window.addEventListener) {
+            if (!rejectionHandler && window.addEventListener) {
                 try {
-                    window.addEventListener('unhandledrejection', function (event) {
+                    rejectionHandler = function (event) {
                         var reason = event && event.reason ? event.reason : 'a promise of the page';
 
                         send('log', JSON.stringify({
@@ -789,13 +834,23 @@
                             src: 'page',
                             args: [describe(reason, 0, null)]
                         }));
-                    });
+                    };
+                    window.addEventListener('unhandledrejection', rejectionHandler);
                 } catch (e) {
+                    rejectionHandler = null;
                     /* the engine of the page does not read the promises */
                 }
             }
         } else {
             window.onerror = errorBefore;
+            if (rejectionHandler && window.removeEventListener) {
+                try {
+                    window.removeEventListener('unhandledrejection', rejectionHandler);
+                } catch (e) {
+                    /* ignore listener teardown failure */
+                }
+                rejectionHandler = null;
+            }
         }
     }
 
@@ -974,6 +1029,10 @@
             xhrOpenBefore = null;
             xhrSendBefore = null;
             xhrHeaderBefore = null;
+            if (fetchBefore && window.__dbgFetch) {
+                window.fetch = fetchBefore;
+                window.__dbgFetch = false;
+            }
         }
     }
 
@@ -1949,10 +2008,34 @@
 
         /* an ask the user wrote in the console of the panel */
         exec: function (ask) {
+            var hadZero = false;
+            var prevZero;
+            var bound = false;
+            if (ask && ask.selected) {
+                var target = held(ask.selected);
+                if (target) {
+                    hadZero = Object.prototype.hasOwnProperty.call(window, '$0');
+                    prevZero = window.$0;
+                    window.$0 = target;
+                    bound = true;
+                }
+            }
             try {
                 return { ok: true, value: describe(geval(ask.expr), 0, null) };
             } catch (e) {
                 return { ok: false, error: cut(e) };
+            } finally {
+                if (bound) {
+                    if (hadZero) {
+                        window.$0 = prevZero;
+                    } else {
+                        try {
+                            delete window.$0;
+                        } catch (ignore) {
+                            window.$0 = undefined;
+                        }
+                    }
+                }
             }
         },
 

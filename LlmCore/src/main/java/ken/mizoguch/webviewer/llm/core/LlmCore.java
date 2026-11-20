@@ -49,6 +49,11 @@ public final class LlmCore {
      */
     public static final int ANSWERING = 2;
 
+    /**
+     * the model evaluates perplexity over texts
+     */
+    public static final int EVALUATING = 3;
+
     private final Object lock_ = new Object();
 
     private TransformerModel model_;
@@ -58,6 +63,7 @@ public final class LlmCore {
     private Path path_;
 
     private long steps_;
+    private boolean loaded_;
     private double loss_ = Double.NaN;
     private volatile int running_;
     private volatile boolean stop_;
@@ -118,6 +124,7 @@ public final class LlmCore {
             dataset_ = new Dataset(tokenizer_);
             path_ = null;
             steps_ = 0L;
+            loaded_ = false;
             loss_ = Double.NaN;
         }
     }
@@ -180,6 +187,7 @@ public final class LlmCore {
             dataset_ = new Dataset(tokenizer_);
             path_ = file;
             steps_ = 0L;
+            loaded_ = true;
             loss_ = Double.NaN;
         }
     }
@@ -216,6 +224,7 @@ public final class LlmCore {
             dataset_ = new Dataset(new ByteTokenizer());
             path_ = null;
             steps_ = 0L;
+            loaded_ = false;
             loss_ = Double.NaN;
         }
     }
@@ -297,6 +306,118 @@ public final class LlmCore {
     }
 
     /**
+     * encode text into token identifiers using the active model tokenizer
+     *
+     * @param text input text
+     * @return encoded token IDs (empty array if null or empty)
+     * @throws LlmCoreException when no model is loaded
+     */
+    public int[] tokenize(String text) {
+        synchronized (lock_) {
+            ready();
+            if ((text == null) || text.isEmpty()) {
+                return new int[0];
+            }
+            return tokenizer_.encode(text);
+        }
+    }
+
+    /**
+     * decode token identifiers back into text using the active model tokenizer
+     *
+     * @param tokens token IDs
+     * @return decoded text (empty string if null or empty)
+     * @throws LlmCoreException when no model is loaded
+     */
+    public String detokenize(int[] tokens) {
+        synchronized (lock_) {
+            ready();
+            if ((tokens == null) || (tokens.length == 0)) {
+                return "";
+            }
+            return tokenizer_.decode(tokens);
+        }
+    }
+
+    /**
+     * set the optimizer learning rate for the active model
+     *
+     * @param learningRate value in (0, 0.1]
+     * @throws LlmCoreException when no model is loaded, another task runs, or value is out of range
+     */
+    public void setLearningRate(double learningRate) {
+        synchronized (lock_) {
+            ready();
+            busy();
+            if (!optimizer_.setLearningRate(learningRate)) {
+                throw new LlmCoreException("A learning rate of " + learningRate
+                        + " is refused : use a rate between 0 and 0.1");
+            }
+        }
+    }
+
+    /**
+     * @return active optimizer learning rate, or NaN if no model is loaded
+     */
+    public double learningRate() {
+        synchronized (lock_) {
+            return (optimizer_ == null) ? Double.NaN : optimizer_.learningRate();
+        }
+    }
+
+    /**
+     * set the optimizer weight decay for the active model
+     *
+     * @param weightDecay value in [0, 0.5]
+     * @throws LlmCoreException when no model is loaded, another task runs, or value is out of range
+     */
+    public void setWeightDecay(double weightDecay) {
+        synchronized (lock_) {
+            ready();
+            busy();
+            if (!optimizer_.setWeightDecay(weightDecay)) {
+                throw new LlmCoreException("A weight decay of " + weightDecay
+                        + " is refused : use a decay between 0 and 0.5");
+            }
+        }
+    }
+
+    /**
+     * @return active optimizer weight decay, or NaN if no model is loaded
+     */
+    public double weightDecay() {
+        synchronized (lock_) {
+            return (optimizer_ == null) ? Double.NaN : optimizer_.weightDecay();
+        }
+    }
+
+    /**
+     * set the optimizer gradient clipping threshold for the active model
+     *
+     * @param largestGradient non-negative threshold (0 disables clipping)
+     * @throws LlmCoreException when no model is loaded, another task runs, or value is invalid
+     */
+    public void setLargestGradient(double largestGradient) {
+        synchronized (lock_) {
+            ready();
+            busy();
+            if (!optimizer_.setLargestGradient(largestGradient)) {
+                throw new LlmCoreException("A largest gradient of " + largestGradient
+                        + " is refused : use zero or a positive number");
+            }
+        }
+    }
+
+    /**
+     * @return active gradient clipping threshold, or NaN if no model is loaded
+     */
+    public double largestGradient() {
+        synchronized (lock_) {
+            return (optimizer_ == null) ? Double.NaN : optimizer_.largestGradient();
+        }
+    }
+
+    /**
      * the core can not answer now : a training or an answer already runs
      */
     private void busy() {
@@ -351,6 +472,113 @@ public final class LlmCore {
             this.epochs = epochs;
             this.seconds = seconds;
             this.stopped = stopped;
+        }
+    }
+
+    /**
+     * the end of an evaluation : mean cross-entropy loss and perplexity over the evaluated texts
+     */
+    public static final class EvalResult {
+
+        /**
+         * mean negative log probability per target token
+         */
+        public final double loss;
+
+        /**
+         * perplexity (exp(loss))
+         */
+        public final double perplexity;
+
+        /**
+         * number of target tokens evaluated
+         */
+        public final long tokens;
+
+        /**
+         * number of context windows evaluated
+         */
+        public final int windows;
+
+        /**
+         * elapsed evaluation seconds
+         */
+        public final double seconds;
+
+        private EvalResult(double loss, double perplexity, long tokens, int windows,
+                double seconds) {
+            this.loss = loss;
+            this.perplexity = perplexity;
+            this.tokens = tokens;
+            this.windows = windows;
+            this.seconds = seconds;
+        }
+    }
+
+    /**
+     * evaluate mean cross-entropy loss and perplexity over texts without modifying model weights
+     * or tokenizer vocabulary
+     *
+     * @param texts texts to evaluate
+     * @return evaluation metrics
+     * @throws LlmCoreException when no model is held, another task is active, or texts hold no tokens
+     */
+    public EvalResult evaluate(List<String> texts) {
+        synchronized (lock_) {
+            ready();
+            busy();
+
+            int context = model_.context();
+            int[] window = new int[context];
+            double totalLoss = 0d;
+            long totalTokens = 0L;
+            int windows = 0;
+
+            running_ = EVALUATING;
+            double began = System.nanoTime();
+            try {
+                if (texts != null) {
+                    for (String text : texts) {
+                        if (stop_) {
+                            break;
+                        }
+                        if ((text == null) || text.isEmpty()) {
+                            continue;
+                        }
+                        int[] encoded = tokenizer_.encode(text);
+                        if (encoded.length == 0) {
+                            continue;
+                        }
+                        int[] seq = Arrays.copyOf(encoded, encoded.length + 1);
+                        seq[encoded.length] = tokenizer_.end();
+                        int offset = 0;
+                        while ((offset < (seq.length - 1)) && !stop_) {
+                            int len = Math.min(context, seq.length - offset);
+                            System.arraycopy(seq, offset, window, 0, len);
+                            double wLoss = model_.loss(window, len);
+                            if (!Double.isFinite(wLoss)) {
+                                throw new LlmCoreException("Evaluation failed on invalid token sequence");
+                            }
+                            int stepTokens = len - 1;
+                            totalLoss += wLoss * stepTokens;
+                            totalTokens += stepTokens;
+                            windows++;
+                            offset += stepTokens;
+                        }
+                    }
+                }
+                if (totalTokens == 0L) {
+                    throw new LlmCoreException("The texts hold nothing to evaluate");
+                }
+                double mean = totalLoss / totalTokens;
+                double perplexity = Math.exp(mean);
+                return new EvalResult(mean, perplexity, totalTokens, windows, seconds(began));
+            } catch (OutOfMemoryError memory) {
+                throw new LlmCoreException("Not enough memory to evaluate : ask a shorter text");
+            } finally {
+                running_ = IDLE;
+                stop_ = false;
+            }
         }
     }
 
@@ -422,15 +650,24 @@ public final class LlmCore {
         if (found == model_.vocabulary()) {
             return;
         }
-        if (steps_ > 0L) {
+        if ((steps_ > 0L) || loaded_) {
             throw new LlmCoreException("The texts hold " + found + " tokens, the model learned "
                     + model_.vocabulary() + " : build a new model to learn these texts");
         }
         ModelConfig config = new ModelConfig(model_.config());
 
-        config.setVocabSize(found);
+        if (!config.setVocabSize(found) || !config.isTrainable()) {
+            throw new LlmCoreException("A vocabulary of " + found + " tokens exceeds the limits of the model");
+        }
+        AdamW previous = optimizer_;
         model_ = new TransformerModel(config);
-        optimizer_ = new AdamW(model_.weights());
+        AdamW rebuilt = new AdamW(model_.weights());
+        if (previous != null) {
+            rebuilt.setLearningRate(previous.learningRate());
+            rebuilt.setWeightDecay(previous.weightDecay());
+            rebuilt.setLargestGradient(previous.largestGradient());
+        }
+        optimizer_ = rebuilt;
         listener.onLog("the model learned a vocabulary of " + found + " tokens");
     }
 
@@ -637,6 +874,10 @@ public final class LlmCore {
                 break;
             }
         }
+        String tail = stream.flush();
+        if (!tail.isEmpty()) {
+            listener.onToken(tail);
+        }
         return new AnswerResult(stream.text(), made, seconds(began), stopped, ended);
     }
 
@@ -692,6 +933,29 @@ public final class LlmCore {
             pending_ = new byte[source.remaining()];
             source.get(pending_);
 
+            text_.append(piece);
+            return piece;
+        }
+
+        /**
+         * flush any trailing incomplete UTF-8 sequence at end of stream
+         *
+         * @return replacement text for incomplete trailing bytes, or empty string
+         */
+        private String flush() {
+            if (!(tokenizer_ instanceof ByteTokenizer) || (pending_.length == 0)) {
+                return "";
+            }
+            ByteBuffer source = ByteBuffer.wrap(pending_);
+            CharBuffer written = CharBuffer.allocate(pending_.length + 4);
+
+            decoder_.reset();
+            decoder_.decode(source, written, true);
+            decoder_.flush(written);
+            written.flip();
+
+            String piece = written.toString();
+            pending_ = new byte[0];
             text_.append(piece);
             return piece;
         }

@@ -247,6 +247,7 @@ class LlmTest {
         private volatile int pause_;
         private volatile int refuse_;
         private volatile int refuseStatus_ = 429;
+        private volatile String customStream_;
 
         FakeRemote() throws IOException {
             socket_ = new ServerSocket(0);
@@ -321,12 +322,22 @@ class LlmTest {
         }
 
         /**
+         * the computer of the test answers a streamed SSE payload verbatim
+         *
+         * @param payload custom SSE payload
+         */
+        void streamCustom(String payload) {
+            customStream_ = payload;
+        }
+
+        /**
          * the computer of the test answers the requests of the interface again
          */
         void settle() {
             answerAs(200, false, 0);
             tools_ = false;
             refuse_ = 0;
+            customStream_ = null;
             bodies_.clear();
             keys_.clear();
         }
@@ -391,6 +402,10 @@ class LlmTest {
                     refuse_--;
                     status = refuseStatus_;
                     text = REFUSED;
+                    known = true;
+                } else if (customStream_ != null) {
+                    text = customStream_;
+                    streamed = true;
                     known = true;
                 } else if (request.indexOf("/models") >= 0) {
                     text = MODELS;
@@ -554,12 +569,21 @@ class LlmTest {
         assertCallable("stop");
         assertCallable("setRemote", String.class);
         assertCallable("remoteInfo");
+        assertCallable("clearRemote");
         assertCallable("chat", String.class);
         assertCallable("completions", String.class);
         assertCallable("response", String.class);
         assertCallable("embeddings", String.class);
         assertCallable("models");
+        assertCallable("tokenize", String.class);
+        assertCallable("detokenize", String.class);
+        assertCallable("tokenCount", String.class);
+        assertCallable("setWeightDecay", Double.class);
+        assertCallable("setLargestGradient", Double.class);
         assertCallable("train", String.class, Integer.class, Double.class);
+        assertCallable("trainFile", String.class, Integer.class, Double.class);
+        assertCallable("evaluate", String.class);
+        assertCallable("evaluateFile", String.class);
         assertCallable("answer", String.class, Integer.class, Double.class, Integer.class,
                 Double.class, Long.class);
         assertCallable("result");
@@ -1048,6 +1072,106 @@ class LlmTest {
         assertEquals("a newer answer", String.join("", plugin_.pieces()));
         assertFalse(end.contains("\"stopped\""), "the answer of the remote model was left");
         assertTrue(recorder_.traces().isEmpty());
+    }
+
+    @Test
+    @DisplayName("stream null in request and non-primitive JSON inputs are handled safely")
+    void streamNullAndMalformedInputsDoNotThrowUncaught() {
+        assertNull(plugin_.newModel("{\"dModel\":{}}"));
+        assertFalse(plugin_.train("[{}]", 1, 0.01d));
+
+        assertNotNull(plugin_.setRemote(remoteConfig()));
+        assertTrue(plugin_.chat("{\"model\":\"a model\",\"stream\":null,\"messages\":"
+                + "[{\"role\":\"user\",\"content\":\"hello\"}]}").booleanValue());
+        assertTrue(waitIdle(), "the remote model did not answer");
+        assertNotNull(plugin_.result());
+        assertTrue(plugin_.result().contains("a remote answer"));
+    }
+
+    @Test
+    @DisplayName("OpenAiClient ignores unreasonable tool call index without OOM")
+    void hugeToolCallIndexIsIgnored() {
+        List<JsonObject> calls = new ArrayList<>();
+        com.google.gson.JsonArray huge = com.google.gson.JsonParser.parseString(
+                "[{\"index\":100000000,\"id\":\"bad\"}]").getAsJsonArray();
+        OpenAiClient.readCalls(calls, huge);
+        assertTrue(calls.isEmpty());
+
+        OpenAiClient client = new OpenAiClient();
+        client.configure(remote_.baseUrl(), null, "a model", 5, 0, null);
+        client.close();
+    }
+
+    @Test
+    @DisplayName("clearRemote, tokenize, optimizer setters, trainFile, evaluate, evaluateFile and SSE errors work")
+    void extendedLlmFeaturesAndSseErrorsWork() throws Exception {
+        assertNotNull(plugin_.setRemote("{\"baseUrl\":\"" + remote_.baseUrl()
+                + "\",\"apiKey\":\"secret\",\"model\":\"a model\"}"));
+        String remoteBeforeClear = plugin_.remoteInfo();
+        assertTrue(remoteBeforeClear.contains(remote_.baseUrl()));
+        assertTrue(remoteBeforeClear.contains("\"model\":\"a model\""));
+        assertTrue(remoteBeforeClear.contains("\"keySet\":true"));
+        assertTrue(plugin_.clearRemote().booleanValue());
+        String remoteAfterClear = plugin_.remoteInfo();
+        assertTrue(remoteAfterClear.contains("\"baseUrl\":null"));
+        assertTrue(remoteAfterClear.contains("\"model\":null"));
+        assertTrue(remoteAfterClear.contains("\"keySet\":false"));
+
+        assertNotNull(plugin_.newModel(SMALL_MODEL));
+        assertTrue(plugin_.setWeightDecay(0.05d).booleanValue());
+        assertTrue(plugin_.setLargestGradient(0.5d).booleanValue());
+        assertFalse(plugin_.setWeightDecay(null).booleanValue());
+        assertFalse(plugin_.setWeightDecay(-1.0d).booleanValue());
+        assertFalse(plugin_.setLargestGradient(null).booleanValue());
+        assertFalse(plugin_.setLargestGradient(-0.1d).booleanValue());
+
+        String info = plugin_.modelInfo();
+        assertTrue(info.contains("\"weightDecay\":0.05"));
+        assertTrue(info.contains("\"largestGradient\":0.5"));
+
+        Path corpus = page_.resolve("corpus.txt");
+        Files.writeString(corpus, "abcdefghabcdefgh", StandardCharsets.UTF_8);
+
+        assertFalse(plugin_.trainFile("../escape.txt", 1, 0.02d).booleanValue());
+        assertTrue(plugin_.trainFile("corpus.txt", 10, 0.02d).booleanValue());
+        assertTrue(waitIdle(), "trainFile did not finish");
+        assertTrue(plugin_.result().contains("\"kind\":\"train\""));
+
+        String tokensJson = plugin_.tokenize("abcd");
+        assertNotNull(tokensJson);
+        assertEquals("abcd", plugin_.detokenize(tokensJson));
+        assertEquals(4, plugin_.tokenCount("abcd"));
+        assertNull(plugin_.detokenize(null));
+        assertNull(plugin_.detokenize("[1.5]"));
+        assertNull(plugin_.detokenize("123"));
+
+        assertTrue(plugin_.evaluate("abcdefgh").booleanValue());
+        assertTrue(waitIdle(), "evaluate did not finish");
+        JsonObject evalDirect = new Gson().fromJson(plugin_.result(), JsonObject.class);
+        assertEquals("evaluate", evalDirect.get("kind").getAsString());
+        assertTrue(evalDirect.get("loss").getAsDouble() >= 0.0d);
+        assertTrue(evalDirect.get("perplexity").getAsDouble() >= 1.0d);
+        assertTrue(evalDirect.get("tokens").getAsLong() > 0L);
+
+        assertFalse(plugin_.evaluateFile("../escape.txt").booleanValue());
+        assertTrue(plugin_.evaluateFile("corpus.txt").booleanValue());
+        assertTrue(waitIdle(), "evaluateFile did not finish");
+        JsonObject evalFile = new Gson().fromJson(plugin_.result(), JsonObject.class);
+        assertEquals("evaluate", evalFile.get("kind").getAsString());
+
+        assertNotNull(plugin_.setRemote(remoteConfig()));
+        remote_.streamCustom("data: {\"error\":{\"message\":\"mid-stream failure\"}}\n\n");
+        assertTrue(plugin_.chat("{\"model\":\"a model\",\"stream\":true,\"messages\":"
+                + "[{\"role\":\"user\",\"content\":\"hi\"}]}").booleanValue());
+        assertTrue(waitIdle(), "stream error chat did not finish");
+        assertTrue(plugin_.result().contains("\"error\":\"mid-stream failure\""));
+
+        remote_.streamCustom("event: response.failed\n"
+                + "data: {\"type\":\"response.failed\",\"response\":{\"id\":\"r1\","
+                + "\"error\":{\"message\":\"quota exceeded\"}}}\n\n");
+        assertTrue(plugin_.response("{\"input\":\"hi\",\"stream\":true}").booleanValue());
+        assertTrue(waitIdle(), "response.failed did not finish");
+        assertTrue(plugin_.result().contains("\"error\":\"quota exceeded\""));
     }
 }
 

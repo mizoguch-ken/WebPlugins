@@ -5,11 +5,15 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import java.util.Locale;
 import java.util.jar.Attributes;
 import java.util.jar.JarFile;
+import java.util.jar.Manifest;
 import java.util.stream.Stream;
 import javafx.application.Platform;
 import javafx.concurrent.Worker;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.web.WebEngine;
 import javafx.stage.Stage;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
@@ -119,12 +123,12 @@ public class Dbg extends PluginSupport {
                             + "E=E?document['createElement'+'NS'](E,'script'):document['createElement']('script');"
                             + "E['setAttribute']('id','FirebugLite');"
                             + "E['setAttribute']('src','"
-                            + build
+                            + ScriptValue.quote(build)
                             + "' + 'firebug-lite-beta.js'+'#startOpened');"
                             + "E['setAttribute']('FirebugLite','4');"
                             + "(document['getElementsByTagName']('head')[0]||document['getElementsByTagName']('body')[0]).appendChild(E);"
                             + "E=new Image;"
-                            + "E['setAttribute']('src','" + base + "'+'#startOpened');"
+                            + "E['setAttribute']('src','" + ScriptValue.quote(base) + "'+'#startOpened');"
                             + "}");
         });
     }
@@ -234,6 +238,45 @@ public class Dbg extends PluginSupport {
     }
 
     /**
+     * forget only the console messages kept for the panel
+     */
+    public void clearConsole() {
+        bridge_.journal().clearConsole();
+        bridge_.send("dbgUi.clearConsole", "{}");
+    }
+
+    /**
+     * forget only the network request messages kept for the panel
+     */
+    public void clearNetwork() {
+        bridge_.journal().clearNetwork();
+        bridge_.send("dbgUi.clearNetwork", "{}");
+    }
+
+    /**
+     * copy text to the system clipboard on the JavaFX application thread
+     *
+     * @param text text to copy
+     * @return true when text was accepted, false if null
+     */
+    public boolean copyText(String text) {
+        if (text == null) {
+            return false;
+        }
+        Runnable task = () -> {
+            ClipboardContent content = new ClipboardContent();
+            content.putString(text);
+            Clipboard.getSystemClipboard().setContent(content);
+        };
+        if (Platform.isFxApplicationThread()) {
+            task.run();
+        } else {
+            Platform.runLater(task);
+        }
+        return true;
+    }
+
+    /**
      * write the messages of the page the plug-in keeps in a file of the run of the WebViewer, so
      * the user reads them out of the panel : a name which ends with .txt holds the messages as
      * text, an other name holds them in json, as the panel reads them<br>
@@ -261,7 +304,7 @@ public class Dbg extends PluginSupport {
         }
         boolean net = Journal.NETWORK.equals(kind);
         Journal journal = bridge_.journal();
-        String text = name.toLowerCase().endsWith(".txt")
+        String text = name.toLowerCase(Locale.ROOT).endsWith(".txt")
                 ? journal.text(net ? Journal.NETWORK : Journal.CONSOLE)
                 : journal.entries(net ? Journal.NETWORK : Journal.CONSOLE, net ? Journal.NETWORK_MAX : Journal.CONSOLE_MAX);
 
@@ -303,11 +346,14 @@ public class Dbg extends PluginSupport {
 
             if (!Files.isDirectory(jar)) {
                 try (JarFile jarFile = new JarFile(jar.toFile())) {
-                    Attributes attributes = jarFile.getManifest().getMainAttributes();
-                    String version = attributes.getValue(Attributes.Name.IMPLEMENTATION_VERSION);
+                    Manifest manifest = jarFile.getManifest();
+                    if (manifest != null) {
+                        Attributes attributes = manifest.getMainAttributes();
+                        String version = attributes.getValue(Attributes.Name.IMPLEMENTATION_VERSION);
 
-                    if (version != null) {
-                        return version;
+                        if (version != null) {
+                            return version;
+                        }
                     }
                 }
             }
@@ -327,6 +373,21 @@ public class Dbg extends PluginSupport {
      */
     public void setConsoleOut(boolean state) {
         isConsoleOut_ = state;
+    }
+
+    /**
+     * @return true when messages are mirrored to the WebViewer console
+     */
+    public boolean isConsoleOut() {
+        return isConsoleOut_;
+    }
+
+    /**
+     *
+     * @param value
+     */
+    public void debug(String value) {
+        console("console.debug", value, false);
     }
 
     /**
@@ -362,6 +423,31 @@ public class Dbg extends PluginSupport {
     }
 
     /**
+     * mirror an incoming page console message to the WebViewer console when enabled
+     *
+     * @param json serialized console event from agent.js
+     */
+    void mirrorToConsole(String json) {
+        if (!isConsoleOut_ || (json == null) || "webviewer".equals(Json.fieldText(json, "src"))) {
+            return;
+        }
+        String rendered = Journal.render(Journal.CONSOLE, json);
+        if (rendered.isEmpty()) {
+            return;
+        }
+        boolean err = "error".equals(Json.fieldText(json, "level"));
+        writeToHostConsole(FUNCTION_NAME, rendered, err);
+    }
+
+    private void writeToHostConsole(String name, String msg, boolean err) {
+        super.write(name, msg, err);
+        if (webViewer() == null) {
+            // the jar of the plug-in is run alone : the plug-in holds no console of a WebViewer
+            System.out.println(name + ": " + msg);
+        }
+    }
+
+    /**
      * write a message on the console of the web page and on the console of the application
      *
      * @param console javascript name of the console function of the web page
@@ -369,13 +455,13 @@ public class Dbg extends PluginSupport {
      * @param err error flag of the console of the application
      */
     private void console(String console, String value, boolean err) {
-        if (isConsoleOut_) {
-            write(FUNCTION_NAME, value, err);
-        }
         // the name of the function of the page is written in the javascript of the plug-in
         if (!ScriptFunction.isValid(console)) {
             write(FUNCTION_NAME, "Incorrect console function [" + console + "]", true);
             return;
+        }
+        if (isConsoleOut_ && !isHook_) {
+            write(FUNCTION_NAME, value, err);
         }
         Platform.runLater(() -> {
             WebEngine webEngine = pageEngine();
@@ -383,6 +469,8 @@ public class Dbg extends PluginSupport {
             if (webEngine != null) {
                 // the message of the page is escaped : it can not carry an other javascript
                 webEngine.executeScript(console + "(" + ScriptValue.literal(value) + ")");
+            } else if (isConsoleOut_ && isHook_) {
+                write(FUNCTION_NAME, value, err);
             }
         });
     }
@@ -409,11 +497,7 @@ public class Dbg extends PluginSupport {
 
     @Override
     public void write(String name, String msg, boolean err) {
-        super.write(name, msg, err);
-        if (webViewer() == null) {
-            // the jar of the plug-in is run alone : the plug-in holds no console of a WebViewer
-            System.out.println(name + ": " + msg);
-        }
+        writeToHostConsole(name, msg, err);
         bridge_.page(Bridge.LOG, message(err ? "error" : "log", "webviewer", Json.string(msg)));
     }
 

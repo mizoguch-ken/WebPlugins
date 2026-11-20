@@ -1,5 +1,12 @@
 package ken.mizoguch.webviewer.plugin.kit;
 
+import java.nio.file.Path;
+import java.util.List;
+import javafx.concurrent.Worker;
+import javafx.scene.image.Image;
+import javafx.scene.web.WebEngine;
+import javafx.stage.Stage;
+import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -64,5 +71,60 @@ public class PluginSupportTest {
         assertNull(host.scriptFunction("onData();exit()"));
         assertNull(host.scriptFunction("onData\nexit()"));
         assertEquals("kit", host.refused());
+    }
+
+    @Test
+    public void nullIconsFromViewerReturnsEmptyList() {
+        Host host = new Host();
+        host.initialize(new WebViewerPlugin() {
+            @Override
+            public void initialize(WebViewerPlugin webViewer) {
+            }
+
+            @Override
+            public String functionName() {
+                return "viewer";
+            }
+
+            @Override
+            public void state(Worker.State state) {
+            }
+
+            @Override
+            public void close() {
+            }
+
+            @Override
+            public Stage stage() {
+                return null;
+            }
+
+            @Override
+            public List<Image> icons() {
+                return null;
+            }
+
+            @Override
+            public WebEngine webEngine() {
+                return null;
+            }
+
+            @Override
+            public Path webPath() {
+                return null;
+            }
+
+            @Override
+            public void writeStackTrace(String name, Throwable throwable) {
+            }
+
+            @Override
+            public void write(String name, String msg, boolean err) {
+            }
+        });
+
+        List<Image> icons = host.icons();
+        assertNotNull(icons);
+        assertTrue(icons.isEmpty());
     }
 }

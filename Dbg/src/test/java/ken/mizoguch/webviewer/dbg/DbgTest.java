@@ -7,6 +7,8 @@ import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 import javafx.application.Platform;
 
 /**
@@ -166,5 +168,96 @@ public class DbgTest {
         Licenses licenses = new Licenses();
 
         assertTrue(licenses.text().contains("Third Party Licenses"));
+    }
+
+    @Test
+    public void consoleOutMirroringDebugClearSplitAndClipboardCopyWork() throws Exception {
+        assertCallable("isConsoleOut");
+        assertCallable("debug", String.class);
+        assertCallable("clearConsole");
+        assertCallable("clearNetwork");
+        assertCallable("copyText", String.class);
+
+        try {
+            Platform.startup(() -> {
+            });
+        } catch (IllegalStateException ex) {
+            // toolkit already running
+        }
+
+        List<String> hostWrites = new ArrayList<>();
+        Dbg plugin = new Dbg();
+        plugin.initialize(new ken.mizoguch.webviewer.plugin.WebViewerPlugin() {
+            @Override
+            public void initialize(ken.mizoguch.webviewer.plugin.WebViewerPlugin webViewer) {
+            }
+
+            @Override
+            public String functionName() {
+                return "test";
+            }
+
+            @Override
+            public void state(javafx.concurrent.Worker.State state) {
+            }
+
+            @Override
+            public void close() {
+            }
+
+            @Override
+            public javafx.stage.Stage stage() {
+                return null;
+            }
+
+            @Override
+            public List<javafx.scene.image.Image> icons() {
+                return List.of();
+            }
+
+            @Override
+            public javafx.scene.web.WebEngine webEngine() {
+                return null;
+            }
+
+            @Override
+            public Path webPath() {
+                return null;
+            }
+
+            @Override
+            public void writeStackTrace(String name, Throwable throwable) {
+            }
+
+            @Override
+            public void write(String name, String msg, boolean err) {
+                hostWrites.add(name + "|" + err + "|" + msg);
+            }
+        });
+
+        try {
+            assertFalse(plugin.isConsoleOut());
+            plugin.setConsoleOut(true);
+            assertTrue(plugin.isConsoleOut());
+
+            plugin.up(Bridge.LOG, "{\"level\":\"warn\",\"time\":1700000000000,\"src\":\"page\",\"args\":["
+                    + "{\"t\":\"string\",\"v\":\"mirrored page msg\"}]}");
+            assertEquals(1, hostWrites.size());
+            assertTrue(hostWrites.get(0).contains("mirrored page msg"));
+
+            plugin.up(Bridge.NET, "{\"method\":\"GET\",\"url\":\"u\",\"status\":200}");
+            plugin.clearNetwork();
+            assertEquals("[]", plugin.journal("network", "10"));
+            assertTrue(plugin.journal("console", "10").contains("mirrored page msg"));
+
+            plugin.debug("debug msg");
+            plugin.clearConsole();
+            assertEquals("[]", plugin.journal("console", "10"));
+
+            assertFalse(plugin.copyText(null));
+            assertTrue(plugin.copyText("dbg copy check"));
+        } finally {
+            plugin.close();
+        }
     }
 }

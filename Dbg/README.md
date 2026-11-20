@@ -25,9 +25,14 @@ String  dbg.save(String kind, String file)
 String  dbg.cmd(String name, String arguments)
 void    dbg.up(String kind, String json)
 void    dbg.clear()
+void    dbg.clearConsole()
+void    dbg.clearNetwork()
+boolean dbg.copyText(String text)
 String  dbg.version()
 void    dbg.setConsoleOut(boolean state)
+boolean dbg.isConsoleOut()
 void    dbg.firebug()
+void    dbg.debug(String value)
 void    dbg.info(String value)
 void    dbg.log(String value)
 void    dbg.error(String value)
@@ -45,11 +50,12 @@ void    dbg.warn(String value)
 | `dbg.save(kind, file)` | Saves captured `"console"` or `"network"` journal entries to `file` inside the session run directory (`.txt` for plain text, otherwise JSON).<br>記録されたメッセージを実行用ディレクトリ内のファイルに保存します（`.txt` はテキスト形式、それ以外は JSON 形式）。 |
 | `dbg.cmd(name, arguments)` | Dispatches an inspection command from the DevTools panel to the page agent and returns the command identifier.<br>DevTools パネルからページ側エージェントへコマンドを発行し、識別子（ID）を返します。 |
 | `dbg.up(kind, json)` | Internal bridge endpoint called by the injected page agent to push console/network/command results to the plug-in.<br>ページ内のエージェントがプラグインへメッセージを送信するための内部ブリッジ関数です。 |
-| `dbg.clear()` | Clears all captured console and network journal entries.<br>保持しているコンソール・ネットワークのメッセージ履歴を消去します。 |
+| `dbg.clear()`, `dbg.clearConsole()`, `dbg.clearNetwork()` | Clears all captured journal entries (`clear()`), or clears only console or network journal entries independently.<br>コンソール・ネットワーク双方の履歴消去（`clear()`）、または個別の消去（`clearConsole()` / `clearNetwork()`）を行います。 |
+| `dbg.copyText(text)` | Copies `text` to the system clipboard on the JavaFX Application Thread.<br>JavaFX アプリケーションスレッド経由でテキストを OS クリップボードへコピーします。 |
 | `dbg.version()` | Returns the plug-in version from `MANIFEST.MF`.<br>JAR のマニフェストからプラグインのバージョンを返します。 |
-| `dbg.setConsoleOut(state)` | When `true`, mirrors `dbg.info`/`log`/`warn`/`error` and captured page console messages to the `WebViewer` console.<br>`true` の場合、ページのメッセージを `WebViewer` 本体のコンソールにも出力します。 |
+| `dbg.setConsoleOut(state)`, `dbg.isConsoleOut()` | Enables/disables or queries whether `dbg.*` and hooked page `console.*` messages are mirrored to the `WebViewer` console.<br>ページ側の出力を `WebViewer` 本体のコンソールにも出力するかの設定・取得を行います。 |
 | `dbg.firebug()` | Injects the legacy Firebug Lite panel into the page.<br>同梱されている Firebug Lite をページ内に表示します。 |
-| `dbg.info(value)`, `dbg.log(value)`, `dbg.error(value)`, `dbg.warn(value)` | Writes escaped text to the page's `console.info`, `console.log`, `console.error`, or `console.warn` (and to the `WebViewer` console when `setConsoleOut(true)`).<br>エスケープ済みのテキストをページの `console.info` / `log` / `error` / `warn` に出力します。 |
+| `dbg.debug(value)`, `dbg.info(value)`, `dbg.log(value)`, `dbg.error(value)`, `dbg.warn(value)` | Writes escaped text to the page's `console.debug` / `info` / `log` / `error` / `warn` (and mirrors without duplication to the `WebViewer` console when `isConsoleOut()` is `true`). Injected `agent.js` also supports `console.assert`, `console.time`/`timeEnd`, `console.count`/`countReset`, and `$0` element binding in Console REPL.<br>エスケープ済みテキストをページの `console.*` へ出力します（`agent.js` は `assert` / `time` / `timeEnd` / `count` / `countReset` および Console REPL での `$0` 参照にも対応します）。 |
 
 ---
 

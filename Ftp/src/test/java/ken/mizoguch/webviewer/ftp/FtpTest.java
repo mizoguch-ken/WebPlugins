@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.io.PrintWriter;
+import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Field;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -478,5 +479,59 @@ public class FtpTest {
 
         assertFalse(ftpClient_.isConnected());
         assertTrue(recorder_.writes().isEmpty());
+    }
+
+    @Test
+    @DisplayName("binary and ascii require connection and invalid charset fails before transfer")
+    void disconnectedTransferModesAndInvalidCharsetValidation() throws IOException {
+        assertFalse(ftp_.binary());
+        assertFalse(ftp_.ascii());
+        assertEquals(List.of(NOT_CONNECTED, NOT_CONNECTED), recorder_.writes());
+
+        recorder_.writes().clear();
+        ftp_.setNewLineCharacter(null);
+        assertEquals("\n", ftp_.getNewLineCharacter());
+
+        ftp_.charset("NO-SUCH-CHARSET");
+        assertEquals(List.of(INCORRECT_ARGUMENT), recorder_.writes());
+
+        recorder_.writes().clear();
+        assertTrue(ftp_.open("127.0.0.1", "user", "pass"));
+        assertThrows(UnsupportedEncodingException.class, () -> ftp_.readAsText("remote.txt", "NO-SUCH-CHARSET"));
+        assertThrows(UnsupportedEncodingException.class,
+                () -> ftp_.writeAsText("remote.txt", "hello", "NO-SUCH-CHARSET"));
+        assertFalse(server_.commands().stream().anyMatch(c -> c.startsWith("RETR") || c.startsWith("STOR")));
+    }
+
+    @Test
+    @DisplayName("explicit port, connection inspection, rmdir, active, noop, timeout and replies work")
+    void extendedFtpFeaturesWork() throws IOException {
+        assertFalse(ftp_.isConnected());
+        assertFalse(ftp_.active());
+        assertFalse(ftp_.rmdir("/empty"));
+        assertFalse(ftp_.noop());
+        assertNull(ftp_.lsDir("/sub"));
+
+        assertFalse(ftp_.setTimeout(-1));
+        assertTrue(ftp_.setTimeout(5000));
+        assertEquals(5000, ftp_.getTimeout());
+
+        assertFalse(ftp_.openWithPort("127.0.0.1", 0, "user", "pass"));
+        assertFalse(ftp_.openWithPort("127.0.0.1", 70000, "user", "pass"));
+        assertFalse(ftp_.openFtps("127.0.0.1", 0, "user", "pass", false));
+
+        assertTrue(ftp_.openWithPort("127.0.0.1", server_.port(), "user", "pass"));
+        assertTrue(ftp_.isConnected());
+        assertEquals(230, ftp_.replyCode());
+        assertTrue(ftp_.replyString() != null && ftp_.replyString().startsWith("230"));
+
+        assertTrue(ftp_.active());
+        assertTrue(ftp_.noop());
+        assertTrue(ftp_.rmdir("old_dir"));
+        assertTrue(server_.commands().contains("NOOP"));
+        assertTrue(server_.commands().contains("RMD old_dir"));
+
+        ftp_.close();
+        assertFalse(ftp_.isConnected());
     }
 }

@@ -61,7 +61,7 @@ public enum CapAiSystemEnums {
     REQUEST("Request", "リクエスト"),
     RESPONSE("Response", "レスポンス");
 
-    private int lang_ = 0;
+    private volatile int lang_ = 0;
     private final String[] text_ = new String[2];
 
     private CapAiSystemEnums(final String message) {
@@ -76,7 +76,9 @@ public enum CapAiSystemEnums {
     }
 
     public void setLang(int l) {
-        lang_ = l;
+        if ((l >= 0) && (l < text_.length)) {
+            lang_ = l;
+        }
     }
 
     @Override

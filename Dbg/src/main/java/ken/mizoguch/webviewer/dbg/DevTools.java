@@ -2,9 +2,11 @@ package ken.mizoguch.webviewer.dbg;
 
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.List;
 import javafx.application.Platform;
 import javafx.concurrent.Worker;
 import javafx.scene.Scene;
+import javafx.scene.image.Image;
 import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
 import javafx.stage.Stage;
@@ -116,7 +118,10 @@ final class DevTools {
         if (owner != null) {
             window.initOwner(owner);
         }
-        window.getIcons().addAll(host_.icons());
+        List<Image> icons = host_.icons();
+        if ((icons != null) && !icons.isEmpty()) {
+            window.getIcons().addAll(icons);
+        }
         window.setOnCloseRequest(event -> close());
         window.setScene(new Scene(view, WIDTH, HEIGHT));
 
@@ -133,6 +138,9 @@ final class DevTools {
      * @param panel engine of the panel
      */
     private void ready(WebEngine panel) {
+        if (engine_ != panel) {
+            return;
+        }
         try {
             Object window = panel.executeScript("window");
 

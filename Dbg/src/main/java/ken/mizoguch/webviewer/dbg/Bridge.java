@@ -100,6 +100,7 @@ final class Bridge {
     void page(String kind, String json) {
         if (LOG.equals(kind)) {
             journal_.add(Journal.CONSOLE, json);
+            host_.mirrorToConsole(json);
             send("dbgUi.log", json);
         } else if (NET.equals(kind)) {
             journal_.add(Journal.NETWORK, json);

@@ -84,7 +84,11 @@ public class HostRef {
      */
     public List<Image> icons() {
         WebViewerPlugin viewer = webViewer_;
-        return (viewer != null) ? viewer.icons() : new ArrayList<>();
+        if (viewer == null) {
+            return new ArrayList<>();
+        }
+        List<Image> icons = viewer.icons();
+        return (icons == null) ? new ArrayList<>() : icons;
     }
 
     /**

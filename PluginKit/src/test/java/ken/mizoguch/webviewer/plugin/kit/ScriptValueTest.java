@@ -103,4 +103,13 @@ public class ScriptValueTest {
             }
         }
     }
+
+    @Test
+    public void cuttingAtBoundaryNeverSplitsASurrogatePair() {
+        String value = "a\uD83D\uDE00b";
+        String cut = ScriptValue.quote(value, 2);
+
+        assertEquals("a", cut);
+        assertFalse(Character.isHighSurrogate(cut.charAt(cut.length() - 1)));
+    }
 }

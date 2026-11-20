@@ -5,7 +5,6 @@ import com.google.gson.JsonParser;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -21,6 +20,7 @@ import javafx.stage.Stage;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
 import org.bytedeco.javacv.FrameGrabber;
 import org.bytedeco.javacv.OpenCVFrameGrabber;
+import org.bytedeco.opencv.opencv_core.Scalar;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeAll;
@@ -116,7 +116,7 @@ public class WebCamTest {
 
         @Override
         public Path webPath() {
-            return Paths.get("C:/Users/mizog");
+            return work_;
         }
 
         @Override
@@ -489,6 +489,115 @@ public class WebCamTest {
         assertFalse(webCam_.isOpened());
         assertEquals(0, counter().get());
         assertTrue(recorder_.writes().isEmpty());
+    }
+
+    @Test
+    @DisplayName("setImageSize() refuses non-positive dimensions")
+    void invalidImageSizeIsRefused() {
+        runFx(() -> webCam_.setImageSize(0, 100));
+        runFx(() -> webCam_.setImageSize(100, -1));
+
+        assertNull(webCam_.getImageSize());
+        assertEquals(2, recorder_.writes().size());
+    }
+
+    @Test
+    @DisplayName("setNotifyResultBlob() handles malformed json and 3-channel mean")
+    void blobInfoHandlesMalformedJsonAndThreeChannelMean() throws Exception {
+        webCam_.setNotifyResultBlob("onBlob", "{bad");
+        webCam_.setNotifyResultBlob("onBlob", "{\"scalefactor\":{},\"mean\":\"bad\"}");
+        assertEquals(2, recorder_.traces().size());
+
+        recorder_.traces().clear();
+        webCam_.setNotifyResultBlob("onBlob",
+                "{\"scalefactor\":1.0,\"size\":{\"width\":224,\"height\":224},"
+                        + "\"mean\":[104,117,123],\"swapRB\":true,\"crop\":false,\"ddepth\":\"CV_32F\"}");
+        assertTrue(recorder_.traces().isEmpty());
+
+        Object blobInfo = get("blobInfo_");
+        assertNotNull(blobInfo);
+        Field meanField = blobInfo.getClass().getDeclaredField("mean");
+        meanField.setAccessible(true);
+        Scalar mean = (Scalar) meanField.get(blobInfo);
+        assertNotNull(mean);
+        assertEquals(104.0, mean.get(0));
+        assertEquals(117.0, mean.get(1));
+        assertEquals(123.0, mean.get(2));
+    }
+
+    @Test
+    @DisplayName("save() refuses path escaping the web sandbox when camera is open")
+    void saveRefusesSandboxEscapeWhenCameraIsOpen() throws Exception {
+        injectGrabber();
+
+        assertEquals(Boolean.FALSE, webCam_.save("../escape.png"));
+        assertEquals(Boolean.FALSE, webCam_.save("~"));
+        assertTrue(recorder_.writes().contains("Incorrect file path [../escape.png]"));
+        assertTrue(recorder_.writes().contains("Incorrect file path [~]"));
+    }
+
+    @Test
+    @DisplayName("image size JSON, frame rate, color reset, closed capture guards and cached results work")
+    void extendedSettingsClosedGuardsAndCachedResultsWork() throws Exception {
+        runFx(() -> webCam_.setImageSize(320, 240));
+        String sizeJson = webCam_.getImageSize();
+        assertNotNull(sizeJson);
+        com.google.gson.JsonObject sizeObj = JsonParser.parseString(sizeJson).getAsJsonObject();
+        assertEquals(320, sizeObj.get("width").getAsInt());
+        assertEquals(240, sizeObj.get("height").getAsInt());
+
+        assertEquals(0.0, webCam_.getFrameRate());
+        assertEquals(Boolean.TRUE, webCam_.setFrameRate(15.0));
+        assertEquals(15.0, webCam_.getFrameRate());
+        assertEquals(Boolean.TRUE, webCam_.setFrameRate(0.0));
+        assertEquals(0.0, webCam_.getFrameRate());
+        assertEquals(Boolean.FALSE, webCam_.setFrameRate(-1.0));
+        assertEquals(Boolean.FALSE, webCam_.setFrameRate(null));
+        assertEquals(Boolean.FALSE, webCam_.setFrameRate(Double.NaN));
+        assertEquals(0.0, webCam_.getFrameRate());
+
+        assertEquals(-1, webCam_.getImageColor());
+        assertNull(webCam_.getImageColorName());
+        webCam_.setImageColor("COLOR_BGR2GRAY");
+        assertEquals("COLOR_BGR2GRAY", webCam_.getImageColorName());
+        assertTrue(webCam_.getImageColor() >= 0);
+        webCam_.setImageColor("NO_SUCH_COLOR_XYZ");
+        assertEquals("COLOR_BGR2GRAY", webCam_.getImageColorName());
+        webCam_.setImageColor("NONE");
+        assertEquals(-1, webCam_.getImageColor());
+        assertNull(webCam_.getImageColorName());
+        webCam_.setImageColor("COLOR_BGR2GRAY");
+        webCam_.setImageColor("");
+        assertEquals(-1, webCam_.getImageColor());
+        assertNull(webCam_.getImageColorName());
+        webCam_.setImageColor("COLOR_BGR2GRAY");
+        webCam_.setImageColor(null);
+        assertEquals(-1, webCam_.getImageColor());
+        assertNull(webCam_.getImageColorName());
+
+        assertNull(webCam_.getCaptureWidth());
+        assertNull(webCam_.getCaptureHeight());
+        assertNull(webCam_.captureBase64());
+        assertNull(webCam_.captureDataUrl());
+        assertTrue(recorder_.writes().contains(NOT_OPEN));
+
+        setField("resultImage_", "[1,2,3]");
+        setField("resultImageBase64_", "AQID");
+        setField("resultBlob_", "[4,5]");
+        assertEquals("[1,2,3]", webCam_.getResultImage());
+        assertEquals("AQID", webCam_.getResultImageBase64());
+        assertEquals("[4,5]", webCam_.getResultBlob());
+
+        runFx(() -> webCam_.close());
+        assertNull(webCam_.getResultImage());
+        assertNull(webCam_.getResultImageBase64());
+        assertNull(webCam_.getResultBlob());
+    }
+
+    private void setField(String name, Object value) throws Exception {
+        Field field = WebCam.class.getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(webCam_, value);
     }
 
     @Test

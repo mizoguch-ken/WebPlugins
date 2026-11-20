@@ -211,10 +211,35 @@ public abstract class LinkBoxClientPlugin extends PluginSupport implements LinkB
 
     /**
      *
+     * @return configured Link Box server address, or null if unset
+     */
+    public String getServerAddress() {
+        return linkBoxClient_.getServerAddress();
+    }
+
+    /**
+     *
+     * @return configured socket timeout in milliseconds
+     */
+    public Integer getTimeout() {
+        return linkBoxClient_.getTimeout();
+    }
+
+    /**
+     *
      * @return
      */
     public Integer getConnectionPort() {
         return linkBoxClient_.getConnectionPort();
+    }
+
+    /**
+     * force-reset default port connection state
+     *
+     * @return true when command succeeded
+     */
+    public Boolean portClose() {
+        return linkBoxClient_.cmdPortClose();
     }
 
     /**
@@ -242,6 +267,18 @@ public abstract class LinkBoxClientPlugin extends PluginSupport implements LinkB
     public Boolean initAK() {
         if (linkBoxClient_.isRunning()) {
             return linkBoxClient_.cmdInitAK();
+        }
+        return null;
+    }
+
+    /**
+     * start auto-response monitoring on default channel (0)
+     *
+     * @return true when command succeeded, null if not running
+     */
+    public Boolean mnt() {
+        if (linkBoxClient_.isRunning()) {
+            return linkBoxClient_.cmdMnt();
         }
         return null;
     }
@@ -311,256 +348,16 @@ public abstract class LinkBoxClientPlugin extends PluginSupport implements LinkB
             String answerDirection, String answerLed, String answerSeg, String answerBuz,
             String jsonElement) {
         if (linkBoxClient_.isRunning()) {
-            LinkBoxEnums nmlDir, nmlLed, nmlSeg, nmlBuz;
-            LinkBoxEnums ansDir, ansLed, ansSeg, ansBuz;
+            LinkBoxEnums nmlDir = parseDirection(normalDirection);
+            LinkBoxEnums nmlLed = parseLed(normalLed);
+            LinkBoxEnums nmlSeg = parseSeg(normalSeg);
+            LinkBoxEnums nmlBuz = parseBuz(normalBuz);
+            LinkBoxEnums ansDir = parseDirection(answerDirection);
+            LinkBoxEnums ansLed = parseLed(answerLed);
+            LinkBoxEnums ansSeg = parseSeg(answerSeg);
+            LinkBoxEnums ansBuz = parseBuz(answerBuz);
             List<Integer> units = new ArrayList<>();
             List<String> views = new ArrayList<>();
-
-            switch (normalDirection) {
-                case "DOWN":
-                    nmlDir = LinkBoxEnums.DIRECTION_DOWN;
-                    break;
-                case "UP":
-                    nmlDir = LinkBoxEnums.DIRECTION_UP;
-                    break;
-                case "NO_CHANGE":
-                    nmlDir = LinkBoxEnums.DIRECTION_NO_CHANGE;
-                    break;
-                default:
-                    nmlDir = LinkBoxEnums.DIRECTION_NONE;
-                    break;
-            }
-
-            switch (normalLed) {
-                case "RED":
-                    nmlLed = LinkBoxEnums.LED_RED;
-                    break;
-                case "GREEN":
-                    nmlLed = LinkBoxEnums.LED_GREEN;
-                    break;
-                case "BLUE":
-                    nmlLed = LinkBoxEnums.LED_BLUE;
-                    break;
-                case "YELLOW":
-                    nmlLed = LinkBoxEnums.LED_YELLOW;
-                    break;
-                case "CYAN":
-                    nmlLed = LinkBoxEnums.LED_CYAN;
-                    break;
-                case "MAGENTA":
-                    nmlLed = LinkBoxEnums.LED_MAGENTA;
-                    break;
-                case "WHITE":
-                    nmlLed = LinkBoxEnums.LED_WHITE;
-                    break;
-                case "RED_BLINK":
-                    nmlLed = LinkBoxEnums.LED_RED_BLINK;
-                    break;
-                case "GREEN_BLINK":
-                    nmlLed = LinkBoxEnums.LED_GREEN_BLINK;
-                    break;
-                case "BLUE_BLINK":
-                    nmlLed = LinkBoxEnums.LED_BLUE_BLINK;
-                    break;
-                case "YELLOW_BLINK":
-                    nmlLed = LinkBoxEnums.LED_YELLOW_BLINK;
-                    break;
-                case "CYAN_BLINK":
-                    nmlLed = LinkBoxEnums.LED_CYAN_BLINK;
-                    break;
-                case "MAGENTA_BLINK":
-                    nmlLed = LinkBoxEnums.LED_MAGENTA_BLINK;
-                    break;
-                case "WHITE_BLINK":
-                    nmlLed = LinkBoxEnums.LED_WHITE_BLINK;
-                    break;
-                case "RED_FAST_BLINK":
-                    nmlLed = LinkBoxEnums.LED_RED_FAST_BLINK;
-                    break;
-                case "GREEN_FAST_BLINK":
-                    nmlLed = LinkBoxEnums.LED_GREEN_FAST_BLINK;
-                    break;
-                case "BLUE_FAST_BLINK":
-                    nmlLed = LinkBoxEnums.LED_BLUE_FAST_BLINK;
-                    break;
-                case "YELLOW_FAST_BLINK":
-                    nmlLed = LinkBoxEnums.LED_YELLOW_FAST_BLINK;
-                    break;
-                case "CYAN_FAST_BLINK":
-                    nmlLed = LinkBoxEnums.LED_CYAN_FAST_BLINK;
-                    break;
-                case "MAGENTA_FAST_BLINK":
-                    nmlLed = LinkBoxEnums.LED_MAGENTA_FAST_BLINK;
-                    break;
-                case "WHITE_FAST_BLINK":
-                    nmlLed = LinkBoxEnums.LED_WHITE_FAST_BLINK;
-                    break;
-                case "NO_CHANGE":
-                    nmlLed = LinkBoxEnums.LED_NO_CHANGE;
-                    break;
-                default:
-                    nmlLed = LinkBoxEnums.LED_OFF;
-                    break;
-            }
-
-            switch (normalSeg) {
-                case "LIGHT":
-                    nmlSeg = LinkBoxEnums.SEG_LIGHT;
-                    break;
-                case "BLINK":
-                    nmlSeg = LinkBoxEnums.SEG_BLINK;
-                    break;
-                case "FAST_BLINK":
-                    nmlSeg = LinkBoxEnums.SEG_FAST_BLINK;
-                    break;
-                case "NO_CHANGE":
-                    nmlSeg = LinkBoxEnums.SEG_NO_CHANGE;
-                    break;
-                default:
-                    nmlSeg = LinkBoxEnums.SEG_OFF;
-                    break;
-            }
-
-            switch (normalBuz) {
-                case "LIGHT":
-                    nmlBuz = LinkBoxEnums.BUZ_LIGHT;
-                    break;
-                case "BLINK":
-                    nmlBuz = LinkBoxEnums.BUZ_BLINK;
-                    break;
-                case "FAST_BLINK":
-                    nmlBuz = LinkBoxEnums.BUZ_FAST_BLINK;
-                    break;
-                case "NO_CHANGE":
-                    nmlBuz = LinkBoxEnums.BUZ_NO_CHANGE;
-                    break;
-                default:
-                    nmlBuz = LinkBoxEnums.BUZ_OFF;
-                    break;
-            }
-
-            switch (answerDirection) {
-                case "DOWN":
-                    ansDir = LinkBoxEnums.DIRECTION_DOWN;
-                    break;
-                case "UP":
-                    ansDir = LinkBoxEnums.DIRECTION_UP;
-                    break;
-                case "NO_CHANGE":
-                    ansDir = LinkBoxEnums.DIRECTION_NO_CHANGE;
-                    break;
-                default:
-                    ansDir = LinkBoxEnums.DIRECTION_NONE;
-                    break;
-            }
-
-            switch (answerLed) {
-                case "RED":
-                    ansLed = LinkBoxEnums.LED_RED;
-                    break;
-                case "GREEN":
-                    ansLed = LinkBoxEnums.LED_GREEN;
-                    break;
-                case "BLUE":
-                    ansLed = LinkBoxEnums.LED_BLUE;
-                    break;
-                case "YELLOW":
-                    ansLed = LinkBoxEnums.LED_YELLOW;
-                    break;
-                case "CYAN":
-                    ansLed = LinkBoxEnums.LED_CYAN;
-                    break;
-                case "MAGENTA":
-                    ansLed = LinkBoxEnums.LED_MAGENTA;
-                    break;
-                case "WHITE":
-                    ansLed = LinkBoxEnums.LED_WHITE;
-                    break;
-                case "RED_BLINK":
-                    ansLed = LinkBoxEnums.LED_RED_BLINK;
-                    break;
-                case "GREEN_BLINK":
-                    ansLed = LinkBoxEnums.LED_GREEN_BLINK;
-                    break;
-                case "BLUE_BLINK":
-                    ansLed = LinkBoxEnums.LED_BLUE_BLINK;
-                    break;
-                case "YELLOW_BLINK":
-                    ansLed = LinkBoxEnums.LED_YELLOW_BLINK;
-                    break;
-                case "CYAN_BLINK":
-                    ansLed = LinkBoxEnums.LED_CYAN_BLINK;
-                    break;
-                case "MAGENTA_BLINK":
-                    ansLed = LinkBoxEnums.LED_MAGENTA_BLINK;
-                    break;
-                case "WHITE_BLINK":
-                    ansLed = LinkBoxEnums.LED_WHITE_BLINK;
-                    break;
-                case "RED_FAST_BLINK":
-                    ansLed = LinkBoxEnums.LED_RED_FAST_BLINK;
-                    break;
-                case "GREEN_FAST_BLINK":
-                    ansLed = LinkBoxEnums.LED_GREEN_FAST_BLINK;
-                    break;
-                case "BLUE_FAST_BLINK":
-                    ansLed = LinkBoxEnums.LED_BLUE_FAST_BLINK;
-                    break;
-                case "YELLOW_FAST_BLINK":
-                    ansLed = LinkBoxEnums.LED_YELLOW_FAST_BLINK;
-                    break;
-                case "CYAN_FAST_BLINK":
-                    ansLed = LinkBoxEnums.LED_CYAN_FAST_BLINK;
-                    break;
-                case "MAGENTA_FAST_BLINK":
-                    ansLed = LinkBoxEnums.LED_MAGENTA_FAST_BLINK;
-                    break;
-                case "WHITE_FAST_BLINK":
-                    ansLed = LinkBoxEnums.LED_WHITE_FAST_BLINK;
-                    break;
-                case "NO_CHANGE":
-                    ansLed = LinkBoxEnums.LED_NO_CHANGE;
-                    break;
-                default:
-                    ansLed = LinkBoxEnums.LED_OFF;
-                    break;
-            }
-
-            switch (answerSeg) {
-                case "LIGHT":
-                    ansSeg = LinkBoxEnums.SEG_LIGHT;
-                    break;
-                case "BLINK":
-                    ansSeg = LinkBoxEnums.SEG_BLINK;
-                    break;
-                case "FAST_BLINK":
-                    ansSeg = LinkBoxEnums.SEG_FAST_BLINK;
-                    break;
-                case "NO_CHANGE":
-                    ansSeg = LinkBoxEnums.SEG_NO_CHANGE;
-                    break;
-                default:
-                    ansSeg = LinkBoxEnums.SEG_OFF;
-                    break;
-            }
-
-            switch (answerBuz) {
-                case "LIGHT":
-                    ansBuz = LinkBoxEnums.BUZ_LIGHT;
-                    break;
-                case "BLINK":
-                    ansBuz = LinkBoxEnums.BUZ_BLINK;
-                    break;
-                case "FAST_BLINK":
-                    ansBuz = LinkBoxEnums.BUZ_FAST_BLINK;
-                    break;
-                case "NO_CHANGE":
-                    ansBuz = LinkBoxEnums.BUZ_NO_CHANGE;
-                    break;
-                default:
-                    ansBuz = LinkBoxEnums.BUZ_OFF;
-                    break;
-            }
 
             try {
                 JsonArray buffer = gson_.fromJson(jsonElement, JsonArray.class);
@@ -574,12 +371,119 @@ public abstract class LinkBoxClientPlugin extends PluginSupport implements LinkB
 
                 return linkBoxClient_.cmdSetL1(accNum, nmlDir, nmlLed, nmlSeg, nmlBuz, ansDir, ansLed, ansSeg, ansBuz,
                         units, views);
-            } catch (JsonSyntaxException | IllegalStateException | NullPointerException | NumberFormatException ex) {
+            } catch (JsonSyntaxException | IllegalStateException | UnsupportedOperationException
+                    | NullPointerException | NumberFormatException ex) {
                 writeStackTrace(functionName(), ex);
             }
             return false;
         }
         return null;
+    }
+
+    static LinkBoxEnums parseDirection(String value) {
+        if (value == null) {
+            return LinkBoxEnums.DIRECTION_NONE;
+        }
+        switch (value) {
+            case "DOWN":
+                return LinkBoxEnums.DIRECTION_DOWN;
+            case "UP":
+                return LinkBoxEnums.DIRECTION_UP;
+            case "NO_CHANGE":
+                return LinkBoxEnums.DIRECTION_NO_CHANGE;
+            default:
+                return LinkBoxEnums.DIRECTION_NONE;
+        }
+    }
+
+    static LinkBoxEnums parseLed(String value) {
+        if (value == null) {
+            return LinkBoxEnums.LED_OFF;
+        }
+        switch (value) {
+            case "RED":
+                return LinkBoxEnums.LED_RED;
+            case "GREEN":
+                return LinkBoxEnums.LED_GREEN;
+            case "BLUE":
+                return LinkBoxEnums.LED_BLUE;
+            case "YELLOW":
+                return LinkBoxEnums.LED_YELLOW;
+            case "CYAN":
+                return LinkBoxEnums.LED_CYAN;
+            case "MAGENTA":
+                return LinkBoxEnums.LED_MAGENTA;
+            case "WHITE":
+                return LinkBoxEnums.LED_WHITE;
+            case "RED_BLINK":
+                return LinkBoxEnums.LED_RED_BLINK;
+            case "GREEN_BLINK":
+                return LinkBoxEnums.LED_GREEN_BLINK;
+            case "BLUE_BLINK":
+                return LinkBoxEnums.LED_BLUE_BLINK;
+            case "YELLOW_BLINK":
+                return LinkBoxEnums.LED_YELLOW_BLINK;
+            case "CYAN_BLINK":
+                return LinkBoxEnums.LED_CYAN_BLINK;
+            case "MAGENTA_BLINK":
+                return LinkBoxEnums.LED_MAGENTA_BLINK;
+            case "WHITE_BLINK":
+                return LinkBoxEnums.LED_WHITE_BLINK;
+            case "RED_FAST_BLINK":
+                return LinkBoxEnums.LED_RED_FAST_BLINK;
+            case "GREEN_FAST_BLINK":
+                return LinkBoxEnums.LED_GREEN_FAST_BLINK;
+            case "BLUE_FAST_BLINK":
+                return LinkBoxEnums.LED_BLUE_FAST_BLINK;
+            case "YELLOW_FAST_BLINK":
+                return LinkBoxEnums.LED_YELLOW_FAST_BLINK;
+            case "CYAN_FAST_BLINK":
+                return LinkBoxEnums.LED_CYAN_FAST_BLINK;
+            case "MAGENTA_FAST_BLINK":
+                return LinkBoxEnums.LED_MAGENTA_FAST_BLINK;
+            case "WHITE_FAST_BLINK":
+                return LinkBoxEnums.LED_WHITE_FAST_BLINK;
+            case "NO_CHANGE":
+                return LinkBoxEnums.LED_NO_CHANGE;
+            default:
+                return LinkBoxEnums.LED_OFF;
+        }
+    }
+
+    static LinkBoxEnums parseSeg(String value) {
+        if (value == null) {
+            return LinkBoxEnums.SEG_OFF;
+        }
+        switch (value) {
+            case "LIGHT":
+                return LinkBoxEnums.SEG_LIGHT;
+            case "BLINK":
+                return LinkBoxEnums.SEG_BLINK;
+            case "FAST_BLINK":
+                return LinkBoxEnums.SEG_FAST_BLINK;
+            case "NO_CHANGE":
+                return LinkBoxEnums.SEG_NO_CHANGE;
+            default:
+                return LinkBoxEnums.SEG_OFF;
+        }
+    }
+
+    static LinkBoxEnums parseBuz(String value) {
+        if (value == null) {
+            return LinkBoxEnums.BUZ_OFF;
+        }
+        switch (value) {
+            case "LIGHT":
+                return LinkBoxEnums.BUZ_LIGHT;
+            case "BLINK":
+                return LinkBoxEnums.BUZ_BLINK;
+            case "FAST_BLINK":
+                return LinkBoxEnums.BUZ_FAST_BLINK;
+            case "NO_CHANGE":
+                return LinkBoxEnums.BUZ_NO_CHANGE;
+            default:
+                return LinkBoxEnums.BUZ_OFF;
+        }
     }
 
     /**
@@ -613,7 +517,8 @@ public abstract class LinkBoxClientPlugin extends PluginSupport implements LinkB
                         units.add(buff.getAsInt());
                     }
                     return linkBoxClient_.cmdStartDev(units);
-                } catch (JsonSyntaxException | NumberFormatException ex) {
+                } catch (JsonSyntaxException | IllegalStateException | UnsupportedOperationException
+                        | NullPointerException | NumberFormatException ex) {
                     writeStackTrace(functionName(), ex);
                 }
             }
@@ -652,7 +557,8 @@ public abstract class LinkBoxClientPlugin extends PluginSupport implements LinkB
                     units.add(buff.getAsInt());
                 }
                 return linkBoxClient_.cmdClearAK(units);
-            } catch (JsonSyntaxException | NumberFormatException ex) {
+            } catch (JsonSyntaxException | IllegalStateException | UnsupportedOperationException
+                    | NullPointerException | NumberFormatException ex) {
                 writeStackTrace(functionName(), ex);
             }
             return false;
@@ -755,13 +661,18 @@ public abstract class LinkBoxClientPlugin extends PluginSupport implements LinkB
                 List<String> address = new ArrayList<>();
 
                 JsonArray buffer = gson_.fromJson(jsonElement, JsonArray.class);
+                if (buffer == null) {
+                    return false;
+                }
                 for (JsonElement buff : buffer) {
                     address.add(buff.getAsString());
                 }
                 return linkBoxClient_.cmdSetHostAddr(address);
-            } catch (JsonSyntaxException ex) {
+            } catch (JsonSyntaxException | IllegalStateException | UnsupportedOperationException
+                    | NullPointerException ex) {
                 writeStackTrace(functionName(), ex);
             }
+            return false;
         }
         return null;
     }

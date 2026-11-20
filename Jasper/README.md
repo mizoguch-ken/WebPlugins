@@ -2,40 +2,49 @@
 
 ## Overview / 概要
 
-* **Jasper** is the reporting plug-in for the `WebViewer`. It loads compiled JasperReports templates (`.jasper`) or compiles source templates (`.jrxml`), populates them with parameters and JSON or CSV data from the page, and prints them directly to a printer or exports them as PDF, HTML, or XML files.
-* **Jasper** は、`WebViewer` 向けの帳票作成・印刷プラグインです。JasperReports のコンパイル済みテンプレート（`.jasper`）の読み込み、またはソーステンプレート（`.jrxml`）のコンパイルを行い、ページから渡されたパラメータおよび JSON / CSV データを流し込んで、プリンターへの直接印刷や PDF・HTML・XML ファイルへの出力を行います。
-* **JasperReports Library** is shaded into `Jasper.jar`. Compiling `.jrxml` templates at runtime uses the Java compiler provided by the JDK running the `WebViewer`.
-* **JasperReports Library** は `Jasper.jar` に shade されています。実行時に `.jrxml` をコンパイルする際は、`WebViewer` を実行している JDK の Java コンパイラを使用します。
+* **Jasper** is the reporting plug-in for the `WebViewer`. It loads compiled JasperReports templates (`.jasper`) or compiles source templates (`.jrxml`), populates them with parameters and JSON or CSV data from the page, and prints them directly to a printer or exports them as HTML, XML, XLSX, CSV, DOCX, plain text, or PDF files.
+* **Jasper** は、`WebViewer` 向けの帳票作成・印刷プラグインです。JasperReports のコンパイル済みテンプレート（`.jasper`）の読み込み、またはソーステンプレート（`.jrxml`）のコンパイルを行い、ページから渡されたパラメータおよび JSON / CSV データを流し込んで、プリンターへの直接印刷や HTML・XML・XLSX・CSV・DOCX・テキスト・PDF ファイルへの出力を行います。
+* **JasperReports Library** is shaded into `Jasper.jar`. Exporting to `html`, `xml`, `xlsx`, `csv`, `docx`, and `text` works out of the box; `jasper.pdf(path)` additionally requires `net.sf.jasperreports:jasperreports-pdf` (not bundled by default due to its OpenPDF/LGPL license). Compiling `.jrxml` templates at runtime uses the Java compiler provided by the JDK running the `WebViewer`.
+* **JasperReports Library** は `Jasper.jar` に shade されています。`html` / `xml` / `xlsx` / `csv` / `docx` / `text` 出力は追加設定なしで利用でき、`jasper.pdf(path)` を利用する場合のみ `net.sf.jasperreports:jasperreports-pdf` の追加が必要です（OpenPDF/LGPL ライセンスのため既定では同梱していません）。`.jrxml` の実行時コンパイルには `WebViewer` を実行している JDK の Java コンパイラを使用します。
 
 ---
 
 ## JavaScript Functions / JS 関数一覧
 
 ```text
-void   jasper.licenses()
-void   jasper.jasper(String path)
-void   jasper.jrxml(String path)
-void   jasper.clearParameters()
-void   jasper.setParameters(String jsonElement)
-void   jasper.clearJsonData()
-void   jasper.setJsonData(String jsonElement)
-void   jasper.setCsvData(String csvElement)
-String jasper.getPrintServices()
-void   jasper.print(String printerName)
-void   jasper.pdf(String path)
-void   jasper.html(String path)
-void   jasper.xml(String path)
+void    jasper.licenses()
+void    jasper.jasper(String path)
+void    jasper.jrxml(String path)
+Boolean jasper.compile(String jrxmlPath, String jasperPath)
+Boolean jasper.hasReport()
+void    jasper.clearParameters()
+void    jasper.setParameters(String jsonElement)
+void    jasper.clearJsonData()
+void    jasper.clearCsvData()
+void    jasper.clearData()
+void    jasper.setJsonData(String jsonElement)
+void    jasper.setJsonDataWithSelect(String jsonElement, String selectExpression)
+void    jasper.setCsvData(String csvElement)
+void    jasper.setCsvDataWithHeader(String csvElement, boolean useFirstRowAsHeader)
+String  jasper.getPrintServices()
+String  jasper.getDefaultPrintService()
+void    jasper.print(String printerName)
+void    jasper.pdf(String path)
+void    jasper.html(String path)
+void    jasper.xml(String path)
+void    jasper.xlsx(String path)
+void    jasper.csv(String path)
+void    jasper.docx(String path)
+void    jasper.text(String path)
 ```
 
 | Function / 関数 | Description / 説明 |
 | :--- | :--- |
-| `jasper.jasper(path)` | Loads a compiled `.jasper` template file under the page's `web` folder.<br>ページの `web` フォルダー配下にあるコンパイル済み `.jasper` テンプレートを読み込みます。 |
-| `jasper.jrxml(path)` | Loads and compiles a `.jrxml` template file under the page's `web` folder.<br>ページの `web` フォルダー配下にある `.jrxml` テンプレートを読み込んでコンパイルします。 |
-| `jasper.setParameters(jsonElement)`, `jasper.clearParameters()` | Sets or clears report parameters from a JSON object or array of objects.<br>テンプレートに渡すパラメータを JSON から設定またはクリアします。 |
-| `jasper.setJsonData(jsonElement)`, `jasper.setCsvData(csvElement)`, `jasper.clearJsonData()` | Sets report data rows from a JSON string or CSV string, or clears the current data source.<br>レポートのデータソース（行データ）を JSON または CSV 文字列から設定、またはクリアします。 |
-| `jasper.getPrintServices()` | Returns the names of available printers on the computer as a JSON array string.<br>コンピューターで利用可能なプリンター名の一覧を JSON 配列文字列で返します。 |
-| `jasper.print(printerName)` | Prints the filled report to `printerName` (must match one of the names returned by `getPrintServices()`).<br>`getPrintServices()` の一覧に含まれるプリンター名を指定して印刷を実行します。 |
-| `jasper.pdf(path)`, `jasper.html(path)`, `jasper.xml(path)` | Exports the filled report as a PDF, HTML, or XML file under the page's `web` folder.<br>ページの `web` フォルダー配下の指定パスへ PDF・HTML・XML ファイルを出力します。 |
+| `jasper.jasper(path)`, `jasper.jrxml(path)`, `jasper.compile(jrxmlPath, jasperPath)`, `jasper.hasReport()` | Loads `.jasper`, loads/compiles `.jrxml`, compiles `.jrxml` to a sandboxed `.jasper` file, or checks whether a compiled report is loaded.<br>`.jasper` 読み込み、`.jrxml` コンパイル読み込み、`.jrxml` から `.jasper` へのコンパイル保存、および読み込み済みかの確認を行います。 |
+| `jasper.setParameters(jsonElement)`, `jasper.clearParameters()` | Sets or clears report parameters from a JSON object (`{...}`) or array of objects (`[{...}]`).<br>テンプレートに渡すパラメータを JSON オブジェクトまたはオブジェクト配列から設定・クリアします。 |
+| `jasper.setJsonData(jsonElement)`, `jasper.setJsonDataWithSelect(jsonElement, selectExpression)`, `jasper.setCsvData(csvElement)`, `jasper.setCsvDataWithHeader(csvElement, useFirstRowAsHeader)`, `jasper.clearJsonData()`, `jasper.clearCsvData()`, `jasper.clearData()` | Configures reusable JSON (with optional selection path) or CSV (with optional header-row toggle) report data across multiple print/export calls, or clears the active data source.<br>JSON（パス指定付き `setJsonDataWithSelect` 含む）または CSV（ヘッダー行指定付き `setCsvDataWithHeader` 含む）の再利用可能なデータソースを設定・クリアします。 |
+| `jasper.getPrintServices()`, `jasper.getDefaultPrintService()`, `jasper.print(printerName)` | Lists available printers, queries the OS default printer name, or prints the filled report to `printerName`.<br>利用可能なプリンター一覧・OS 既定プリンター名の取得、および指定プリンターへの印刷を行います。 |
+| `jasper.html(path)`, `jasper.xml(path)`, `jasper.xlsx(path)`, `jasper.csv(path)`, `jasper.docx(path)`, `jasper.text(path)`, `jasper.pdf(path)` | Exports the filled report under the page's `web` folder. `html`/`xml`/`xlsx`/`csv`/`docx`/`text` work out of the box; `pdf` requires `net.sf.jasperreports:jasperreports-pdf`.<br>ページの `web` フォルダー配下へ各形式（`html`/`xml`/`xlsx`/`csv`/`docx`/`text` は既定対応、`pdf` は `jasperreports-pdf` 別途必要）で帳票を出力します。 |
 
 ---
 

@@ -69,4 +69,15 @@ public class CapAiSystemEnumsTest {
             assertTrue(!other.isEmpty(), "no message in the other language for " + value.name());
         }
     }
+
+    @Test
+    @DisplayName("an out-of-range language index is ignored")
+    public void testOutOfRangeLanguageIsIgnored() {
+        CapAiSystemEnums.SET_ADDRESS.setLang(0);
+        CapAiSystemEnums.SET_ADDRESS.setLang(-1);
+        assertEquals("Please set the address", CapAiSystemEnums.SET_ADDRESS.toString());
+
+        CapAiSystemEnums.SET_ADDRESS.setLang(99);
+        assertEquals("Please set the address", CapAiSystemEnums.SET_ADDRESS.toString());
+    }
 }

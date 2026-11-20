@@ -41,4 +41,13 @@ public class JsonTest {
 
         assertEquals("{\"args\":[\"a message of the page with a \\\" and a\\nnewline\"]}", message);
     }
+
+    @Test
+    public void negativeNumbersAndUnicodeEscapesAndFieldNamesRoundTrip() {
+        assertEquals(-42L, Json.fieldNumber("{\"v\":-42}", "v"));
+        assertEquals(-1L, Json.fieldNumber("{\"v\": -1}", "v"));
+        assertEquals(0L, Json.fieldNumber("{\"v\":0}", "v"));
+        assertEquals("a\u0007b\u2028c", Json.fieldText("{\"v\":" + Json.string("a\u0007b\u2028c") + "}", "v"));
+        assertEquals("\"k\\\"n\":-7", Json.field("k\"n", -7));
+    }
 }

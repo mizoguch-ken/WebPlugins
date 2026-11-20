@@ -4,6 +4,11 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import java.io.IOException;
+import java.nio.charset.Charset;
+import java.nio.charset.IllegalCharsetNameException;
+import java.nio.charset.StandardCharsets;
+import java.nio.charset.UnsupportedCharsetException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -27,6 +32,7 @@ import javafx.scene.image.Image;
 import javafx.scene.image.ImageView;
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
+import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
 import javafx.stage.Stage;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
@@ -67,6 +73,9 @@ public class Printer extends PluginSupport {
     private static final String TEXT = "text";
     private static final String IMAGE = "image";
     private static final String DIALOG = "dialog";
+    private static final String WEB_PAGE = "webpage";
+    private static final String PAGE_SETUP = "pageSetup";
+    private static final int TEXT_FILE_MAX_BYTES = 4 * 1024 * 1024;
 
     /**
      * the copies the plug-in reads when the printer of the page answers no maximum
@@ -77,6 +86,8 @@ public class Printer extends PluginSupport {
      * the size of the characters of a text of the page, as a paper reads them
      */
     private static final double FONT_SIZE = 11d;
+    private static final double FONT_SIZE_MAX = 144d;
+    private static final int LINE_WIDTH_MAX = 1000;
 
     /**
      * the widest margin the page gives, in millimeters
@@ -108,6 +119,9 @@ public class Printer extends PluginSupport {
     private PrintColor color_;
     private Integer copies_;
     private PageRange range_;
+    private String jobName_;
+    private double fontSize_;
+    private int lineWidth_;
 
     /**
      * the margins the page gave, in points : the left one, the right one, the top one and the
@@ -115,6 +129,7 @@ public class Printer extends PluginSupport {
      */
     private double[] margins_;
 
+    private final Object workLock_ = new Object();
     private volatile boolean working_;
     private volatile String work_;
     private volatile String result_;
@@ -129,6 +144,9 @@ public class Printer extends PluginSupport {
      */
     public Printer() {
         done_ = new ScriptNotifier(this, "Notification of the end of a print is dropped");
+        jobName_ = FUNCTION_NAME;
+        fontSize_ = FONT_SIZE;
+        lineWidth_ = PrintPages.LINE_CHARACTERS;
     }
 
     /**
@@ -327,7 +345,7 @@ public class Printer extends PluginSupport {
             write(FUNCTION_NAME, "Incorrect sides [" + name + "]", true);
             return false;
         }
-        Set<PrintSides> supported = supportedSides();
+        Set<PrintSides> supported = availableSides();
 
         if ((supported != null) && !supported.contains(read)) {
             write(FUNCTION_NAME, "The printer prints on no such side [" + name + "]", true);
@@ -363,7 +381,7 @@ public class Printer extends PluginSupport {
             return true;
         }
         PrintColor read = color.booleanValue() ? PrintColor.COLOR : PrintColor.MONOCHROME;
-        Set<PrintColor> supported = supportedColors();
+        Set<PrintColor> supported = availableColors();
 
         if ((supported != null) && !supported.contains(read)) {
             write(FUNCTION_NAME, "The printer prints with no such color [" + color + "]", true);
@@ -371,6 +389,60 @@ public class Printer extends PluginSupport {
         }
         color_ = read;
         return true;
+    }
+
+    /**
+     *
+     * @return supported print sides as JSON array
+     */
+    public String supportedSides() {
+        JsonArray names = new JsonArray();
+        Set<PrintSides> supported = availableSides();
+
+        if (supported != null) {
+            for (PrintSides side : supported) {
+                names.add(nameOf(side));
+            }
+        }
+        return gson_.toJson(names);
+    }
+
+    /**
+     *
+     * @return supported print color modes as JSON array
+     */
+    public String supportedColors() {
+        JsonArray names = new JsonArray();
+        Set<PrintColor> supported = availableColors();
+
+        if (supported != null) {
+            for (PrintColor color : supported) {
+                names.add(nameOf(color));
+            }
+        }
+        return gson_.toJson(names);
+    }
+
+    /**
+     *
+     * @return maximum copy count supported by chosen printer, or null if no printer
+     */
+    public Integer maxCopies() {
+        PrinterAttributes attributes = attributes();
+        if (attributes == null) {
+            return null;
+        }
+        int max = attributes.getMaxCopies();
+        return (max > 0) ? max : COPIES_MAX;
+    }
+
+    /**
+     *
+     * @return true when chosen printer supports page ranges
+     */
+    public Boolean supportsPageRanges() {
+        PrinterAttributes attributes = attributes();
+        return (attributes != null) && attributes.supportsPageRanges();
     }
 
     /**
@@ -404,6 +476,26 @@ public class Printer extends PluginSupport {
     }
 
     /**
+     *
+     * @return configured margins in millimeters as JSON object, or null when unset
+     */
+    public String margin() {
+        if (margins_ == null) {
+            return null;
+        }
+        return gson_.toJson(marginJson());
+    }
+
+    private JsonObject marginJson() {
+        JsonObject margin = new JsonObject();
+        margin.addProperty("top", rounded(toMillimeters(margins_[2])));
+        margin.addProperty("right", rounded(toMillimeters(margins_[1])));
+        margin.addProperty("bottom", rounded(toMillimeters(margins_[3])));
+        margin.addProperty("left", rounded(toMillimeters(margins_[0])));
+        return margin;
+    }
+
+    /**
      * the room left between the paper and what the plug-in prints, in millimeters : the four
      * margins of the paper, null for a margin of one of them when the page leaves that margin to
      * the printer
@@ -423,7 +515,7 @@ public class Printer extends PluginSupport {
             left.doubleValue()};
 
         for (double margin : millimeters) {
-            if ((margin < 0d) || (margin > MARGIN_MM_MAX)) {
+            if (!Double.isFinite(margin) || (margin < 0d) || (margin > MARGIN_MM_MAX)) {
                 write(FUNCTION_NAME, "Incorrect margin [" + margin + "]", true);
                 return false;
             }
@@ -431,6 +523,14 @@ public class Printer extends PluginSupport {
         margins_ = new double[]{toPoints(left.doubleValue()), toPoints(right.doubleValue()),
             toPoints(top.doubleValue()), toPoints(bottom.doubleValue())};
         return true;
+    }
+
+    /**
+     *
+     * @return configured page range as "first-last", or null when unset
+     */
+    public String pageRange() {
+        return (range_ == null) ? null : rangeText();
     }
 
     /**
@@ -461,6 +561,113 @@ public class Printer extends PluginSupport {
     }
 
     /**
+     *
+     * @return configured spooler job name
+     */
+    public String jobName() {
+        return jobName_;
+    }
+
+    /**
+     *
+     * @param name spooler job name (null resets to default "printer")
+     * @return true when valid, false when empty/blank
+     */
+    public Boolean setJobName(String name) {
+        if (name == null) {
+            jobName_ = FUNCTION_NAME;
+            return true;
+        }
+        String trimmed = name.trim();
+        if (trimmed.isEmpty()) {
+            write(FUNCTION_NAME, "Incorrect job name", true);
+            return false;
+        }
+        jobName_ = trimmed;
+        return true;
+    }
+
+    /**
+     *
+     * @return text print font size in points
+     */
+    public Double fontSize() {
+        return fontSize_;
+    }
+
+    /**
+     *
+     * @param points font size in points (null resets to default 11pt)
+     * @return true when valid
+     */
+    public Boolean setFontSize(Double points) {
+        if (points == null) {
+            fontSize_ = FONT_SIZE;
+            return true;
+        }
+        double value = points.doubleValue();
+        if (!Double.isFinite(value) || (value <= 0d) || (value > FONT_SIZE_MAX)) {
+            write(FUNCTION_NAME, "Incorrect font size [" + points + "]", true);
+            return false;
+        }
+        fontSize_ = value;
+        return true;
+    }
+
+    /**
+     *
+     * @return max characters per line for text printing
+     */
+    public Integer lineWidth() {
+        return lineWidth_;
+    }
+
+    /**
+     *
+     * @param chars characters per line (null resets to default 96)
+     * @return true when valid
+     */
+    public Boolean setLineWidth(Integer chars) {
+        if (chars == null) {
+            lineWidth_ = PrintPages.LINE_CHARACTERS;
+            return true;
+        }
+        int value = chars.intValue();
+        if ((value <= 0) || (value > LINE_WIDTH_MAX)) {
+            write(FUNCTION_NAME, "Incorrect line width [" + chars + "]", true);
+            return false;
+        }
+        lineWidth_ = value;
+        return true;
+    }
+
+    /**
+     * reset all sticky print preferences back to defaults
+     *
+     * @return true when reset, false if a print job is currently active
+     */
+    public Boolean reset() {
+        synchronized (workLock_) {
+            if (working_) {
+                write(FUNCTION_NAME, "The plug-in prints already", true);
+                return false;
+            }
+            printerName_ = null;
+            paperName_ = null;
+            orientation_ = null;
+            sides_ = null;
+            color_ = null;
+            copies_ = null;
+            range_ = null;
+            margins_ = null;
+            jobName_ = FUNCTION_NAME;
+            fontSize_ = FONT_SIZE;
+            lineWidth_ = PrintPages.LINE_CHARACTERS;
+            return true;
+        }
+    }
+
+    /**
      * what the plug-in holds : the state of the work and the choices of the page for the next print,
      * so a page which reads no notification still knows where it prints
      *
@@ -470,8 +677,9 @@ public class Printer extends PluginSupport {
         JsonObject info = new JsonObject();
         javafx.print.Printer printer = chosenPrinter();
         PageLayout layout = (printer == null) ? null : layout(printer);
+        String work = work_;
 
-        info.addProperty("work", working_ ? work_ : "idle");
+        info.addProperty("work", (working_ && (work != null)) ? work : "idle");
         info.addProperty("printer", (printer == null) ? null : printer.getName());
         info.addProperty("chosen", printerName_);
         info.addProperty("paper", paper());
@@ -480,6 +688,9 @@ public class Printer extends PluginSupport {
         info.addProperty("color", color());
         info.addProperty("copies", copies());
         info.addProperty("pageRange", (range_ == null) ? null : rangeText());
+        info.addProperty("jobName", jobName_);
+        info.addProperty("fontSize", fontSize_);
+        info.addProperty("lineWidth", lineWidth_);
 
         if (layout != null) {
             info.addProperty("printableWidth", rounded(toMillimeters(layout.getPrintableWidth())));
@@ -488,17 +699,7 @@ public class Printer extends PluginSupport {
             info.addProperty("printableWidth", 0d);
             info.addProperty("printableHeight", 0d);
         }
-        if (margins_ != null) {
-            JsonObject margin = new JsonObject();
-
-            margin.addProperty("top", rounded(toMillimeters(margins_[2])));
-            margin.addProperty("right", rounded(toMillimeters(margins_[1])));
-            margin.addProperty("bottom", rounded(toMillimeters(margins_[3])));
-            margin.addProperty("left", rounded(toMillimeters(margins_[0])));
-            info.add("margin", margin);
-        } else {
-            info.add("margin", null);
-        }
+        info.add("margin", (margins_ == null) ? null : marginJson());
         return gson_.toJson(info);
     }
 
@@ -570,7 +771,7 @@ public class Printer extends PluginSupport {
             write(FUNCTION_NAME, "Incorrect file path [" + path + "]", true);
             return false;
         }
-        if (!Files.isReadable(file)) {
+        if (!Files.isRegularFile(file) || !Files.isReadable(file)) {
             write(FUNCTION_NAME, "File not found [" + path + "]", true);
             return false;
         }
@@ -603,9 +804,15 @@ public class Printer extends PluginSupport {
             write(FUNCTION_NAME, "The window of the page holds no content to print", true);
             return false;
         }
-        working_ = true;
-        work_ = DIALOG;
-        result_ = null;
+        synchronized (workLock_) {
+            if (working_) {
+                write(FUNCTION_NAME, "The plug-in prints already", true);
+                return false;
+            }
+            working_ = true;
+            work_ = DIALOG;
+            result_ = null;
+        }
         Platform.runLater(() -> printWithDialog(stage));
         return true;
     }
@@ -624,6 +831,87 @@ public class Printer extends PluginSupport {
             return false;
         }
         job.cancelJob();
+        return true;
+    }
+
+    /**
+     * a text file of the page directory on paper, sanitized via SandboxPath and capped in size
+     *
+     * @param path file path
+     * @param charset charset name, or null for UTF-8
+     * @return false when invalid path, unreadable, oversized, bad charset, or print start fails
+     */
+    public Boolean printTextFile(String path, String charset) {
+        Path file = SandboxPath.resolve(webPath_, webPath_, path);
+        if (file == null) {
+            write(FUNCTION_NAME, "Incorrect file path [" + path + "]", true);
+            return false;
+        }
+        if (!Files.isRegularFile(file) || !Files.isReadable(file)) {
+            write(FUNCTION_NAME, "File not found [" + path + "]", true);
+            return false;
+        }
+        Charset resolvedCharset;
+        if (charset == null) {
+            resolvedCharset = StandardCharsets.UTF_8;
+        } else {
+            try {
+                resolvedCharset = Charset.forName(charset);
+            } catch (IllegalCharsetNameException | UnsupportedCharsetException ex) {
+                write(FUNCTION_NAME, "Incorrect charset [" + charset + "]", true);
+                return false;
+            }
+        }
+        try {
+            if (Files.size(file) > TEXT_FILE_MAX_BYTES) {
+                write(FUNCTION_NAME, "Text is too long [" + path + "]", true);
+                return false;
+            }
+            return printText(Files.readString(file, resolvedCharset));
+        } catch (IOException ex) {
+            writeStackTrace(FUNCTION_NAME, ex);
+            return false;
+        }
+    }
+
+    /**
+     * print full multi-page HTML document using WebEngine.print(PrinterJob)
+     *
+     * @return false when no window, no web engine, no printer, or another print is running
+     */
+    public Boolean printWebPage() {
+        return start(WEB_PAGE, null, null);
+    }
+
+    /**
+     * show OS page setup dialog and sync selected paper, orientation, and margins back
+     *
+     * @return false when no window, no printer, or another job is running
+     */
+    public Boolean pageSetupDialog() {
+        if (working_) {
+            write(FUNCTION_NAME, "The plug-in prints already", true);
+            return false;
+        }
+        Stage stage = stage();
+        if (stage == null) {
+            write(FUNCTION_NAME, "The plug-in holds no window of the page", true);
+            return false;
+        }
+        if (chosenPrinter() == null) {
+            write(FUNCTION_NAME, "Printer not found", true);
+            return false;
+        }
+        synchronized (workLock_) {
+            if (working_) {
+                write(FUNCTION_NAME, "The plug-in prints already", true);
+                return false;
+            }
+            working_ = true;
+            work_ = PAGE_SETUP;
+            result_ = null;
+        }
+        Platform.runLater(() -> setupWithDialog(stage));
         return true;
     }
 
@@ -649,13 +937,20 @@ public class Printer extends PluginSupport {
             write(FUNCTION_NAME, "Printer not found", true);
             return false;
         }
-        if (PAGE.equals(kind) && (pageNode() == null)) {
+        if ((PAGE.equals(kind) && (pageNode() == null))
+                || (WEB_PAGE.equals(kind) && (webEngine() == null))) {
             write(FUNCTION_NAME, "The window of the page holds no content to print", true);
             return false;
         }
-        working_ = true;
-        work_ = kind;
-        result_ = null;
+        synchronized (workLock_) {
+            if (working_) {
+                write(FUNCTION_NAME, "The plug-in prints already", true);
+                return false;
+            }
+            working_ = true;
+            work_ = kind;
+            result_ = null;
+        }
         // the paper is written in a thread of the page : the printers of javafx are read outside of
         // the moments where the page is laid out, and the page keeps working while it prints
         Platform.runLater(() -> printWork(kind, text, file));
@@ -709,9 +1004,11 @@ public class Printer extends PluginSupport {
             writeStackTrace(FUNCTION_NAME, ex);
             failed(kind, (ex.getMessage() == null) ? ex.getClass().getSimpleName() : ex.getMessage());
         } finally {
-            job_ = null;
-            working_ = false;
-            work_ = null;
+            synchronized (workLock_) {
+                job_ = null;
+                working_ = false;
+                work_ = null;
+            }
         }
     }
 
@@ -735,12 +1032,80 @@ public class Printer extends PluginSupport {
 
                 return ((node != null) && job.printPage(node)) ? 1 : 0;
             }
+            case WEB_PAGE: {
+                WebEngine engine = webEngine();
+                if (engine == null) {
+                    return 0;
+                }
+                engine.print(job);
+                return 1;
+            }
             case TEXT:
                 return printTextPages(job, page, text);
             case IMAGE:
                 return printImagePages(job, page, file);
             default:
                 return 0;
+        }
+    }
+
+    /**
+     * show OS page setup dialog and update paper, orientation, and margins on confirmation
+     *
+     * @param stage owner window
+     */
+    private void setupWithDialog(Stage stage) {
+        PrinterJob job = null;
+
+        try {
+            javafx.print.Printer printer = chosenPrinter();
+            if (printer == null) {
+                failed(PAGE_SETUP, "Printer not found");
+                return;
+            }
+            job = PrinterJob.createPrinterJob(printer);
+            if (job == null) {
+                failed(PAGE_SETUP, "The printer refuses the job");
+                return;
+            }
+            job_ = job;
+            apply(job, printer);
+            if (!job.showPageSetupDialog(stage)) {
+                job.cancelJob();
+                ended(PAGE_SETUP, 0, "canceled");
+                return;
+            }
+            PageLayout updated = job.getJobSettings().getPageLayout();
+            if (updated != null) {
+                if (updated.getPaper() != null) {
+                    paperName_ = updated.getPaper().getName();
+                }
+                orientation_ = updated.getPageOrientation();
+                margins_ = new double[]{
+                    updated.getLeftMargin(),
+                    updated.getRightMargin(),
+                    updated.getTopMargin(),
+                    updated.getBottomMargin()
+                };
+            }
+            job.cancelJob();
+            ended(PAGE_SETUP, 0, "done");
+        } catch (RuntimeException ex) {
+            if (job != null) {
+                try {
+                    job.cancelJob();
+                } catch (RuntimeException ignore) {
+                    // ignore cleanup failure
+                }
+            }
+            writeStackTrace(FUNCTION_NAME, ex);
+            failed(PAGE_SETUP, (ex.getMessage() == null) ? ex.getClass().getSimpleName() : ex.getMessage());
+        } finally {
+            synchronized (workLock_) {
+                job_ = null;
+                working_ = false;
+                work_ = null;
+            }
         }
     }
 
@@ -754,7 +1119,13 @@ public class Printer extends PluginSupport {
         PrinterJob job = null;
 
         try {
-            job = PrinterJob.createPrinterJob(chosenPrinter());
+            javafx.print.Printer printer = chosenPrinter();
+
+            if (printer == null) {
+                failed(DIALOG, "Printer not found");
+                return;
+            }
+            job = PrinterJob.createPrinterJob(printer);
             if (job == null) {
                 failed(DIALOG, "The printer refuses the job");
                 return;
@@ -788,9 +1159,11 @@ public class Printer extends PluginSupport {
             writeStackTrace(FUNCTION_NAME, ex);
             failed(DIALOG, (ex.getMessage() == null) ? ex.getClass().getSimpleName() : ex.getMessage());
         } finally {
-            job_ = null;
-            working_ = false;
-            work_ = null;
+            synchronized (workLock_) {
+                job_ = null;
+                working_ = false;
+                work_ = null;
+            }
         }
     }
 
@@ -804,7 +1177,7 @@ public class Printer extends PluginSupport {
     private void apply(PrinterJob job, javafx.print.Printer printer) {
         JobSettings settings = job.getJobSettings();
 
-        settings.setJobName(FUNCTION_NAME);
+        settings.setJobName((jobName_ == null) ? FUNCTION_NAME : jobName_);
         if (copies_ != null) {
             settings.setCopies(copies_.intValue());
         }
@@ -856,9 +1229,9 @@ public class Printer extends PluginSupport {
      * @return the pages written to the printer
      */
     private int printTextPages(PrinterJob job, PageLayout page, String text) {
-        List<String> lines = PrintPages.read(text, PrintPages.LINE_CHARACTERS);
-        int linesPerPage = PrintPages.linesPerPage(page.getPrintableHeight(), FONT_SIZE);
-        Font font = Font.font(FONT_SIZE);
+        List<String> lines = PrintPages.read(text, lineWidth_);
+        int linesPerPage = PrintPages.linesPerPage(page.getPrintableHeight(), fontSize_);
+        Font font = Font.font(fontSize_);
         int printed = 0;
 
         for (List<String> part : PrintPages.pages(lines, linesPerPage)) {
@@ -870,7 +1243,7 @@ public class Printer extends PluginSupport {
             node.setFont(font);
             // the line of the characters of javafx is their bottom : the first line of a page has to
             // leave the room above it inside the page
-            node.setY(PrintPages.baseline(FONT_SIZE));
+            node.setY(PrintPages.baseline(fontSize_));
             if (!job.printPage(page, node)) {
                 break;
             }
@@ -1012,7 +1385,7 @@ public class Printer extends PluginSupport {
      *
      * @return the sides of the printer, null when the plug-in holds no printer
      */
-    private Set<PrintSides> supportedSides() {
+    private Set<PrintSides> availableSides() {
         PrinterAttributes attributes = attributes();
 
         return (attributes == null) ? null : attributes.getSupportedPrintSides();
@@ -1023,7 +1396,7 @@ public class Printer extends PluginSupport {
      *
      * @return the colors of the printer, null when the plug-in holds no printer
      */
-    private Set<PrintColor> supportedColors() {
+    private Set<PrintColor> availableColors() {
         PrinterAttributes attributes = attributes();
 
         return (attributes == null) ? null : attributes.getSupportedPrintColors();

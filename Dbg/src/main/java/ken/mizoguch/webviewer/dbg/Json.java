@@ -86,7 +86,7 @@ final class Json {
      * @return the field, as a value of json
      */
     static String field(String name, String value) {
-        return "\"" + name + "\":" + string(value);
+        return string(name) + ":" + string(value);
     }
 
     /**
@@ -97,7 +97,7 @@ final class Json {
      * @return the field, as a value of json
      */
     static String field(String name, long value) {
-        return "\"" + name + "\":" + value;
+        return string(name) + ":" + value;
     }
 
     /**
@@ -108,7 +108,7 @@ final class Json {
      * @return the field, as a value of json
      */
     static String field(String name, boolean value) {
-        return "\"" + name + "\":" + value;
+        return string(name) + ":" + value;
     }
 
     /**
@@ -171,6 +171,15 @@ final class Json {
                     text.append('\b');
                 } else if (next == 'f') {
                     text.append('\f');
+                } else if ((next == 'u') && (index + 5 < size)) {
+                    String hex = json.substring(index + 2, index + 6);
+                    try {
+                        text.append((char) Integer.parseInt(hex, 16));
+                        index = index + 6;
+                        continue;
+                    } catch (NumberFormatException ex) {
+                        text.append('u');
+                    }
                 } else {
                     text.append(next);
                 }
@@ -196,22 +205,23 @@ final class Json {
         if (at < 0) {
             return null;
         }
+        int numStart = at;
         int index = at;
 
         if ((json.charAt(index) == '-') || (json.charAt(index) == '+')) {
             index++;
         }
-        int start = index;
+        int digitsStart = index;
         int size = json.length();
 
         while ((index < size) && (json.charAt(index) >= '0') && (json.charAt(index) <= '9')) {
             index++;
         }
-        if (index == start) {
+        if (index == digitsStart) {
             return null;
         }
         try {
-            return Long.valueOf(json.substring(start, index));
+            return Long.valueOf(json.substring(numStart, index));
         } catch (NumberFormatException ex) {
             // a number longer than the numbers of java is not read
             return null;

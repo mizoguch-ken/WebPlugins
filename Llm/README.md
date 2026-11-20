@@ -26,7 +26,15 @@ Boolean llm.unloadModel()
 String  llm.modelInfo()
 Boolean llm.isIdle()
 Boolean llm.stop()
+String  llm.tokenize(String text)
+String  llm.detokenize(String tokensJson)
+Integer llm.tokenCount(String text)
+Boolean llm.setWeightDecay(Double weightDecay)
+Boolean llm.setLargestGradient(Double largestGradient)
 Boolean llm.train(String texts, Integer epochs, Double learningRate)
+Boolean llm.trainFile(String path, Integer epochs, Double learningRate)
+Boolean llm.evaluate(String texts)
+Boolean llm.evaluateFile(String path)
 Boolean llm.answer(String prompt, Integer maxTokens, Double temperature, Integer topCount, Double topSum, Long seed)
 String  llm.result()
 ```
@@ -36,6 +44,7 @@ String  llm.result()
 ```text
 String  llm.setRemote(String config)
 String  llm.remoteInfo()
+Boolean llm.clearRemote()
 Boolean llm.chat(String request)
 Boolean llm.completions(String request)
 Boolean llm.response(String request)
@@ -57,11 +66,17 @@ void    llm.setNotifyLog(String func)
 
 ## Local Model Details / ローカルモデルの仕様
 
-* **`llm.newModel(config)`**: Accepts a JSON object configuring model hyperparameters (`"vocab"` as `"byte"` or `"char"`, `"vocabSize"`, `"dModel"`, `"heads"`, `"layers"`, `"context"`, `"seed"`), or `null` / `{}` for defaults.
+* **`llm.newModel(config)`**: Accepts a JSON object configuring model hyperparameters (`"vocab"` as `"byte"` or `"char"`, `"vocabSize"`, `"dModel"`, `"heads"`, `"layers"`, `"context"`, `"seed"`), or `null` / `{}` for defaults. `modelInfo()` also returns `"learningRate"`, `"weightDecay"`, `"largestGradient"`, and `"evaluating"` state.
   * Bounds: `dModel` (`16..512`), `context` (`16..512`), `heads` (`1..16`), `layers` (`1..16`), `vocabSize` (`8..20000`), and maximum total parameters `24,000,000`.
-  * `newModel(config)` はモデルのサイズ設定 JSON（`"vocab"`: `"byte"` または `"char"`、`"vocabSize"`、`"dModel"`、`"heads"`、`"layers"`、`"context"`、`"seed"`）を受け取ります。上限は `dModel` / `context` が `16〜512`、`heads` / `layers` が `1〜16`、`vocabSize` が `8〜20000`、総重み数が最大 `24,000,000` です。
-* **`llm.train(texts, epochs, learningRate)`**: Trains the local model asynchronously on a single text string or a JSON array of strings (`epochs` up to `100,000`). Calls `setNotifyProgress` after each epoch and `setNotifyDone` when finished.
-  * 1 つの文字列または文字列の JSON 配列を読み込んで非同期で学習を開始します。各エポック終了時に `setNotifyProgress`、完了時に `setNotifyDone` が呼ばれます。
+  * `newModel(config)` はモデルのサイズ設定 JSON（`"vocab"`: `"byte"` または `"char"`、`"vocabSize"`、`"dModel"`、`"heads"`、`"layers"`、`"context"`、`"seed"`）を受け取ります。`modelInfo()` には最適化設定や `"evaluating"` 状態も含まれます。
+* **`llm.tokenize(text)` / `llm.detokenize(tokensJson)` / `llm.tokenCount(text)`**: Encodes text to a JSON array of token IDs, decodes token IDs back to text, or counts tokens using the loaded model's tokenizer.
+  * 読み込み済みモデルのトークナイザーでトークン ID 列の JSON 変換・逆変換・トークン数計測を行います。
+* **`llm.setWeightDecay(weightDecay)` / `llm.setLargestGradient(largestGradient)`**: Tunes AdamW weight decay (`0..0.5`) and gradient clipping threshold (`>= 0`) on the loaded model.
+  * AdamW の Weight Decay（`0..0.5`）および勾配クリッピング閾値（`>= 0`）を設定します。
+* **`llm.train(texts, epochs, learningRate)` / `llm.trainFile(path, epochs, learningRate)`**: Trains the local model asynchronously on a text string, JSON array of strings, or sandboxed UTF-8 corpus file (`<= 16 MB`). Calls `setNotifyProgress` after each epoch and `setNotifyDone` when finished.
+  * 文字列・文字列配列 JSON・またはサンドボックス内の UTF-8 ファイル（最大 `16 MB`）から非同期学習を行います。
+* **`llm.evaluate(texts)` / `llm.evaluateFile(path)`**: Evaluates cross-entropy loss and perplexity asynchronously over texts or a sandboxed UTF-8 file (`<= 16 MB`) without modifying weights or `CharTokenizer` vocabulary, reporting `"evaluate"` JSON (`loss`, `perplexity`, `tokens`, `windows`, `seconds`) to `setNotifyDone` and `result()`.
+  * 重みや語彙を変更せずに検証テキスト・ファイルの評価（損失・パープレキシティ計測）を非同期で実行します。
 * **`llm.answer(prompt, maxTokens, temperature, topCount, topSum, seed)`**: Generates up to `maxTokens` (`1..4096`) tokens from `prompt`, streaming each token piece to `setNotifyToken` and the final JSON summary to `setNotifyDone` / `llm.result()`.
   * `prompt` に続くトークンを最大 `4096` トークンまで生成し、生成された断片ごとに `setNotifyToken` を呼び出します。
 * **`llm.saveModel(path)` / `llm.loadModel(path)`**: Saves or loads the model's configuration, tokenizer vocabulary, and weights to/from a file sandboxed under the page's `web` folder (`SandboxPath`).
@@ -73,22 +88,22 @@ void    llm.setNotifyLog(String func)
 
 ## Remote Model Details / リモートモデルの仕様
 
-* **`llm.setRemote(config)`**: Accepts either a base URL string or a JSON configuration object:
+* **`llm.setRemote(config)` / `llm.clearRemote()`**: `setRemote(config)` (guarded while another task is running) accepts either a base URL string or a JSON configuration object, and `clearRemote()` clears the stored remote endpoint and credentials when idle:
   * `"baseUrl"`: Endpoint base URL (e.g. `"http://127.0.0.1:1234/v1"`).
   * `"apiKey"` / `"apiKeyEnv"`: Direct API key or the name of an OS environment variable holding the API key (recommended so secrets are never stored in page JavaScript). `llm.remoteInfo()` only reports whether a key is configured (`hasApiKey`), never the key itself.
   * `"model"`: Default model identifier.
   * `"timeout"`: Request timeout in seconds (default `120`, max `3600`).
   * `"retries"`: Automatic retry count on HTTP `429` or `5xx` server errors (default `2`, max `5`), respecting the server's `Retry-After` header.
   * `"headers"`: Optional custom HTTP headers object.
-  * `setRemote(config)` は JSON オブジェクト（`"baseUrl"`, `"apiKey"`, `"apiKeyEnv"`, `"model"`, `"timeout"`, `"retries"`, `"headers"`）またはベース URL 文字列を受け取ります。`"apiKeyEnv"` を使うことで API キーをページの JavaScript に書かずに環境変数から読み込めます。また `llm.remoteInfo()` はキーの有無のみを返し、キー文字列自体は公開しません。
+  * `setRemote(config)` は実行中タスクがない場合のみリモート接続設定を行い、`clearRemote()` で設定と認証情報をクリアできます。`"apiKeyEnv"` を使うことで API キーを環境変数から安全に読み込めます。
 * **Endpoints**:
   * `llm.chat(request)` → `POST /chat/completions`
   * `llm.completions(request)` → `POST /completions`
   * `llm.response(request)` → `POST /responses`
   * `llm.embeddings(request)` → `POST /embeddings`
   * `llm.models()` → `GET /models`
-* **Streaming & Tool Calls**: When `"stream": true` is included in the request JSON, incremental text deltas are delivered to `setNotifyToken(func)`, and streamed `tool_calls` chunks are automatically reassembled into complete tool calls in the final JSON stored in `llm.result()`.
-  * リクエスト JSON に `"stream": true` を指定すると、テキストの断片ごとに `setNotifyToken(func)` が呼ばれ、分割受信された `tool_calls` も完了時に 1 つの呼び出し構造へ自動統合されて `llm.result()` に格納されます。
+* **Streaming, Errors & Tool Calls**: When `"stream": true` is included in the request JSON, incremental text deltas are delivered to `setNotifyToken(func)`, streamed `tool_calls` chunks are reassembled in `llm.result()`, and SSE `error` or `response.failed` events fail the request and populate `"error"` in `llm.result()`.
+  * リクエスト JSON に `"stream": true` を指定すると、断片ごとに `setNotifyToken(func)` が呼ばれ、分割 `tool_calls` の結合および SSE `error` / `response.failed` イベントのエラー通知も行われます。
 * **Single Worker**: Local and remote jobs share a single worker lock; starting a new task while another is active logs `"The model is already working"` and returns `false`.
   * ローカルモデルとリモートモデルのジョブは単一のワーカー状態を共有するため、実行中に別のジョブを依頼すると `"The model is already working"` を出力して `false` を返します。
 
@@ -100,7 +115,7 @@ void    llm.setNotifyLog(String func)
   * 学習の各エポック完了時に `func(epoch, epochs, steps, loss, seconds)` を呼び出します。
 * `setNotifyToken(func)` → `func(piece)` for each generated token piece (both local and remote streaming).
   * ローカルモデルまたはリモートストリーミングのトークン生成ごとに `func(piece)` を呼び出します。
-* `setNotifyDone(func)` → `func(kind, result)` when a job finishes (`kind` is `"train"`, `"answer"`, `"chat"`, `"completions"`, `"response"`, `"embeddings"`, or `"models"`; `result` is the JSON result string up to 64 KB, also available via `llm.result()`).
+* `setNotifyDone(func)` → `func(kind, result)` when a job finishes (`kind` is `"train"`, `"evaluate"`, `"answer"`, `"chat"`, `"completions"`, `"response"`, `"embeddings"`, or `"models"`; `result` is the JSON result string up to 64 KB, also available via `llm.result()`).
   * ジョブ完了時に `func(kind, result)` を呼び出します（`result` は最大 64 KB の JSON 文字列で、`llm.result()` でも取得でき、失敗時は `"error"` フィールドを含みます）。
 * `setNotifyLog(func)` → `func(message)` when the plug-in writes a log message.
   * プラグインのログ出力時に `func(message)` を呼び出します。

@@ -48,7 +48,11 @@ public final class ScriptValue {
         }
         int limit = (maxLength < 0) ? MAX_LENGTH : maxLength;
         if (value.length() > limit) {
-            value = value.substring(0, limit);
+            int cut = limit;
+            if ((cut > 0) && Character.isHighSurrogate(value.charAt(cut - 1))) {
+                cut--;
+            }
+            value = value.substring(0, cut);
         }
 
         StringBuilder script = new StringBuilder(value.length() + 16);

@@ -10,7 +10,7 @@ public enum OnlineArtEnums {
     ONLINEART_PORT_USED("The port is already in use", "ポートが既に使用されています"),
     ONLINEART_NOT_SUPPORT("Serial is not supported", "シリアルがサポートされていません");
 
-    private int lang_ = 0;
+    private volatile int lang_ = 0;
     private final String[] text_ = new String[2];
 
     private OnlineArtEnums(final String message) {
@@ -25,7 +25,9 @@ public enum OnlineArtEnums {
     }
 
     public void setLang(int l) {
-        lang_ = l;
+        if ((l >= 0) && (l < text_.length)) {
+            lang_ = l;
+        }
     }
 
     @Override

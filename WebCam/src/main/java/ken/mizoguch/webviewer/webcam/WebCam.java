@@ -3,12 +3,19 @@ package ken.mizoguch.webviewer.webcam;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.google.gson.JsonSyntaxException;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 import javafx.application.Platform;
 import javafx.beans.property.ObjectProperty;
@@ -26,8 +33,11 @@ import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javax.imageio.ImageIO;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
+import ken.mizoguch.webviewer.plugin.kit.ScriptValue;
 import ken.mizoguch.webviewer.plugin.kit.ServiceSupport;
 import netscape.javascript.JSException;
+import org.bytedeco.javacpp.BytePointer;
 import org.bytedeco.javacv.Frame;
 import org.bytedeco.javacv.FrameGrabber;
 import org.bytedeco.javacv.Java2DFrameUtils;
@@ -86,9 +96,13 @@ public class WebCam extends ServiceSupport<Void> {
     private volatile String webcamImageType_;
     private Size webcamImageSize_;
     private volatile int webcamImageColor_;
+    private volatile String webcamImageColorName_;
+    private volatile double frameRate_;
     private volatile String resultImage_;
+    private volatile String resultImageBase64_;
     private volatile String resultBlob_;
     private volatile BlobInfo blobInfo_;
+    private final AtomicReference<CompletableFuture<String>> snapshotRequest_ = new AtomicReference<>();
 
     private volatile boolean isPlay_;
 
@@ -130,12 +144,15 @@ public class WebCam extends ServiceSupport<Void> {
         webcamImageView_.imageProperty().bind(imageProperty_);
         webcamImageSize_ = null;
         webcamImageColor_ = -1;
+        webcamImageColorName_ = null;
+        frameRate_ = 0.0;
         webcamImageType_ = "bmp";
 
         blobInfo_ = null;
         funcResultImage_ = null;
         funcResultBlob_ = null;
         resultImage_ = null;
+        resultImageBase64_ = null;
         resultBlob_ = null;
 
         isPlay_ = false;
@@ -174,80 +191,99 @@ public class WebCam extends ServiceSupport<Void> {
             return;
         }
 
-        JsonObject info = gson_.fromJson(blobInfo, JsonObject.class);
-        if (info == null) {
-            return;
-        }
-        if (info.has("scalefactor")) {
-            blobInfo_.scalefactor = info.getAsJsonPrimitive("scalefactor").getAsDouble();
-        }
+        try {
+            JsonObject info = gson_.fromJson(blobInfo, JsonObject.class);
+            if (info == null) {
+                return;
+            }
+            BlobInfo prev = blobInfo_;
+            BlobInfo next = new BlobInfo();
+            next.scalefactor = prev.scalefactor;
+            next.size = (prev.size == null) ? null : new Size(prev.size.width(), prev.size.height());
+            next.mean = prev.mean;
+            next.swapRB = prev.swapRB;
+            next.crop = prev.crop;
+            next.ddepth = prev.ddepth;
 
-        if (info.has("size")) {
-            JsonObject size = info.getAsJsonObject("size");
+            if (info.has("scalefactor")) {
+                next.scalefactor = info.getAsJsonPrimitive("scalefactor").getAsDouble();
+            }
 
-            if ((size.has("width")) && size.has("height")) {
-                if (blobInfo_.size == null) {
-                    blobInfo_.size = new Size();
+            if (info.has("size")) {
+                JsonObject size = info.getAsJsonObject("size");
+
+                if ((size.has("width")) && size.has("height")) {
+                    int width = size.getAsJsonPrimitive("width").getAsInt();
+                    int height = size.getAsJsonPrimitive("height").getAsInt();
+                    if ((width < 0) || (height < 0)) {
+                        throw new IllegalArgumentException("Incorrect blob size [" + width + "x" + height + "]");
+                    }
+                    next.size = new Size(width, height);
                 }
-
-                blobInfo_.size.width(size.getAsJsonPrimitive("width").getAsInt());
-                blobInfo_.size.height(size.getAsJsonPrimitive("height").getAsInt());
             }
-        }
 
-        if (info.has("mean")) {
-            JsonArray mean = info.getAsJsonArray("mean");
-            switch (mean.size()) {
-                case 1:
-                    blobInfo_.mean = new Scalar(mean.get(0).getAsDouble());
-                    break;
-                case 2:
-                    blobInfo_.mean = new Scalar(mean.get(0).getAsDouble(), mean.get(1).getAsDouble());
-                    break;
-                case 4:
-                    blobInfo_.mean = new Scalar(mean.get(0).getAsDouble(), mean.get(1).getAsDouble(),
-                            mean.get(2).getAsDouble(), mean.get(3).getAsDouble());
-                    break;
-                default:
-                    break;
+            if (info.has("mean")) {
+                JsonArray mean = info.getAsJsonArray("mean");
+                switch (mean.size()) {
+                    case 1:
+                        next.mean = new Scalar(mean.get(0).getAsDouble());
+                        break;
+                    case 2:
+                        next.mean = new Scalar(mean.get(0).getAsDouble(), mean.get(1).getAsDouble());
+                        break;
+                    case 3:
+                        next.mean = new Scalar(mean.get(0).getAsDouble(), mean.get(1).getAsDouble(),
+                                mean.get(2).getAsDouble(), 0);
+                        break;
+                    case 4:
+                        next.mean = new Scalar(mean.get(0).getAsDouble(), mean.get(1).getAsDouble(),
+                                mean.get(2).getAsDouble(), mean.get(3).getAsDouble());
+                        break;
+                    default:
+                        break;
+                }
             }
-        }
 
-        if (info.has("swapRB")) {
-            blobInfo_.swapRB = info.getAsJsonPrimitive("swapRB").getAsBoolean();
-        }
-
-        if (info.has("crop")) {
-            blobInfo_.crop = info.getAsJsonPrimitive("crop").getAsBoolean();
-        }
-
-        if (info.has("ddepth")) {
-            switch (info.getAsJsonPrimitive("ddepth").getAsString()) {
-                case "CV_8U":
-                    blobInfo_.ddepth = opencv_core.CV_8U;
-                    break;
-                case "CV_8S":
-                    blobInfo_.ddepth = opencv_core.CV_8S;
-                    break;
-                case "CV_16U":
-                    blobInfo_.ddepth = opencv_core.CV_16U;
-                    break;
-                case "CV_16S":
-                    blobInfo_.ddepth = opencv_core.CV_16S;
-                    break;
-                case "CV_32S":
-                    blobInfo_.ddepth = opencv_core.CV_32S;
-                    break;
-                case "CV_32F":
-                    blobInfo_.ddepth = opencv_core.CV_32F;
-                    break;
-                case "CV_64F":
-                    blobInfo_.ddepth = opencv_core.CV_64F;
-                    break;
-                case "CV_16F":
-                    blobInfo_.ddepth = opencv_core.CV_16F;
-                    break;
+            if (info.has("swapRB")) {
+                next.swapRB = info.getAsJsonPrimitive("swapRB").getAsBoolean();
             }
+
+            if (info.has("crop")) {
+                next.crop = info.getAsJsonPrimitive("crop").getAsBoolean();
+            }
+
+            if (info.has("ddepth")) {
+                switch (info.getAsJsonPrimitive("ddepth").getAsString()) {
+                    case "CV_8U":
+                        next.ddepth = opencv_core.CV_8U;
+                        break;
+                    case "CV_8S":
+                        next.ddepth = opencv_core.CV_8S;
+                        break;
+                    case "CV_16U":
+                        next.ddepth = opencv_core.CV_16U;
+                        break;
+                    case "CV_16S":
+                        next.ddepth = opencv_core.CV_16S;
+                        break;
+                    case "CV_32S":
+                        next.ddepth = opencv_core.CV_32S;
+                        break;
+                    case "CV_32F":
+                        next.ddepth = opencv_core.CV_32F;
+                        break;
+                    case "CV_64F":
+                        next.ddepth = opencv_core.CV_64F;
+                        break;
+                    case "CV_16F":
+                        next.ddepth = opencv_core.CV_16F;
+                        break;
+                }
+            }
+            blobInfo_ = next;
+        } catch (JsonSyntaxException | IllegalArgumentException | IllegalStateException
+                | UnsupportedOperationException | ClassCastException | NullPointerException ex) {
+            writeStackTrace(FUNCTION_NAME, ex);
         }
     }
 
@@ -262,7 +298,8 @@ public class WebCam extends ServiceSupport<Void> {
         List<WebcamInfo> webcamInfos = new ArrayList<>();
 
         for (int i = 0; i < idx; i++) {
-            webcamInfos.add(new WebcamInfo(i, videoInput.getDeviceName(i).getString()));
+            BytePointer deviceName = videoInput.getDeviceName(i);
+            webcamInfos.add(new WebcamInfo(i, (deviceName != null) ? deviceName.getString() : ""));
         }
 
         return gson_.toJson(webcamInfos);
@@ -283,7 +320,7 @@ public class WebCam extends ServiceSupport<Void> {
      */
     public Boolean setImageType(String type) {
         if (type != null) {
-            type = type.trim().toLowerCase(Locale.getDefault());
+            type = type.trim().toLowerCase(Locale.ROOT);
             String[] suffixes = ImageIO.getWriterFileSuffixes();
 
             for (String suffixe : suffixes) {
@@ -302,8 +339,12 @@ public class WebCam extends ServiceSupport<Void> {
      * @return
      */
     public String getImageSize() {
-        if (webcamImageSize_ != null) {
-            return gson_.toJson(webcamImageSize_);
+        Size size = webcamImageSize_;
+        if (size != null) {
+            JsonObject obj = new JsonObject();
+            obj.addProperty("width", size.width());
+            obj.addProperty("height", size.height());
+            return gson_.toJson(obj);
         }
         return null;
     }
@@ -314,6 +355,10 @@ public class WebCam extends ServiceSupport<Void> {
      * @param height
      */
     public void setImageSize(int width, int height) {
+        if ((width <= 0) || (height <= 0)) {
+            write(FUNCTION_NAME, "Incorrect image size [" + width + "x" + height + "]", true);
+            return;
+        }
         if (webcamImageSize_ == null) {
             webcamImageSize_ = new Size();
         }
@@ -329,6 +374,54 @@ public class WebCam extends ServiceSupport<Void> {
      *
      * @return
      */
+    public Integer getCaptureWidth() {
+        OpenCVFrameGrabber webcam = webcam_;
+        if (webcam != null) {
+            return webcam.getImageWidth();
+        }
+        write(FUNCTION_NAME, "Camera device is not open", true);
+        return null;
+    }
+
+    /**
+     *
+     * @return
+     */
+    public Integer getCaptureHeight() {
+        OpenCVFrameGrabber webcam = webcam_;
+        if (webcam != null) {
+            return webcam.getImageHeight();
+        }
+        write(FUNCTION_NAME, "Camera device is not open", true);
+        return null;
+    }
+
+    /**
+     *
+     * @param fps
+     * @return
+     */
+    public Boolean setFrameRate(Double fps) {
+        if ((fps == null) || !Double.isFinite(fps) || (fps < 0.0)) {
+            write(FUNCTION_NAME, "Incorrect frame rate [" + fps + "]", true);
+            return false;
+        }
+        frameRate_ = fps;
+        return true;
+    }
+
+    /**
+     *
+     * @return
+     */
+    public Double getFrameRate() {
+        return frameRate_;
+    }
+
+    /**
+     *
+     * @return
+     */
     public int getImageColor() {
         return webcamImageColor_;
     }
@@ -338,7 +431,9 @@ public class WebCam extends ServiceSupport<Void> {
      * @param color
      */
     public void setImageColor(String color) {
-        if (color == null) {
+        if ((color == null) || color.trim().isEmpty() || "NONE".equalsIgnoreCase(color.trim())) {
+            webcamImageColor_ = -1;
+            webcamImageColorName_ = null;
             return;
         }
         switch (color) {
@@ -960,7 +1055,18 @@ public class WebCam extends ServiceSupport<Void> {
             case "COLOR_COLORCVT_MAX":
                 webcamImageColor_ = opencv_imgproc.COLOR_COLORCVT_MAX;
                 break;
+            default:
+                return;
         }
+        webcamImageColorName_ = color;
+    }
+
+    /**
+     *
+     * @return
+     */
+    public String getImageColorName() {
+        return webcamImageColorName_;
     }
 
     /**
@@ -980,6 +1086,15 @@ public class WebCam extends ServiceSupport<Void> {
     public Boolean open(int deviceNumber) throws FrameGrabber.Exception {
         if (webcam_ == null) {
             webcam_ = new OpenCVFrameGrabber(deviceNumber);
+            Size configuredSize = webcamImageSize_;
+            if ((configuredSize != null) && (configuredSize.width() > 0) && (configuredSize.height() > 0)) {
+                webcam_.setImageWidth(configuredSize.width());
+                webcam_.setImageHeight(configuredSize.height());
+            }
+            double fps = frameRate_;
+            if (fps > 0.0) {
+                webcam_.setFrameRate(fps);
+            }
             try {
                 webcam_.start();
             } catch (FrameGrabber.Exception ex) {
@@ -994,12 +1109,13 @@ public class WebCam extends ServiceSupport<Void> {
                 throw ex;
             }
 
-            if (webcamImageSize_ == null) {
-                webcamImageSize_ = new Size();
-            }
-
-            if ((webcamImageSize_.width() <= 0) || (webcamImageSize_.height() <= 0)) {
-                setImageSize(webcam_.getImageWidth(), webcam_.getImageHeight());
+            if ((webcamImageSize_ == null) || (webcamImageSize_.width() <= 0)
+                    || (webcamImageSize_.height() <= 0)) {
+                int width = webcam_.getImageWidth();
+                int height = webcam_.getImageHeight();
+                if ((width > 0) && (height > 0)) {
+                    setImageSize(width, height);
+                }
             }
 
             isPlay_ = false;
@@ -1031,6 +1147,7 @@ public class WebCam extends ServiceSupport<Void> {
             isPlay_ = true;
             isUpdateWebcamView_ = false;
             isUpdateFuncResultImage_ = false;
+            isUpdateFuncResultBlob_ = false;
             if (!this.isRunning()) {
                 this.reset();
                 this.start();
@@ -1047,6 +1164,7 @@ public class WebCam extends ServiceSupport<Void> {
      */
     public Boolean stop() {
         isPlay_ = false;
+        cancelSnapshotRequest();
         return this.cancel();
     }
 
@@ -1058,12 +1176,14 @@ public class WebCam extends ServiceSupport<Void> {
      */
     public Boolean save(String path) throws FrameGrabber.Exception {
         if (webcam_ != null) {
-            if ((path == null) || path.isEmpty()) {
+            Path file = SandboxPath.resolve(webPath(), path);
+            if ((file == null) || Files.isDirectory(file)) {
+                write(FUNCTION_NAME, "Incorrect file path [" + path + "]", true);
                 return false;
             }
             if (isPlay_) {
                 if (saveFilePath_ == null) {
-                    saveFilePath_ = path;
+                    saveFilePath_ = file.toString();
                     return true;
                 }
             } else {
@@ -1075,13 +1195,14 @@ public class WebCam extends ServiceSupport<Void> {
                             Mat matImage = openCVFrameConverter.convert(frame);
 
                             if (matImage != null) {
-                                if (webcamImageColor_ >= 0) {
-                                    opencv_imgproc.cvtColor(matImage, matImage, webcamImageColor_);
+                                try {
+                                    if (webcamImageColor_ >= 0) {
+                                        opencv_imgproc.cvtColor(matImage, matImage, webcamImageColor_);
+                                    }
+                                    return opencv_imgcodecs.imwrite(file.toString(), matImage);
+                                } finally {
+                                    matImage.release();
                                 }
-                                opencv_imgcodecs.imwrite(path, matImage);
-                                matImage.release();
-
-                                return true;
                             }
                         }
                     }
@@ -1091,6 +1212,155 @@ public class WebCam extends ServiceSupport<Void> {
         }
         return null;
 
+    }
+
+    /**
+     *
+     * @return
+     * @throws org.bytedeco.javacv.FrameGrabber.Exception
+     */
+    public String captureBase64() throws FrameGrabber.Exception {
+        OpenCVFrameGrabber webcam = webcam_;
+        if (webcam == null) {
+            write(FUNCTION_NAME, "Camera device is not open", true);
+            return null;
+        }
+        if (isPlay_) {
+            CompletableFuture<String> active = snapshotRequest_.get();
+            if (active == null) {
+                CompletableFuture<String> created = new CompletableFuture<>();
+                if (snapshotRequest_.compareAndSet(null, created)) {
+                    active = created;
+                } else {
+                    active = snapshotRequest_.get();
+                    if (active == null) {
+                        active = created;
+                        snapshotRequest_.compareAndSet(null, active);
+                    }
+                }
+            }
+            try {
+                return active.get(1000L, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException ex) {
+                Thread.currentThread().interrupt();
+                snapshotRequest_.compareAndSet(active, null);
+                return null;
+            } catch (ExecutionException | TimeoutException ex) {
+                snapshotRequest_.compareAndSet(active, null);
+                return null;
+            }
+        }
+        Frame frame = webcam.grab();
+        if ((frame == null) || (frame.image == null)) {
+            return null;
+        }
+        try (OpenCVFrameConverter.ToMat openCVFrameConverter = new OpenCVFrameConverter.ToMat()) {
+            Mat matImage = openCVFrameConverter.convert(frame);
+            if (matImage == null) {
+                return null;
+            }
+            try {
+                if (webcamImageColor_ >= 0) {
+                    opencv_imgproc.cvtColor(matImage, matImage, webcamImageColor_);
+                }
+                BufferedImage bufferedImage = Java2DFrameUtils.toBufferedImage(matImage);
+                if (bufferedImage == null) {
+                    return null;
+                }
+                try {
+                    String imageType = effectiveImageType();
+                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                    ImageIO.write(bufferedImage, imageType, baos);
+                    byte[] encoded = baos.toByteArray();
+                    if (encoded.length == 0) {
+                        return null;
+                    }
+                    String base64 = Base64.getEncoder().encodeToString(encoded);
+                    resultImageBase64_ = base64;
+                    return base64;
+                } catch (IOException ex) {
+                    writeStackTrace(FUNCTION_NAME, ex);
+                    return null;
+                } finally {
+                    bufferedImage.flush();
+                }
+            } finally {
+                matImage.release();
+            }
+        }
+    }
+
+    /**
+     *
+     * @return
+     * @throws org.bytedeco.javacv.FrameGrabber.Exception
+     */
+    public String captureDataUrl() throws FrameGrabber.Exception {
+        String base64 = captureBase64();
+        if (base64 == null) {
+            return null;
+        }
+        return "data:" + mimeTypeOf(effectiveImageType()) + ";base64," + base64;
+    }
+
+    /**
+     *
+     * @return
+     */
+    public String getResultImage() {
+        return resultImage_;
+    }
+
+    /**
+     *
+     * @return
+     */
+    public String getResultImageBase64() {
+        return resultImageBase64_;
+    }
+
+    /**
+     *
+     * @return
+     */
+    public String getResultBlob() {
+        return resultBlob_;
+    }
+
+    private void cancelSnapshotRequest() {
+        CompletableFuture<String> pending = snapshotRequest_.getAndSet(null);
+        if (pending != null) {
+            pending.complete(null);
+        }
+    }
+
+    private String effectiveImageType() {
+        String imageType = webcamImageType_;
+        return ((imageType == null) || imageType.isEmpty()) ? "bmp" : imageType;
+    }
+
+    private static String mimeTypeOf(String imageType) {
+        if (imageType == null) {
+            return "image/bmp";
+        }
+        switch (imageType.toLowerCase(Locale.ROOT)) {
+            case "jpg":
+            case "jpeg":
+                return "image/jpeg";
+            case "png":
+                return "image/png";
+            case "gif":
+                return "image/gif";
+            case "bmp":
+                return "image/bmp";
+            case "tif":
+            case "tiff":
+                return "image/tiff";
+            case "wbmp":
+                return "image/vnd.wap.wbmp";
+            default:
+                return "image/" + imageType.toLowerCase(Locale.ROOT);
+        }
     }
 
     /**
@@ -1312,129 +1582,188 @@ public class WebCam extends ServiceSupport<Void> {
                     BufferedImage bufferedImage;
                     ByteArrayOutputStream byteArrayImage = new ByteArrayOutputStream();
                     byte[] bytesBlob;
+                    long lastFrameNanos = 0L;
 
-                    while (isPlay_ && (webcam_ != null)) {
+                    while (isPlay_) {
+                        OpenCVFrameGrabber webcam = webcam_;
+                        if (webcam == null) {
+                            break;
+                        }
                         if ((webcamStage_.isShowing() && !isUpdateWebcamView_)
                                 || ((funcResultImage_ != null) && !isUpdateFuncResultImage_)
                                 || ((funcResultBlob_ != null) && !isUpdateFuncResultBlob_)
+                                || (snapshotRequest_.get() != null)
                                 || (saveFilePath_ != null)) {
+                            double fps = frameRate_;
+                            if (fps > 0.0) {
+                                long minIntervalNanos = (long) (1_000_000_000.0 / fps);
+                                while (isPlay_ && (lastFrameNanos != 0L)) {
+                                    long elapsed = System.nanoTime() - lastFrameNanos;
+                                    if (elapsed >= minIntervalNanos) {
+                                        break;
+                                    }
+                                    long sleepMs = Math.min(10L, Math.max(1L,
+                                            TimeUnit.NANOSECONDS.toMillis(minIntervalNanos - elapsed)));
+                                    try {
+                                        TimeUnit.MILLISECONDS.sleep(sleepMs);
+                                    } catch (InterruptedException ex) {
+                                        Thread.currentThread().interrupt();
+                                        return null;
+                                    }
+                                }
+                                if (!isPlay_) {
+                                    break;
+                                }
+                                lastFrameNanos = System.nanoTime();
+                            }
                             try {
-                                frame = webcam_.grab();
+                                frame = webcam.grab();
 
                                 if (frame != null) {
                                     if (frame.image != null) {
                                         matImage = openCVFrameConverter.convert(frame);
 
                                         if (matImage != null) {
-                                            if (webcamImageColor_ >= 0) {
-                                                opencv_imgproc.cvtColor(matImage, matImage, webcamImageColor_);
-                                            }
+                                            try {
+                                                if (webcamImageColor_ >= 0) {
+                                                    opencv_imgproc.cvtColor(matImage, matImage, webcamImageColor_);
+                                                }
 
-                                            if ((webcamStage_.isShowing() && !isUpdateWebcamView_)
-                                                    || ((funcResultImage_ != null) && !isUpdateFuncResultImage_)) {
-                                                bufferedImage = Java2DFrameUtils.toBufferedImage(matImage);
+                                                boolean needView = webcamStage_.isShowing() && !isUpdateWebcamView_;
+                                                boolean needResultImage = (funcResultImage_ != null)
+                                                        && !isUpdateFuncResultImage_;
+                                                boolean needSnapshot = (snapshotRequest_.get() != null);
+                                                if (needView || needResultImage || needSnapshot) {
+                                                    bufferedImage = Java2DFrameUtils.toBufferedImage(matImage);
 
-                                                if (bufferedImage != null) {
-                                                    if (webcamStage_.isShowing() && !isUpdateWebcamView_) {
-                                                        webcamImage.set(
-                                                                SwingFXUtils.toFXImage(bufferedImage,
-                                                                        webcamImage.get()));
-                                                        isUpdateWebcamView_ = true;
+                                                    if (bufferedImage != null) {
+                                                        try {
+                                                            if (needView) {
+                                                                webcamImage.set(
+                                                                        SwingFXUtils.toFXImage(bufferedImage,
+                                                                                webcamImage.get()));
+                                                                isUpdateWebcamView_ = true;
 
-                                                        Platform.runLater(() -> {
-                                                            imageProperty_.set(webcamImage.get());
-                                                            isUpdateWebcamView_ = false;
-                                                        });
-                                                    }
+                                                                Platform.runLater(() -> {
+                                                                    imageProperty_.set(webcamImage.get());
+                                                                    isUpdateWebcamView_ = false;
+                                                                });
+                                                            }
 
-                                                    if ((funcResultImage_ != null) && (!isUpdateFuncResultImage_)) {
-                                                        ImageIO.write(bufferedImage, webcamImageType_, byteArrayImage);
+                                                            String imageType = effectiveImageType();
+                                                            if (needResultImage || needSnapshot) {
+                                                                ImageIO.write(bufferedImage, imageType, byteArrayImage);
 
-                                                        if (byteArrayImage.size() > 0) {
-                                                            resultImage_ = gson_.toJson(byteArrayImage.toByteArray());
-                                                            isUpdateFuncResultImage_ = true;
+                                                                if (byteArrayImage.size() > 0) {
+                                                                    byte[] encoded = byteArrayImage.toByteArray();
+                                                                    String base64 = Base64.getEncoder()
+                                                                            .encodeToString(encoded);
+                                                                    resultImageBase64_ = base64;
 
-                                                            Platform.runLater(() -> {
-                                                                String func = funcResultImage_;
-                                                                WebEngine engine = webEngine_;
-                                                                String image = resultImage_;
-                                                                String type = webcamImageType_;
-                                                                if ((func != null) && (engine != null)
-                                                                        && (image != null)) {
-                                                                    if (state_ == Worker.State.SUCCEEDED) {
-                                                                        try {
-                                                                            engine.executeScript(
-                                                                                    func + "('"
-                                                                                            + image + "', '"
-                                                                                            + type + "');");
-                                                                        } catch (JSException ex) {
-                                                                            writeStackTrace(FUNCTION_NAME,
-                                                                                    ex);
-                                                                        }
+                                                                    CompletableFuture<String> snap = snapshotRequest_
+                                                                            .getAndSet(null);
+                                                                    if (snap != null) {
+                                                                        snap.complete(base64);
+                                                                    }
+
+                                                                    if (needResultImage) {
+                                                                        resultImage_ = gson_.toJson(encoded);
+                                                                        isUpdateFuncResultImage_ = true;
+
+                                                                        Platform.runLater(() -> {
+                                                                            String func = funcResultImage_;
+                                                                            WebEngine engine = webEngine_;
+                                                                            String image = resultImage_;
+                                                                            if ((func != null) && (engine != null)
+                                                                                    && (image != null)) {
+                                                                                if (state_ == Worker.State.SUCCEEDED) {
+                                                                                    try {
+                                                                                        engine.executeScript(
+                                                                                                func + "('"
+                                                                                                        + image + "', "
+                                                                                                        + ScriptValue
+                                                                                                                .literal(
+                                                                                                                        imageType)
+                                                                                                        + ");");
+                                                                                    } catch (JSException ex) {
+                                                                                        writeStackTrace(FUNCTION_NAME,
+                                                                                                ex);
+                                                                                    }
+                                                                                }
+                                                                            }
+                                                                            isUpdateFuncResultImage_ = false;
+                                                                        });
                                                                     }
                                                                 }
-                                                                isUpdateFuncResultImage_ = false;
-                                                            });
-                                                        }
-                                                        byteArrayImage.flush();
-                                                        byteArrayImage.reset();
-                                                    }
-                                                    bufferedImage.flush();
-                                                }
-                                            }
-
-                                            if ((funcResultBlob_ != null) && !isUpdateFuncResultBlob_
-                                                    && (blobInfo_ != null)) {
-                                                matBlob = opencv_dnn.blobFromImage(matImage, blobInfo_.scalefactor,
-                                                        blobInfo_.size, blobInfo_.mean, blobInfo_.swapRB,
-                                                        blobInfo_.crop,
-                                                        blobInfo_.ddepth);
-                                                bytesBlob = new byte[(int) (matBlob.total() * matBlob.elemSize())];
-                                                matBlob.data().get(bytesBlob);
-                                                matBlob.release();
-                                                resultBlob_ = gson_.toJson(bytesBlob);
-                                                isUpdateFuncResultBlob_ = true;
-
-                                                Platform.runLater(() -> {
-                                                    String func = funcResultBlob_;
-                                                    WebEngine engine = webEngine_;
-                                                    String blob = resultBlob_;
-                                                    if ((func != null) && (engine != null) && (blob != null)) {
-                                                        if (state_ == Worker.State.SUCCEEDED) {
-                                                            try {
-                                                                engine.executeScript(
-                                                                        func + "('" + blob + "');");
-                                                            } catch (JSException ex) {
-                                                                writeStackTrace(FUNCTION_NAME, ex);
+                                                                byteArrayImage.flush();
+                                                                byteArrayImage.reset();
                                                             }
+                                                        } finally {
+                                                            bufferedImage.flush();
                                                         }
                                                     }
-                                                    isUpdateFuncResultBlob_ = false;
-                                                });
-                                            }
+                                                }
 
-                                            String savePath = saveFilePath_;
-                                            if (savePath != null) {
-                                                opencv_imgcodecs.imwrite(savePath, matImage);
-                                                saveFilePath_ = null;
+                                                BlobInfo blobInfo = blobInfo_;
+                                                if ((funcResultBlob_ != null) && !isUpdateFuncResultBlob_
+                                                        && (blobInfo != null) && (blobInfo.size != null)
+                                                        && (blobInfo.mean != null)) {
+                                                    matBlob = opencv_dnn.blobFromImage(matImage, blobInfo.scalefactor,
+                                                            blobInfo.size, blobInfo.mean, blobInfo.swapRB,
+                                                            blobInfo.crop, blobInfo.ddepth);
+                                                    if (matBlob != null) {
+                                                        try {
+                                                            bytesBlob = new byte[(int) (matBlob.total()
+                                                                    * matBlob.elemSize())];
+                                                            matBlob.data().get(bytesBlob);
+                                                        } finally {
+                                                            matBlob.release();
+                                                        }
+                                                        resultBlob_ = gson_.toJson(bytesBlob);
+                                                        isUpdateFuncResultBlob_ = true;
+
+                                                        Platform.runLater(() -> {
+                                                            String func = funcResultBlob_;
+                                                            WebEngine engine = webEngine_;
+                                                            String blob = resultBlob_;
+                                                            if ((func != null) && (engine != null) && (blob != null)) {
+                                                                if (state_ == Worker.State.SUCCEEDED) {
+                                                                    try {
+                                                                        engine.executeScript(
+                                                                                func + "('" + blob + "');");
+                                                                    } catch (JSException ex) {
+                                                                        writeStackTrace(FUNCTION_NAME, ex);
+                                                                    }
+                                                                }
+                                                            }
+                                                            isUpdateFuncResultBlob_ = false;
+                                                        });
+                                                    }
+                                                }
+
+                                                String savePath = saveFilePath_;
+                                                if (savePath != null) {
+                                                    opencv_imgcodecs.imwrite(savePath, matImage);
+                                                    saveFilePath_ = null;
+                                                }
+                                            } finally {
+                                                matImage.release();
                                             }
-                                            matImage.release();
                                         }
                                     }
                                 }
-                            } catch (FrameGrabber.Exception ex) {
-                                writeStackTrace(FUNCTION_NAME, ex);
                             } catch (IOException ex) {
                                 writeStackTrace(FUNCTION_NAME, ex);
                             } finally {
-                                try {
-                                    byteArrayImage.close();
-                                } catch (IOException ex) {
-                                    writeStackTrace(FUNCTION_NAME, ex);
-                                }
+                                byteArrayImage.reset();
                             }
                         } else {
-                            Thread.onSpinWait();
+                            try {
+                                TimeUnit.MILLISECONDS.sleep(1L);
+                            } catch (InterruptedException ex) {
+                                Thread.currentThread().interrupt();
+                                break;
+                            }
                         }
                     }
                 }
@@ -1502,6 +1831,7 @@ public class WebCam extends ServiceSupport<Void> {
         // the capture loop ends when isPlay_ is cleared : it is cleared and the task is cancelled
         // before the wait, so close() can free the camera when no task reads it anymore
         isPlay_ = false;
+        cancelSnapshotRequest();
         cancel();
 
         // the camera is freed only when no capture task reads it anymore : a task which never
@@ -1520,6 +1850,7 @@ public class WebCam extends ServiceSupport<Void> {
         }
         webcamStage_.close();
         resultImage_ = null;
+        resultImageBase64_ = null;
         resultBlob_ = null;
     }
 

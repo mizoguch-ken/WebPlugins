@@ -14,16 +14,31 @@
 ```text
 void    db.licenses()
 Boolean db.connect(String libraryPath, String url, String user, String pass)
+Boolean db.connectWithLibraries(String libraryPathsJson, String url, String user, String pass)
+Boolean db.isConnected()
+Boolean db.setAutoCommit(Boolean autoCommit)
+Boolean db.getAutoCommit()
+Boolean db.commit()
+Boolean db.rollback()
+Boolean db.setQueryTimeout(Integer seconds)
+Integer db.getQueryTimeout()
+Boolean db.setMaxRows(Integer maxRows)
+Integer db.getMaxRows()
 String  db.query(String sql)
+String  db.queryParams(String sql, String paramsJson)
 Integer db.update(String sql)
+Integer db.updateParams(String sql, String paramsJson)
 void    db.close()
 ```
 
 | Function / 関数 | Description / 説明 |
 | :--- | :--- |
-| `db.connect(libraryPath, url, user, pass)` | Loads the JDBC driver JAR at `libraryPath` and opens a JDBC connection to `url` with `user` and `pass`. Returns `true` on success.<br>`libraryPath` の JDBC ドライバー JAR を読み込み、`url`・`user`・`pass` でデータベースに接続します。成功時は `true` を返します。 |
-| `db.query(sql)` | Executes a `SELECT` query and returns the result set as a JSON array of row objects (`[{column: value, ...}, ...]`), or `null` on error.<br>SQL クエリを実行し、結果の行を列名をキーとする JSON オブジェクトの配列文字列として返します。 |
-| `db.update(sql)` | Executes an `INSERT`, `UPDATE`, `DELETE`, or DDL statement and returns the affected row count, or `null` on error.<br>更新系 SQL を実行し、変更された行数を返します。 |
+| `db.connect(libraryPath, url, user, pass)`, `db.connectWithLibraries(libraryPathsJson, url, user, pass)` | Loads one or more JDBC driver/dependency JARs (`libraryPathsJson` as a JSON array of paths) and opens a JDBC connection to `url` with `user` and `pass`. Returns `true` on success.<br>1 つ以上の JDBC ドライバー JAR（`connectWithLibraries` はパス配列の JSON 文字列）を読み込み、データベースへ接続します。成功時は `true` を返します。 |
+| `db.isConnected()` | Returns `true` when a live JDBC connection is open.<br>有効な JDBC 接続が開いている場合に `true` を返します。 |
+| `db.setAutoCommit(autoCommit)`, `db.getAutoCommit()`, `db.commit()`, `db.rollback()` | Controls JDBC transaction auto-commit mode and commits or rolls back the current transaction.<br>トランザクションの自動コミット設定の取得・変更、および `commit` / `rollback` を行います。 |
+| `db.setQueryTimeout(seconds)`, `db.getQueryTimeout()`, `db.setMaxRows(maxRows)`, `db.getMaxRows()` | Gets or sets per-statement execution timeout (seconds) and maximum returned row count (`0` means unlimited).<br>ステートメントのタイムアウト秒数および最大取得行数（`0` で無制限）を取得・設定します。 |
+| `db.query(sql)`, `db.queryParams(sql, paramsJson)` | Executes a `SELECT` query (or `?`-parameterized `PreparedStatement` with JSON array `paramsJson`) and returns rows as a JSON array preserving SQL `NULL` fields as JSON `null`, or `null` on error.<br>`SELECT` クエリ（`queryParams` は `?` プレースホルダーと JSON 配列パラメータを使用）を実行し、`NULL` 列も `null` として保持した行オブジェクトの JSON 配列文字列を返します。 |
+| `db.update(sql)`, `db.updateParams(sql, paramsJson)` | Executes an `INSERT`, `UPDATE`, `DELETE`, or DDL statement (with optional bound parameters via `updateParams`) and returns the affected row count, or `null` on error.<br>更新系 SQL（`updateParams` は `?` バインド対応）を実行し、変更された行数を返します。 |
 | `db.close()` | Closes the active JDBC connection and releases the driver class loader.<br>データベース接続を閉じ、ドライバーのクラスローダーを解放します。 |
 
 ---

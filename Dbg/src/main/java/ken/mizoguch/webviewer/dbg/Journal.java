@@ -113,6 +113,14 @@ final class Journal {
         dropped_ = 0;
     }
 
+    synchronized void clearConsole() {
+        console_.clear();
+    }
+
+    synchronized void clearNetwork() {
+        network_.clear();
+    }
+
     /**
      * the messages kept for the panel, oldest first, written as text, one on a line : the plug-in
      * writes them in a file the user reads, when the user saves the messages of the page
@@ -137,7 +145,7 @@ final class Journal {
      * @param entry the message, written in json by the agent of the page
      * @return the message, as a line of text
      */
-    private static String render(String kind, String entry) {
+    static String render(String kind, String entry) {
         if (NETWORK.equals(kind)) {
             String method = Json.fieldText(entry, "method");
             String url = Json.fieldText(entry, "url");

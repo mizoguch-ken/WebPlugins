@@ -2,8 +2,8 @@
 
 ## Overview / 概要
 
-* **CapAiServer** is the CAP-AI Link Box server plug-in. It listens on TCP port `50021` of the computer running the `WebViewer`, receives incoming status/button notifications (`AKATT`) sent by a Link Box, replies to the Link Box, and notifies the page's JavaScript callbacks.
-* **CapAiServer** は、CAP-AI Link Box からの通知を受信するサーバープラグインです。`WebViewer` が動作するコンピューターの TCP ポート `50021` で待機し、Link Box から送信される要求（`AKATT` 等）を受信して応答を返すと同時に、ページの JavaScript 関数へ通知します。
+* **CapAiServer** is the CAP-AI Link Box server plug-in. It listens on TCP port `50021` by default (configurable in `50001..65535` via `setListenPort(port)`) of the computer running the `WebViewer`, receives incoming status/button notifications (`AKATT`) sent by a Link Box, replies to the Link Box, and notifies the page's JavaScript callbacks.
+* **CapAiServer** は、CAP-AI Link Box からの通知を受信するサーバープラグインです。`WebViewer` が動作するコンピューターの TCP ポート `50021`（既定、`setListenPort(port)` で `50001..65535` に変更可能）で待機し、Link Box から送信される要求（`AKATT` 等）を受信して応答を返すと同時に、ページの JavaScript 関数へ通知します。
 * Built on **Netty** (`io.netty`) and `capai-common`, both shaded into `CapAiServer.jar`. Ports below `50001` are rejected by the server configuration so that system/service ports cannot be claimed.
 * **Netty** ライブラリおよび `capai-common` の上に構築され、すべて `CapAiServer.jar` に shade されています。`50001` 未満のポート番号は拒否されるため、OS や他のシステムサービスのポートを誤って占有することはありません。
 * *CAP-AI System is a product of Sekisui Jushi CAP-AI System Co., Ltd.*
@@ -16,6 +16,8 @@
 ```text
 void    capaiserver.licenses()
 Boolean capaiserver.isLinkBoxServerRunning()
+Integer capaiserver.getListenPort()
+Boolean capaiserver.setListenPort(int port)
 Boolean capaiserver.openLinkBoxServer()
 Boolean capaiserver.closeLinkBoxServer()
 String  capaiserver.getLocalAddress()
@@ -26,8 +28,8 @@ void    capaiserver.setNotifyServerResponse(String func)
 void    capaiserver.setNotifyServerError(String func)
 ```
 
-* Server status functions return `null` when the server is not initialized/running.
-  * サーバーが起動していない時、サーバーの状態関数は `null` を返します。
+* Server status functions return `null` when the server is not initialized/running. `setListenPort(port)` rejects ports outside `50001..65535` or calls while the server is already running, and `openLinkBoxServer()` uses the configured listen port.
+  * サーバーが起動していない時、サーバーの状態関数は `null` を返します。`setListenPort(port)` は `50001..65535` 範囲外や稼働中の変更を拒否し、`openLinkBoxServer()` は設定された待受ポートを使用します。
 
 ---
 

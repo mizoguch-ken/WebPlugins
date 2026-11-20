@@ -5,9 +5,11 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.URL;
 import java.nio.file.Files;
+import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.security.CodeSource;
 import java.util.Enumeration;
 import java.util.function.Consumer;
 import java.util.jar.JarEntry;
@@ -101,10 +103,14 @@ final class Archive {
 
     private static int writeStream(Class<?> owner, Path local, Consumer<String> report, String... trees)
             throws IOException {
+        CodeSource codeSource = owner.getProtectionDomain().getCodeSource();
+        URL location = (codeSource != null) ? codeSource.getLocation() : null;
+        if (location == null) {
+            return 0;
+        }
         int written = 0;
 
-        try (ZipInputStream zip = new ZipInputStream(
-                owner.getProtectionDomain().getCodeSource().getLocation().openStream())) {
+        try (ZipInputStream zip = new ZipInputStream(location.openStream())) {
             ZipEntry entry;
 
             while ((entry = zip.getNextEntry()) != null) {
@@ -167,9 +173,16 @@ final class Archive {
         if (!wanted(name, trees)) {
             return null;
         }
-        Path file = local.resolve(name).normalize();
+        Path root = local.toAbsolutePath().normalize();
+        Path file;
+        try {
+            file = root.resolve(name).normalize();
+        } catch (InvalidPathException ex) {
+            tell(report, name);
+            return null;
+        }
 
-        if (!file.startsWith(local)) {
+        if (!file.startsWith(root)) {
             tell(report, name);
             return null;
         }

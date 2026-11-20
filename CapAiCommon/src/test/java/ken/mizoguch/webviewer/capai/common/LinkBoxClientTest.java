@@ -103,15 +103,20 @@ public class LinkBoxClientTest {
     public void testInitialState() {
         assertFalse(client_.isRunning());
         assertEquals(0, client_.getConnectionPort());
+        assertEquals(null, client_.getServerAddress());
+        assertEquals(0, client_.getTimeout());
 
         client_.setConnectionPort(50011);
         assertEquals(50011, client_.getConnectionPort());
+        client_.setTimeout(1500);
+        assertEquals(1500, client_.getTimeout());
     }
 
     @Test
     @DisplayName("the address of the Link Box is kept when it can be read")
     public void testSetServerAddress() throws Exception {
         assertTrue(client_.setServerAddress("127.0.0.1"));
+        assertEquals("127.0.0.1", client_.getServerAddress());
         assertTrue(client_.setServerAddress(InetAddress.getByName("127.0.0.1")));
         assertTrue(client_.setServerAddress((byte) 127, (byte) 0, (byte) 0, (byte) 1));
         assertTrue(recorder_.errors().isEmpty());
@@ -185,5 +190,32 @@ public class LinkBoxClientTest {
 
         assertFalse(client_.isRunning());
         assertEquals(1, recorder_.stops());
+    }
+
+    @Test
+    @DisplayName("commands that require a server address refuse null address")
+    public void testCommandsWithoutAddressReportSetAddress() {
+        assertFalse(client_.cmdPortClose());
+        assertFalse(client_.cmdGetPortInfo(50011));
+        assertFalse(client_.cmdConnect());
+        assertEquals(3, recorder_.errors().size());
+        assertTrue(recorder_.errors().stream().allMatch(c -> c == LinkBoxEnums.ERROR_SET_ADDRESS.getNumber()));
+    }
+
+    @Test
+    @DisplayName("invalid SetL1, ClearAK, SetIPAddr, and SetHostAddr arguments are refused")
+    public void testArgumentValidation() {
+        assertFalse(client_.cmdSetL1(1, LinkBoxEnums.DIRECTION_NONE, LinkBoxEnums.LED_OFF, LinkBoxEnums.SEG_OFF,
+                LinkBoxEnums.BUZ_OFF, LinkBoxEnums.DIRECTION_NONE, LinkBoxEnums.LED_OFF, LinkBoxEnums.SEG_OFF,
+                LinkBoxEnums.BUZ_OFF, null, List.of("1")));
+        assertFalse(client_.cmdSetL1(1, LinkBoxEnums.DIRECTION_NONE, LinkBoxEnums.LED_OFF, LinkBoxEnums.SEG_OFF,
+                LinkBoxEnums.BUZ_OFF, LinkBoxEnums.DIRECTION_NONE, LinkBoxEnums.LED_OFF, LinkBoxEnums.SEG_OFF,
+                LinkBoxEnums.BUZ_OFF, List.of(1, 2), List.of("1")));
+        assertFalse(client_.cmdClearAK((List<Integer>) null));
+        assertFalse(client_.cmdSetIPAddr(null, "255.255.255.0", "192.168.10.1"));
+        assertFalse(client_.cmdSetIPAddr("::1", "255.255.255.0", "192.168.10.1"));
+        assertFalse(client_.cmdSetHostAddr(null));
+        assertFalse(client_.cmdSetHostAddr(List.of("::1")));
+        assertFalse(recorder_.errors().isEmpty());
     }
 }

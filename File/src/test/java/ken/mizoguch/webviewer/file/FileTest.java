@@ -1,9 +1,12 @@
 package ken.mizoguch.webviewer.file;
 
 import java.io.IOException;
+import java.io.UnsupportedEncodingException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Base64;
 import java.util.List;
 import javafx.concurrent.Worker;
 import javafx.scene.image.Image;
@@ -134,6 +137,89 @@ class FileTest {
     @Test
     void anIncorrectPathCharacterIsRefused() {
         assertFalse(plugin.exists("bad\0path?.txt"));
+    }
+
+    @Test
+    void invalidCharsetAndRootDeleteAndNullNewLineAreHandledSafely() throws IOException {
+        assertThrows(UnsupportedEncodingException.class,
+                () -> plugin.writeAsText("should-not-exist.txt", "abc", "NO-SUCH-CHARSET"));
+        assertFalse(Files.exists(tempDir.resolve("should-not-exist.txt")));
+
+        assertFalse(plugin.rm("~"));
+        assertTrue(Files.exists(tempDir));
+
+        plugin.mkdir("sub");
+        plugin.cd("sub");
+        assertTrue(plugin.rm("~/sub"));
+        assertEquals(tempDir.toString(), plugin.cd("."));
+
+        plugin.setNewLineCharacter(null);
+        assertEquals("\n", plugin.getNewLineCharacter());
+        assertTrue(plugin.writeAsText("nl.txt", "a\nb", null));
+        assertNull(plugin.type(null));
+    }
+
+    @Test
+    void extendedFileOperationsAndDialogAllowlistWork() throws IOException {
+        assertEquals(tempDir.toString(), plugin.pwd());
+        assertTrue(plugin.isDirectory("."));
+        assertFalse(plugin.isFile("."));
+
+        Files.writeString(tempDir.resolve("root.txt"), "hello", StandardCharsets.UTF_8);
+        assertTrue(plugin.isFile("root.txt"));
+        assertFalse(plugin.isDirectory("root.txt"));
+
+        // cd into regular file is refused; cd("sub") + cd("..") returns to webPath
+        assertEquals(tempDir.toString(), plugin.cd("root.txt"));
+        plugin.mkdir("sub");
+        Files.writeString(tempDir.resolve("sub/nested.txt"), "nested", StandardCharsets.UTF_8);
+        assertEquals(tempDir.resolve("sub").toString(), plugin.cd("sub"));
+        assertEquals(tempDir.resolve("sub").toString(), plugin.pwd());
+        assertTrue(plugin.lsDir(".").contains("nested.txt"));
+        assertTrue(plugin.exists("../root.txt"));
+        assertEquals(tempDir.toString(), plugin.cd(".."));
+        assertEquals(tempDir.toString(), plugin.pwd());
+
+        // cp & appendAsText
+        assertEquals(tempDir.resolve("copy.txt").toString(), plugin.cp("root.txt", "copy.txt"));
+        assertEquals("hello", plugin.readAsText("copy.txt", null));
+        assertTrue(plugin.appendAsText("copy.txt", "world", null));
+        assertEquals("helloworld", Files.readString(tempDir.resolve("copy.txt"), StandardCharsets.UTF_8));
+
+        // Base64 binary read/write & validation
+        byte[] binary = new byte[] { 0x00, 0x01, (byte) 0x80, (byte) 0xFF };
+        String b64 = Base64.getEncoder().encodeToString(binary);
+        assertTrue(plugin.writeAsBase64("bin.dat", b64));
+        assertEquals(b64, plugin.readAsBase64("bin.dat"));
+        assertFalse(plugin.writeAsBase64("bad.dat", "not!valid!b64!"));
+        assertNull(plugin.readAsBase64("sub"));
+
+        // writerAppend, writerWrite, writerFlush, readerClose, writerClose
+        assertTrue(plugin.writerAppend("stream.txt", null));
+        assertTrue(plugin.writerWrite("AB"));
+        assertTrue(plugin.writerFlush());
+        assertTrue(plugin.writerWriteLine("C"));
+        plugin.writerClose();
+        assertEquals("ABC\n", Files.readString(tempDir.resolve("stream.txt"), StandardCharsets.UTF_8));
+
+        assertTrue(plugin.reader("stream.txt", null));
+        assertEquals("ABC", plugin.readerReadLine());
+        plugin.readerClose();
+        assertNull(plugin.readerReadLine());
+
+        // User-chosen outside file allowlist works until close()
+        Path outside = Files.createTempFile(tempDir.getParent(), "approved-outside", ".txt");
+        try {
+            Files.writeString(outside, "chosen", StandardCharsets.UTF_8);
+            assertFalse(plugin.exists(outside.toString()));
+            plugin.approvePath(outside);
+            assertTrue(plugin.exists(outside.toString()));
+            assertEquals("chosen", plugin.readAsText(outside.toString(), null));
+            plugin.close();
+            assertFalse(plugin.exists(outside.toString()));
+        } finally {
+            Files.deleteIfExists(outside);
+        }
     }
 
     /**

@@ -41,7 +41,7 @@ public final class AdamW {
      * @return false when the value is out of the range
      */
     public boolean setLearningRate(double learningRate) {
-        if ((learningRate <= 0d) || (learningRate > 0.1d)) {
+        if (!Double.isFinite(learningRate) || (learningRate <= 0d) || (learningRate > 0.1d)) {
             return false;
         }
         learningRate_ = learningRate;
@@ -60,7 +60,7 @@ public final class AdamW {
      * @return false when the value is out of the range
      */
     public boolean setWeightDecay(double weightDecay) {
-        if ((weightDecay < 0d) || (weightDecay > 0.5d)) {
+        if (!Double.isFinite(weightDecay) || (weightDecay < 0d) || (weightDecay > 0.5d)) {
             return false;
         }
         weightDecay_ = weightDecay;
@@ -79,7 +79,7 @@ public final class AdamW {
      * @return false when the value can not be used
      */
     public boolean setLargestGradient(double largestGradient) {
-        if (largestGradient < 0d) {
+        if (!Double.isFinite(largestGradient) || (largestGradient < 0d)) {
             return false;
         }
         largestGradient_ = largestGradient;

@@ -155,13 +155,19 @@ public class LinkBoxClientPluginTest {
     public void testInitialState() {
         assertFalse(plugin_.isLinkBoxClientRunning());
         assertEquals(0, plugin_.getConnectionPort());
+        assertNull(plugin_.getServerAddress());
+        assertEquals(0, plugin_.getTimeout());
         assertNull(plugin_.closeLinkBoxClient());
+        assertFalse(plugin_.portClose());
+        assertNull(plugin_.mnt());
     }
 
     @Test
     @DisplayName("the address of the Link Box is kept when the page gives a readable one")
     public void testSetConfig() {
         assertTrue(plugin_.setLinkBoxClientConfig("127.0.0.1", 1000));
+        assertEquals("127.0.0.1", plugin_.getServerAddress());
+        assertEquals(1000, plugin_.getTimeout());
         assertTrue(recorder_.traces().isEmpty());
     }
 
@@ -245,6 +251,16 @@ public class LinkBoxClientPluginTest {
 
         assertFalse(plugin_.isLinkBoxClientRunning());
         assertTrue(recorder_.traces().isEmpty());
+    }
+
+    @Test
+    @DisplayName("null enum names in SetL1 fall back safely without throwing")
+    public void testNullEnumParsers() {
+        assertEquals(LinkBoxEnums.DIRECTION_NONE, LinkBoxClientPlugin.parseDirection(null));
+        assertEquals(LinkBoxEnums.LED_OFF, LinkBoxClientPlugin.parseLed(null));
+        assertEquals(LinkBoxEnums.SEG_OFF, LinkBoxClientPlugin.parseSeg(null));
+        assertEquals(LinkBoxEnums.BUZ_OFF, LinkBoxClientPlugin.parseBuz(null));
+        assertNull(plugin_.setHostAddr("not json"));
     }
 }
 

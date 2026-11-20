@@ -151,7 +151,7 @@ public class OnlineArtReceivePacket extends OnlineArtPacket {
                         }
                     }
 
-                    if (dataCrc == calculationCrc) {
+                    if ((count >= 2) && !isEscape && (dataCrc == calculationCrc)) {
                         index_ = 0;
                         return true;
                     }

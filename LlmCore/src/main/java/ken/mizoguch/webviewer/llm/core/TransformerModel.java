@@ -642,6 +642,38 @@ public final class TransformerModel {
     }
 
     /**
+     * mean cross-entropy loss over a token sequence without accumulating gradients
+     *
+     * @param tokens tokens of the sequence
+     * @param length number of tokens to evaluate
+     * @return mean next-token negative log probability, or NaN if inputs are invalid
+     */
+    public double loss(int[] tokens, int length) {
+        int v = vocabulary_;
+        if ((tokens == null) || (length < 2) || (length > tokens.length) || (length > context_)) {
+            return Double.NaN;
+        }
+        for (int i = 0; i < length; i++) {
+            if ((tokens[i] < 0) || (tokens[i] >= v)) {
+                return Double.NaN;
+            }
+        }
+        Step step = newStep(length, false);
+        float[] values = forward(tokens, length, step);
+        float[] probs = new float[v];
+        double total = 0d;
+        int count = length - 1;
+
+        for (int position = 0; position < count; position++) {
+            int target = tokens[position + 1];
+            System.arraycopy(values, position * v, probs, 0, v);
+            Tensor.softmax(probs, 0, v);
+            total -= Math.log(Math.max(probs[target], 1e-9d));
+        }
+        return total / count;
+    }
+
+    /**
      * the token which follows the tokens given, chosen by the sampler
      *
      * @param tokens tokens of the sequence

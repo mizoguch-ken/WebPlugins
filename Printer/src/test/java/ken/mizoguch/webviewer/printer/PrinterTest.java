@@ -209,6 +209,17 @@ class PrinterTest {
     }
 
     @Test
+    void nonFiniteMarginAndDirectoryImageAreRefused() throws Exception {
+        assertFalse(plugin.setMargin(Double.NaN, 10d, 10d, 10d));
+        assertFalse(plugin.setMargin(Double.POSITIVE_INFINITY, 10d, 10d, 10d));
+        assertTrue(recorder.messages.contains("Incorrect margin [NaN]"));
+
+        Files.createDirectory(tempDir.resolve("subdir"));
+        assertFalse(plugin.printImage("subdir"));
+        assertTrue(recorder.messages.contains("File not found [subdir]"));
+    }
+
+    @Test
     void anIncorrectTextIsRefused() {
         assertFalse(plugin.printText(null));
         assertFalse(plugin.printText("   "));
@@ -269,6 +280,60 @@ class PrinterTest {
         assertTrue(plugin.isIdle());
         assertEquals(1, recorder.messages.size());
         assertTrue(recorder.messages.contains("Incorrect script function name"));
+    }
+
+    @Test
+    void capabilityGettersLayoutSettingsResetAndNewPrintGuardsWork() throws Exception {
+        assertNull(plugin.margin());
+        assertTrue(plugin.setMargin(12d, 10d, 12d, 10d));
+        String marginJson = plugin.margin();
+        assertNotNull(marginJson);
+        assertTrue(marginJson.contains("\"top\":12.0"));
+
+        assertNull(plugin.pageRange());
+        Printer pluginNoWindow = new Printer();
+        pluginNoWindow.initialize(recorder);
+        assertNotNull(pluginNoWindow.supportedSides());
+        assertNotNull(pluginNoWindow.supportedColors());
+        assertNotNull(pluginNoWindow.supportsPageRanges());
+
+        assertEquals("printer", plugin.jobName());
+        assertFalse(plugin.setJobName("  "));
+        assertEquals("printer", plugin.jobName());
+        assertTrue(plugin.setJobName("Invoice #1"));
+        assertEquals("Invoice #1", plugin.jobName());
+        assertTrue(plugin.setJobName(null));
+        assertEquals("printer", plugin.jobName());
+
+        assertEquals(11d, plugin.fontSize());
+        assertFalse(plugin.setFontSize(Double.NaN));
+        assertFalse(plugin.setFontSize(0d));
+        assertFalse(plugin.setFontSize(200d));
+        assertTrue(plugin.setFontSize(14d));
+        assertEquals(14d, plugin.fontSize());
+
+        assertEquals(96, plugin.lineWidth());
+        assertFalse(plugin.setLineWidth(0));
+        assertFalse(plugin.setLineWidth(2000));
+        assertTrue(plugin.setLineWidth(72));
+        assertEquals(72, plugin.lineWidth());
+
+        assertTrue(plugin.reset());
+        assertNull(plugin.margin());
+        assertNull(plugin.pageRange());
+        assertEquals("printer", plugin.jobName());
+        assertEquals(11d, plugin.fontSize());
+        assertEquals(96, plugin.lineWidth());
+
+        Files.writeString(tempDir.resolve("doc.txt"), "hello printer");
+        Files.createDirectory(tempDir.resolve("folder"));
+        assertFalse(plugin.printTextFile("../escape.txt", null));
+        assertFalse(plugin.printTextFile("folder", null));
+        assertFalse(plugin.printTextFile("doc.txt", "NO-SUCH-CHARSET"));
+        // valid file, rejected because test recorder has no window stage
+        assertFalse(plugin.printTextFile("doc.txt", null));
+        assertFalse(plugin.printWebPage());
+        assertFalse(plugin.pageSetupDialog());
     }
 
     /**

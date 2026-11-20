@@ -8,6 +8,9 @@ import com.google.gson.JsonNull;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonSyntaxException;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -63,6 +66,11 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
     private static final String FUNCTION_NAME = "llm";
 
     /**
+     * maximum corpus file size loaded by trainFile() and evaluateFile()
+     */
+    private static final long MAX_CORPUS_BYTES = 16L * 1024L * 1024L;
+
+    /**
      * the epochs of a training the page does not give
      */
     private static final int DEFAULT_EPOCHS = 40;
@@ -101,6 +109,7 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
     private Path webPath_;
     private Path directory_;
 
+    private final Object workLock_ = new Object();
     private ExecutorService worker_;
     private volatile boolean working_;
 
@@ -196,7 +205,7 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
             result_ = null;
             return modelInfo();
         } catch (LlmCoreException | JsonSyntaxException | NumberFormatException
-                | IllegalStateException ex) {
+                | IllegalStateException | UnsupportedOperationException ex) {
             writeStackTrace(FUNCTION_NAME, ex);
             return null;
         }
@@ -309,6 +318,9 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
             info.addProperty("layers", config.layers());
             info.addProperty("context", config.context());
             info.addProperty("seed", config.seed());
+            info.add("learningRate", number(core_.learningRate()));
+            info.add("weightDecay", number(core_.weightDecay()));
+            info.add("largestGradient", number(core_.largestGradient()));
         }
         return gson_.toJson(info);
     }
@@ -357,6 +369,9 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
      * address which is refused
      */
     public String setRemote(String config) {
+        if (!free()) {
+            return null;
+        }
         try {
             readRemote(config);
             return remoteInfo();
@@ -375,6 +390,24 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
      */
     public String remoteInfo() {
         return remote_.info();
+    }
+
+    /**
+     * clears the remote endpoint configuration and credentials when idle
+     *
+     * @return false if a task is currently running
+     */
+    public Boolean clearRemote() {
+        if (!free()) {
+            return false;
+        }
+        try {
+            remote_.clear();
+            return true;
+        } catch (OpenAiException ex) {
+            writeStackTrace(FUNCTION_NAME, ex);
+            return false;
+        }
     }
 
     /**
@@ -454,6 +487,131 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
     }
 
     /**
+     * encodes text into a JSON array of token IDs using the active local model tokenizer
+     *
+     * @param text input text
+     * @return JSON array string of token IDs, or null if no model is loaded or work is active
+     */
+    public String tokenize(String text) {
+        if (!readyToWork()) {
+            return null;
+        }
+        try {
+            return gson_.toJson(core_.tokenize(text));
+        } catch (LlmCoreException ex) {
+            writeStackTrace(FUNCTION_NAME, ex);
+            return null;
+        }
+    }
+
+    /**
+     * decodes a JSON array of integer token IDs back into text using the active local model tokenizer
+     *
+     * @param tokensJson JSON array string of integer token IDs
+     * @return decoded text, or null on invalid input or when no model is ready
+     */
+    public String detokenize(String tokensJson) {
+        if (!readyToWork()) {
+            return null;
+        }
+        if (tokensJson == null) {
+            write(FUNCTION_NAME, "The page gives no tokens to decode", true);
+            return null;
+        }
+        try {
+            JsonElement parsed = com.google.gson.JsonParser.parseString(tokensJson);
+            if ((parsed == null) || !parsed.isJsonArray()) {
+                write(FUNCTION_NAME, "Tokens must be a json array of integers", true);
+                return null;
+            }
+            JsonArray arr = parsed.getAsJsonArray();
+            int[] ids = new int[arr.size()];
+            for (int i = 0; i < arr.size(); i++) {
+                JsonElement el = arr.get(i);
+                if ((el == null) || !el.isJsonPrimitive() || !el.getAsJsonPrimitive().isNumber()) {
+                    write(FUNCTION_NAME, "Token at index " + i + " is not an integer", true);
+                    return null;
+                }
+                double d = el.getAsDouble();
+                if (!Double.isFinite(d) || (d != Math.rint(d))
+                        || (d < Integer.MIN_VALUE) || (d > Integer.MAX_VALUE)) {
+                    write(FUNCTION_NAME, "Token at index " + i + " is not an integer", true);
+                    return null;
+                }
+                ids[i] = (int) d;
+            }
+            return core_.detokenize(ids);
+        } catch (JsonSyntaxException | LlmCoreException ex) {
+            writeStackTrace(FUNCTION_NAME, ex);
+            return null;
+        }
+    }
+
+    /**
+     * returns the number of tokens produced by the active local model tokenizer for text
+     *
+     * @param text input text
+     * @return token count, or null if no model is loaded or work is active
+     */
+    public Integer tokenCount(String text) {
+        if (!readyToWork()) {
+            return null;
+        }
+        try {
+            return core_.tokenize(text).length;
+        } catch (LlmCoreException ex) {
+            writeStackTrace(FUNCTION_NAME, ex);
+            return null;
+        }
+    }
+
+    /**
+     * sets optimizer weight decay for the active local model
+     *
+     * @param weightDecay decay factor in [0, 0.5]
+     * @return true if applied cleanly
+     */
+    public Boolean setWeightDecay(Double weightDecay) {
+        if (!readyToWork()) {
+            return false;
+        }
+        if (weightDecay == null) {
+            write(FUNCTION_NAME, "The page gives no weight decay", true);
+            return false;
+        }
+        try {
+            core_.setWeightDecay(weightDecay.doubleValue());
+            return true;
+        } catch (LlmCoreException ex) {
+            writeStackTrace(FUNCTION_NAME, ex);
+            return false;
+        }
+    }
+
+    /**
+     * sets optimizer gradient clipping norm for the active local model
+     *
+     * @param largestGradient threshold >= 0 (0 disables clipping)
+     * @return true if applied cleanly
+     */
+    public Boolean setLargestGradient(Double largestGradient) {
+        if (!readyToWork()) {
+            return false;
+        }
+        if (largestGradient == null) {
+            write(FUNCTION_NAME, "The page gives no gradient limit", true);
+            return false;
+        }
+        try {
+            core_.setLargestGradient(largestGradient.doubleValue());
+            return true;
+        } catch (LlmCoreException ex) {
+            writeStackTrace(FUNCTION_NAME, ex);
+            return false;
+        }
+    }
+
+    /**
      * the model reads the texts of the page in a thread of the plug-in : the steps of the training
      * are told to the function the page gave with setNotifyProgress(), and the end of the training
      * to the function it gave with setNotifyDone()
@@ -470,25 +628,118 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
             write(FUNCTION_NAME, "The page gives no text to learn", true);
             return false;
         }
-        if (!readyToWork()) {
-            return false;
-        }
         final int times = (epochs == null) ? DEFAULT_EPOCHS : epochs.intValue();
         final List<String> learned = read;
 
-        result_ = null;
-        working_ = true;
-        return start("train", false, () -> {
-            try {
-                LlmCore.TrainResult trained = core_.train(learned, times, learningRate, this);
-                result_ = trainResult(trained);
-                done_.send("'train'," + ScriptValue.literal(result_, REPORT_MAX_LENGTH));
-            } catch (LlmCoreException ex) {
-                failed("train", ex);
-            } finally {
-                working_ = false;
+        synchronized (workLock_) {
+            if (!readyToWork()) {
+                return false;
             }
-        });
+            result_ = null;
+            working_ = true;
+            return start("train", false, () -> {
+                try {
+                    LlmCore.TrainResult trained = core_.train(learned, times, learningRate, this);
+                    result_ = trainResult(trained);
+                    done_.send("'train'," + ScriptValue.literal(result_, REPORT_MAX_LENGTH));
+                } catch (RuntimeException ex) {
+                    failed("train", ex);
+                } finally {
+                    synchronized (workLock_) {
+                        working_ = false;
+                        remoteWork_ = false;
+                    }
+                }
+            });
+        }
+    }
+
+    /**
+     * trains the active local model from a UTF-8 file under the page sandbox directory
+     *
+     * @param path file path within the page sandbox (or starting with ~)
+     * @param epochs number of epochs, null for default
+     * @param learningRate optional learning rate override
+     * @return false if the file cannot be read or work cannot start
+     */
+    public Boolean trainFile(String path, Integer epochs, Double learningRate) {
+        String content = readCorpusFile(path);
+        if (content == null) {
+            return false;
+        }
+        return train(content, epochs, learningRate);
+    }
+
+    /**
+     * evaluates cross-entropy loss and perplexity over texts asynchronously without modifying weights
+     *
+     * @param texts single text or JSON array of strings
+     * @return false if no model is loaded, texts are empty, or another job is running
+     */
+    public Boolean evaluate(String texts) {
+        List<String> read = readTexts(texts);
+        if (read.isEmpty()) {
+            write(FUNCTION_NAME, "The page gives no text to evaluate", true);
+            return false;
+        }
+        final List<String> evaluatedTexts = read;
+
+        synchronized (workLock_) {
+            if (!readyToWork()) {
+                return false;
+            }
+            result_ = null;
+            working_ = true;
+            return start("evaluate", false, () -> {
+                try {
+                    LlmCore.EvalResult evaluated = core_.evaluate(evaluatedTexts);
+                    result_ = evalResult(evaluated);
+                    done_.send("'evaluate'," + ScriptValue.literal(result_, REPORT_MAX_LENGTH));
+                } catch (RuntimeException ex) {
+                    failed("evaluate", ex);
+                } finally {
+                    synchronized (workLock_) {
+                        working_ = false;
+                        remoteWork_ = false;
+                    }
+                }
+            });
+        }
+    }
+
+    /**
+     * evaluates loss and perplexity over a UTF-8 file under the page sandbox asynchronously
+     *
+     * @param path file path within the page sandbox (or starting with ~)
+     * @return false if the file cannot be read or work cannot start
+     */
+    public Boolean evaluateFile(String path) {
+        String content = readCorpusFile(path);
+        if (content == null) {
+            return false;
+        }
+        return evaluate(content);
+    }
+
+    private String readCorpusFile(String path) {
+        Path file = toPath(path);
+        if (file == null) {
+            return null;
+        }
+        try {
+            if (!Files.isRegularFile(file)) {
+                write(FUNCTION_NAME, "Not a regular file [" + path + "]", true);
+                return null;
+            }
+            if (Files.size(file) > MAX_CORPUS_BYTES) {
+                write(FUNCTION_NAME, "Corpus file exceeds " + MAX_CORPUS_BYTES + " bytes [" + path + "]", true);
+                return null;
+            }
+            return Files.readString(file, StandardCharsets.UTF_8);
+        } catch (IOException ex) {
+            writeStackTrace(FUNCTION_NAME, ex);
+            return null;
+        }
     }
 
     /**
@@ -513,9 +764,6 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
             write(FUNCTION_NAME, "The page gives no text to answer", true);
             return false;
         }
-        if (!readyToWork()) {
-            return false;
-        }
         final int tokens = (maxTokens == null) ? DEFAULT_TOKENS : maxTokens.intValue();
         final Sampler chosen = new Sampler(
                 (temperature == null) ? Sampler.GREEDY : temperature.doubleValue(),
@@ -523,19 +771,27 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
                 (topSum == null) ? Sampler.NO_TAIL : topSum.doubleValue(),
                 (seed == null) ? null : new Random(seed.longValue()));
 
-        result_ = null;
-        working_ = true;
-        return start("answer", false, () -> {
-            try {
-                LlmCore.AnswerResult answered = core_.generate(prompt, tokens, chosen, this);
-                result_ = answerResult(answered);
-                done_.send("'answer'," + ScriptValue.literal(result_, REPORT_MAX_LENGTH));
-            } catch (LlmCoreException ex) {
-                failed("answer", ex);
-            } finally {
-                working_ = false;
+        synchronized (workLock_) {
+            if (!readyToWork()) {
+                return false;
             }
-        });
+            result_ = null;
+            working_ = true;
+            return start("answer", false, () -> {
+                try {
+                    LlmCore.AnswerResult answered = core_.generate(prompt, tokens, chosen, this);
+                    result_ = answerResult(answered);
+                    done_.send("'answer'," + ScriptValue.literal(result_, REPORT_MAX_LENGTH));
+                } catch (RuntimeException ex) {
+                    failed("answer", ex);
+                } finally {
+                    synchronized (workLock_) {
+                        working_ = false;
+                        remoteWork_ = false;
+                    }
+                }
+            });
+        }
     }
 
     /**
@@ -580,11 +836,13 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
      * @return true when the plug-in asks no work
      */
     private boolean free() {
-        if (working_ || !core_.isIdle()) {
-            write(FUNCTION_NAME, "The model is already working", true);
-            return false;
+        synchronized (workLock_) {
+            if (working_ || !core_.isIdle()) {
+                write(FUNCTION_NAME, "The model is already working", true);
+                return false;
+            }
+            return true;
         }
-        return true;
     }
 
     /**
@@ -654,36 +912,41 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
             write(FUNCTION_NAME, "No remote model : ask setRemote() first", true);
             return false;
         }
-        if (!free()) {
-            return false;
-        }
         final String given = request;
 
-        result_ = null;
-        working_ = true;
-        return start(kind, true, () -> {
-            try {
-                String answer = switch (kind) {
-                    case OpenAiClient.MODELS ->
-                        remote_.models();
-                    case OpenAiClient.CHAT ->
-                        remote_.chat(given, this);
-                    case OpenAiClient.RESPONSES ->
-                        remote_.response(given, this);
-                    case OpenAiClient.EMBEDDINGS ->
-                        remote_.embeddings(given);
-                    default ->
-                        remote_.completions(given, this);
-                };
-
-                result_ = answer;
-                done_.send("'" + kind + "'," + ScriptValue.literal(result_, REPORT_MAX_LENGTH));
-            } catch (OpenAiException ex) {
-                failed(kind, ex);
-            } finally {
-                working_ = false;
+        synchronized (workLock_) {
+            if (!free()) {
+                return false;
             }
-        });
+            result_ = null;
+            working_ = true;
+            return start(kind, true, () -> {
+                try {
+                    String answer = switch (kind) {
+                        case OpenAiClient.MODELS ->
+                            remote_.models();
+                        case OpenAiClient.CHAT ->
+                            remote_.chat(given, this);
+                        case OpenAiClient.RESPONSES ->
+                            remote_.response(given, this);
+                        case OpenAiClient.EMBEDDINGS ->
+                            remote_.embeddings(given);
+                        default ->
+                            remote_.completions(given, this);
+                    };
+
+                    result_ = answer;
+                    done_.send("'" + kind + "'," + ScriptValue.literal(result_, REPORT_MAX_LENGTH));
+                } catch (RuntimeException ex) {
+                    failed(kind, ex);
+                } finally {
+                    synchronized (workLock_) {
+                        working_ = false;
+                        remoteWork_ = false;
+                    }
+                }
+            });
+        }
     }
 
     /**
@@ -804,45 +1067,50 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
         }
         JsonObject read = given.getAsJsonObject();
 
-        if (read.has("vocab")) {
-            int type = ModelConfig.vocabTypeOf(read.get("vocab").getAsString());
+        if (hasValue(read, "vocab")) {
+            String vocabName = read.get("vocab").getAsString();
+            int type = ModelConfig.vocabTypeOf(vocabName);
 
             if (type < 0) {
-                throw new LlmCoreException("A vocabulary of \"" + read.get("vocab").getAsString()
+                throw new LlmCoreException("A vocabulary of \"" + vocabName
                         + "\" is refused : use \"" + ModelConfig.VOCAB_NAME_BYTE + "\" or \""
                         + ModelConfig.VOCAB_NAME_CHAR + "\"");
             }
             sizes.setVocabType(type);
         }
-        if (read.has("vocabSize") && !sizes.setVocabSize(read.get("vocabSize").getAsInt())) {
+        if (hasValue(read, "vocabSize") && !sizes.setVocabSize(read.get("vocabSize").getAsInt())) {
             throw new LlmCoreException("A vocabulary of " + read.get("vocabSize").getAsInt()
                     + " tokens is refused : use 0 to " + ModelConfig.MAX_VOCAB + " tokens with the "
                     + ModelConfig.VOCAB_NAME_CHAR + " vocabulary");
         }
-        if (read.has("dModel") && !sizes.setDModel(read.get("dModel").getAsInt())) {
+        if (hasValue(read, "dModel") && !sizes.setDModel(read.get("dModel").getAsInt())) {
             throw new LlmCoreException("A model of " + read.get("dModel").getAsInt()
                     + " values wide is refused : use " + ModelConfig.MIN_D_MODEL + " to "
                     + ModelConfig.MAX_D_MODEL + " values");
         }
-        if (read.has("heads") && !sizes.setHeads(read.get("heads").getAsInt())) {
+        if (hasValue(read, "heads") && !sizes.setHeads(read.get("heads").getAsInt())) {
             throw new LlmCoreException("A model with " + read.get("heads").getAsInt() + " heads is "
                     + "refused : use " + ModelConfig.MIN_HEADS + " to " + ModelConfig.MAX_HEADS
                     + " heads which divide the width of the model");
         }
-        if (read.has("layers") && !sizes.setLayers(read.get("layers").getAsInt())) {
+        if (hasValue(read, "layers") && !sizes.setLayers(read.get("layers").getAsInt())) {
             throw new LlmCoreException("A model of " + read.get("layers").getAsInt()
                     + " layers is refused : use " + ModelConfig.MIN_LAYERS + " to "
                     + ModelConfig.MAX_LAYERS + " layers");
         }
-        if (read.has("context") && !sizes.setContext(read.get("context").getAsInt())) {
+        if (hasValue(read, "context") && !sizes.setContext(read.get("context").getAsInt())) {
             throw new LlmCoreException("A model which reads " + read.get("context").getAsInt()
                     + " tokens at a time is refused : use " + ModelConfig.MIN_CONTEXT + " to "
                     + ModelConfig.MAX_CONTEXT + " tokens");
         }
-        if (read.has("seed")) {
+        if (hasValue(read, "seed")) {
             sizes.setSeed(read.get("seed").getAsLong());
         }
         return sizes;
+    }
+
+    private static boolean hasValue(JsonObject read, String name) {
+        return read.has(name) && !read.get(name).isJsonNull();
     }
 
     /**
@@ -881,7 +1149,7 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
                 }
             }
         } catch (JsonSyntaxException | NumberFormatException
-                | UnsupportedOperationException ex) {
+                | IllegalStateException | UnsupportedOperationException ex) {
             writeStackTrace(FUNCTION_NAME, ex);
             read.clear();
         }
@@ -925,6 +1193,24 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
     }
 
     /**
+     * the end of an evaluation, written in the javascript of the page and kept for result()
+     *
+     * @param evaluated metrics read by the model
+     * @return the json of the evaluation result
+     */
+    private String evalResult(LlmCore.EvalResult evaluated) {
+        JsonObject end = new JsonObject();
+
+        end.addProperty("kind", "evaluate");
+        end.add("loss", number(evaluated.loss));
+        end.add("perplexity", number(evaluated.perplexity));
+        end.addProperty("tokens", evaluated.tokens);
+        end.addProperty("windows", evaluated.windows);
+        end.add("seconds", number(rounded(evaluated.seconds)));
+        return gson_.toJson(end);
+    }
+
+    /**
      * the work of the model failed : the reason is written in the console of the WebViewer and told
      * to the page as the end of the work, so a page which reads the notifications and a page which
      * reads result() both know why the model stopped
@@ -945,7 +1231,7 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
     /**
      * the work the model reads, given to the page
      *
-     * @return "idle", "training" or "answering"
+     * @return "idle", "training", "answering" or "evaluating"
      */
     private String stateName() {
         switch (core_.state()) {
@@ -953,6 +1239,8 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
                 return "training";
             case LlmCore.ANSWERING:
                 return "answering";
+            case LlmCore.EVALUATING:
+                return "evaluating";
             default:
                 return "idle";
         }
@@ -1033,15 +1321,18 @@ public class Llm extends PluginSupport implements LlmCoreListener, OpenAiListene
     @Override
     public void close() {
         core_.stop();
-        remote_.stop();
+        remote_.close();
 
-        ExecutorService work = worker_;
-
-        worker_ = null;
+        ExecutorService work;
+        synchronized (workLock_) {
+            work = worker_;
+            worker_ = null;
+            working_ = false;
+            remoteWork_ = false;
+        }
         if (work != null) {
             work.shutdownNow();
         }
-        working_ = false;
         result_ = null;
 
         progress_.clear();
