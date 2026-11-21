@@ -1,171 +1,200 @@
-# WebPlugins Llm
+# WebPlugins Llm (v2.0.0)
 
 ## Overview / 概要
 
-* **Llm** is the Large Language Model (LLM) plug-in for the `WebViewer`. It provides two capabilities under a unified `llm` JavaScript object:
-  1. **Local On-Device Transformer (`llm-core`)**: Builds, trains, saves, loads, and runs a lightweight pure-Java Transformer language model directly on the local CPU with zero native libraries or network access.
-  2. **Remote OpenAI-Compatible Client**: Connects to any OpenAI-compatible HTTP server (such as LM Studio, Ollama, vLLM, llama.cpp server, or OpenAI) for `/chat/completions`, `/completions`, `/responses`, `/embeddings`, and `/models` with streaming token notifications, tool call reassembly, and automatic retry/backoff.
-* **Llm** は、`WebViewer` 向けの言語モデル（LLM）プラグインです。単一の `llm` オブジェクトから以下の 2 つの機能を利用できます：
-  1. **プラグイン内蔵のローカル Transformer モデル (`llm-core`)**: ネットワークやネイティブライブラリ、GPU を一切必要とせず、純粋な Java のみで動作する小規模な Transformer モデルの作成・学習・保存・読込・推論（文章生成）を行います。
-  2. **OpenAI 互換リモートモデルのクライアント**: ローカルまたは別コンピューター上の OpenAI 互換 API サーバー（LM Studio、Ollama、vLLM、llama.cpp、OpenAI 等）に対し、`/chat/completions`・`/completions`・`/responses`・`/embeddings`・`/models` のリクエスト（ストリーミングおよびツール呼び出し結合に対応）を送信します。
-* **Non-Blocking Execution**: Local training and generation run on a dedicated background worker thread (with parallel matrix operations controlled by `-Dwebviewer.llm.threads=<N>`), and remote HTTP calls run on Java 21 virtual threads, keeping the `WebViewer` UI responsive at all times.
-* **非同期・並列実行**: ローカルモデルの学習・推論は専用ワーカースレッド（大きな行列演算はシステムプロパティ `webviewer.llm.threads` で指定したスレッド数で並列化）で動作し、リモートモデルへの通信は Java 21 の仮想スレッド（Virtual Thread）上で動作するため、ページの描画や UI 操作をブロックしません。
+* **Llm** is the Large Language Model (LLM) plug-in for the `WebViewer`, exposed to page JavaScript under `window.llm`. Designed around clean capability sub-facades and a single unified task/event model:
+  1. **`llm.local()` (`llm-core`)**: Builds, trains, evaluates, saves, loads, tokenizes, and runs an in-process pure-Java CPU Transformer on its own dedicated daemon thread.
+  2. **`llm.remote()` (Multi-Provider HTTP)**: Connects concurrently via Java 21 virtual threads to OpenAI-compatible servers (OpenAI, Ollama, vLLM, llama.cpp), Azure OpenAI (`authHeader: "api-key"`, URL/JSON `queryParams`), and native Anthropic (`provider: "anthropic"` → `/messages`), featuring SSE idle-timeout watchdog protection, Content-Type JSON fallback, and `Retry-After` backoff.
+  3. **`llm.sessions()` (Conversation Engine)**: Per-session concurrency-guarded multi-turn chat sessions supporting `update()`, `fork()`, tool-call-safe history trimming, atomic commit-on-success, sandboxed persistence, and optional ephemeral RAG context injection (`{ rag: true | { ... } }`).
+  4. **`llm.rag()` (Hybrid RAG Store)**: UTF-16-safe `chunk()`, dense cosine vector + CJK/alphanumeric BM25 lexical search with Reciprocal Rank Fusion (RRF), metadata filtering, atomic document replacement, and one-call async `indexText()` / `indexFile()` / `retrieve()` pipelines (automatically falling back to lexical mode on text-only stores).
+  5. **`llm.tasks()` & `llm.onEvent()`**: Every async call returns a unique `taskId` tracked across both lanes, emitting valid bounded JSON envelopes (`started`, `progress`, `token`, `reasoning`, `tool_call`, `log`, `done`, `cancelled`, `error`) and automatically purging stale callbacks/queues across page reloads.
+
+* **Llm** は、`WebViewer` 向けの言語モデル（LLM）プラグインです。機能別サブ API と統一タスク／イベントモデルを備え、ページからは `window.llm` 経由で以下の機能を利用できます：
+  1. **`llm.local()`（内蔵 CPU Transformer）**: 専用ワーカースレッド上でローカルモデルの作成・最適化設定・学習・評価・生成・トークナイズ・保存／読込を実行します（リモート通信を一切ブロックしません）。
+  2. **`llm.remote()`（マルチプロバイダー HTTP クライアント）**: OpenAI 互換（OpenAI / Ollama / vLLM 等）、Azure OpenAI（カスタム認証ヘッダー＋クエリパラメーター）、Anthropic（`provider: "anthropic"` で `/messages` を自動変換）に対応し、SSE アイドル監視・`Retry-After` リトライ・並列仮想スレッド実行を行います。
+  3. **`llm.sessions()`（マルチターン会話管理）**: セッション単位の並列実行制御、`fork()` / `update()`、ツール呼び出し整合性を保つ履歴トリミング、成功時アトミック保存、サンドボックス永続化、および会話履歴を汚さない一時的な RAG コンテキスト自動注入（`{ rag: true | { ... } }`）を提供します。
+  4. **`llm.rag()`（ハイブリッド RAG）**: テキスト分割（`chunk`）、日本語バイグラム（長音符含む）＋技術コード BM25 と密ベクトルの RRF ハイブリッド検索、メタデータフィルタリング、ドキュメント更新時の旧チャンク自動置換（`replace: true`）、さらに 1 コール非同期 `indexText` / `indexFile` / `retrieve`（ベクトル未登録時は自動的に `lexical` 検索へ切替）を備えています。
+  5. **`llm.tasks()` / `llm.onEvent()`**: 全非同期操作が `taskId` を返し、サイズ上限保証付き統一 JSON イベントで進捗・トークン・思考過程・ツールデルタ・完了・キャンセル・エラーを通知します。ページ遷移／リロード時には古いイベントキューとハンドラーを自動破棄します。
 
 ---
 
-## JavaScript Functions / JS 関数一覧
+## JavaScript API / JS 関数一覧
 
-### 1. Local On-Device Model (`llm-core`) / プラグイン内蔵のローカルモデル
+### Top-Level / トップレベル (`llm`)
 
 ```text
-void    llm.licenses()
-String  llm.newModel(String config)
-String  llm.loadModel(String path)
-Boolean llm.saveModel(String path)
-Boolean llm.unloadModel()
-String  llm.modelInfo()
-Boolean llm.isIdle()
-Boolean llm.stop()
-String  llm.tokenize(String text)
-String  llm.detokenize(String tokensJson)
-Integer llm.tokenCount(String text)
-Boolean llm.setWeightDecay(Double weightDecay)
-Boolean llm.setLargestGradient(Double largestGradient)
-Boolean llm.train(String texts, Integer epochs, Double learningRate)
-Boolean llm.trainFile(String path, Integer epochs, Double learningRate)
-Boolean llm.evaluate(String texts)
-Boolean llm.evaluateFile(String path)
-Boolean llm.answer(String prompt, Integer maxTokens, Double temperature, Integer topCount, Double topSum, Long seed)
-String  llm.result()
+void       llm.licenses()
+String     llm.version()                  // "2.0.0"
+String     llm.lastError()                // most recent synchronous/validation error, or null
+void       llm.onEvent(String func)       // func(eventJson)
+String     llm.status()                   // full JSON status snapshot (secrets redacted)
+LocalApi   llm.local()
+RemoteApi  llm.remote()
+SessionApi llm.sessions()
+RagApi     llm.rag()
+TaskApi    llm.tasks()
 ```
 
-### 2. Remote OpenAI-Compatible Model / OpenAI 互換リモートモデル
+### Local Model / ローカルモデル (`llm.local()`)
 
 ```text
-String  llm.setRemote(String config)
-String  llm.remoteInfo()
-Boolean llm.clearRemote()
-Boolean llm.chat(String request)
-Boolean llm.completions(String request)
-Boolean llm.response(String request)
-Boolean llm.embeddings(String request)
-Boolean llm.models()
-String  llm.result()
+String  create(String configJson)         // {"vocab","vocabSize","dModel","heads","layers","context","seed"}
+String  load(String path)
+Boolean save(String path)                 // null saves to bound path
+Boolean unload()
+String  info()
+Boolean setOptimizer(String optionsJson)  // {"learningRate","weightDecay","largestGradient"}
+String  tokenize(String text)
+String  detokenize(String tokensJson)
+Integer tokenCount(String text)
+String  train(String texts, String optionsJson)        // returns taskId; options: {"epochs","learningRate"}
+String  trainFile(String path, String optionsJson)     // returns taskId
+String  evaluate(String texts)                         // returns taskId
+String  evaluateFile(String path)                      // returns taskId
+String  generate(String prompt, String optionsJson)    // returns taskId; {"maxTokens","temperature","topK","topP","seed"}
 ```
 
-### 3. Page Notifications / ページへの通知コールバック登録
+### Remote Providers & Endpoints (`llm.remote()`)
 
 ```text
-void    llm.setNotifyProgress(String func)
-void    llm.setNotifyToken(String func)
-void    llm.setNotifyDone(String func)
-void    llm.setNotifyLog(String func)
+String  setProfile(String name, String configJson)   // null name targets active profile
+String  useProfile(String name)
+Boolean removeProfile(String name)
+String  profileInfo(String name)
+String  listProfiles()
+String  chat(String request, String profile)         // returns taskId
+String  completions(String request, String profile)  // returns taskId
+String  responses(String request, String profile)    // returns taskId
+String  embeddings(String request, String profile)   // returns taskId
+String  models(String profile)                       // returns taskId
+```
+
+### Conversation Sessions (`llm.sessions()`)
+
+```text
+String  create(String configJson)                    // {"id","systemPrompt","model","profile","maxMessages"}
+String  update(String sessionId, String configJson)
+String  fork(String sourceSessionId, String newSessionId)
+String  info(String sessionId)
+String  messages(String sessionId)
+Boolean appendMessage(String sessionId, String messageJson)
+Boolean clear(String sessionId)
+Boolean delete(String sessionId)
+String  list()
+Boolean save(String sessionId, String path)
+String  load(String path)
+String  send(String sessionId, String userText, String optionsJson) // returns taskId; supports {"rag": true | {mode,topK,filter,maxContextChars,...}}
+```
+
+### Hybrid RAG & Embeddings Pipeline (`llm.rag()`)
+
+```text
+String  chunk(String text, Integer chunkSize, Integer overlap)
+Integer upsert(String entriesJson)
+Boolean delete(String id)
+Integer deleteByPrefix(String prefix)
+Boolean clear()
+String  info()
+String  search(String queryJson)                     // {"text","vector","mode":"auto|vector|lexical|hybrid","topK","minScore","rrfK","filter"}
+Double  cosineSimilarity(String vectorAJson, String vectorBJson)
+Boolean save(String path)
+String  load(String path)
+String  indexText(String docId, String text, String optionsJson)    // async; replace:true (default) replaces prior docId#* chunks
+String  indexFile(String docId, String path, String optionsJson)    // async; replace:true (default) replaces prior docId#* chunks
+String  retrieve(String queryText, String optionsJson)              // async; "auto" uses lexical when no vectors are indexed
+```
+
+### Task Inspection & Cancellation (`llm.tasks()`)
+
+```text
+Boolean isIdle()
+Boolean isLocalIdle()
+Boolean hasRemoteTasks()
+String  active()
+String  list()
+String  status(String taskId)
+String  result(String taskId)
+String  latestResult()
+Boolean cancel(String taskId)
+Integer cancelLane(String lane)                      // "local" or "remote"
+Integer cancelAll()
 ```
 
 ---
 
-## Local Model Details / ローカルモデルの仕様
+## Provider Configuration Options / プロバイダー設定項目
 
-* **`llm.newModel(config)`**: Accepts a JSON object configuring model hyperparameters (`"vocab"` as `"byte"` or `"char"`, `"vocabSize"`, `"dModel"`, `"heads"`, `"layers"`, `"context"`, `"seed"`), or `null` / `{}` for defaults. `modelInfo()` also returns `"learningRate"`, `"weightDecay"`, `"largestGradient"`, and `"evaluating"` state.
-  * Bounds: `dModel` (`16..512`), `context` (`16..512`), `heads` (`1..16`), `layers` (`1..16`), `vocabSize` (`8..20000`), and maximum total parameters `24,000,000`.
-  * `newModel(config)` はモデルのサイズ設定 JSON（`"vocab"`: `"byte"` または `"char"`、`"vocabSize"`、`"dModel"`、`"heads"`、`"layers"`、`"context"`、`"seed"`）を受け取ります。`modelInfo()` には最適化設定や `"evaluating"` 状態も含まれます。
-* **`llm.tokenize(text)` / `llm.detokenize(tokensJson)` / `llm.tokenCount(text)`**: Encodes text to a JSON array of token IDs, decodes token IDs back to text, or counts tokens using the loaded model's tokenizer.
-  * 読み込み済みモデルのトークナイザーでトークン ID 列の JSON 変換・逆変換・トークン数計測を行います。
-* **`llm.setWeightDecay(weightDecay)` / `llm.setLargestGradient(largestGradient)`**: Tunes AdamW weight decay (`0..0.5`) and gradient clipping threshold (`>= 0`) on the loaded model.
-  * AdamW の Weight Decay（`0..0.5`）および勾配クリッピング閾値（`>= 0`）を設定します。
-* **`llm.train(texts, epochs, learningRate)` / `llm.trainFile(path, epochs, learningRate)`**: Trains the local model asynchronously on a text string, JSON array of strings, or sandboxed UTF-8 corpus file (`<= 16 MB`). Calls `setNotifyProgress` after each epoch and `setNotifyDone` when finished.
-  * 文字列・文字列配列 JSON・またはサンドボックス内の UTF-8 ファイル（最大 `16 MB`）から非同期学習を行います。
-* **`llm.evaluate(texts)` / `llm.evaluateFile(path)`**: Evaluates cross-entropy loss and perplexity asynchronously over texts or a sandboxed UTF-8 file (`<= 16 MB`) without modifying weights or `CharTokenizer` vocabulary, reporting `"evaluate"` JSON (`loss`, `perplexity`, `tokens`, `windows`, `seconds`) to `setNotifyDone` and `result()`.
-  * 重みや語彙を変更せずに検証テキスト・ファイルの評価（損失・パープレキシティ計測）を非同期で実行します。
-* **`llm.answer(prompt, maxTokens, temperature, topCount, topSum, seed)`**: Generates up to `maxTokens` (`1..4096`) tokens from `prompt`, streaming each token piece to `setNotifyToken` and the final JSON summary to `setNotifyDone` / `llm.result()`.
-  * `prompt` に続くトークンを最大 `4096` トークンまで生成し、生成された断片ごとに `setNotifyToken` を呼び出します。
-* **`llm.saveModel(path)` / `llm.loadModel(path)`**: Saves or loads the model's configuration, tokenizer vocabulary, and weights to/from a file sandboxed under the page's `web` folder (`SandboxPath`).
-  * ページの `web` フォルダー配下（`SandboxPath`）のファイルへモデルの設定・トークナイザー・重みを保存／読み込みします。
-* **`llm.stop()`**: Requests graceful cancellation after the current token or training step so the model remains in a valid state.
-  * 現在処理中のステップまたはトークンの完了後に学習・推論を安全に停止します。
+* `"provider"`: `"openai"` (default) or `"anthropic"`.
+* `"baseUrl"`: HTTP/HTTPS base URL (may include query parameters, e.g. `?api-version=2024-10-21` for Azure OpenAI).
+* `"apiKey"` / `"apiKeyEnv"`: Credential value or OS environment variable name (redacted from all public JSON/logs).
+* `"authHeader"` / `"authPrefix"`: Defaults to `Authorization` + `Bearer ` (`"openai"`), `x-api-key` + `""` (`"anthropic"`), or `""` prefix for custom headers like `"api-key"`.
+* `"model"`: Default model name when omitted in requests.
+* `"timeout"` (`1..3600`s, default `120`), `"connectTimeout"` (`1..120`s, default `20`), `"streamIdleTimeout"` (`1..3600`s, defaults to `timeout`).
+* `"retries"` (`0..5`, default `2`), `"http2"` (`boolean`), `"headers"` (`{name: value}`), `"queryParams"` (`{key: value}`).
 
 ---
 
-## Remote Model Details / リモートモデルの仕様
+## JavaScript Usage Examples / 使用例
 
-* **`llm.setRemote(config)` / `llm.clearRemote()`**: `setRemote(config)` (guarded while another task is running) accepts either a base URL string or a JSON configuration object, and `clearRemote()` clears the stored remote endpoint and credentials when idle:
-  * `"baseUrl"`: Endpoint base URL (e.g. `"http://127.0.0.1:1234/v1"`).
-  * `"apiKey"` / `"apiKeyEnv"`: Direct API key or the name of an OS environment variable holding the API key (recommended so secrets are never stored in page JavaScript). `llm.remoteInfo()` only reports whether a key is configured (`hasApiKey`), never the key itself.
-  * `"model"`: Default model identifier.
-  * `"timeout"`: Request timeout in seconds (default `120`, max `3600`).
-  * `"retries"`: Automatic retry count on HTTP `429` or `5xx` server errors (default `2`, max `5`), respecting the server's `Retry-After` header.
-  * `"headers"`: Optional custom HTTP headers object.
-  * `setRemote(config)` は実行中タスクがない場合のみリモート接続設定を行い、`clearRemote()` で設定と認証情報をクリアできます。`"apiKeyEnv"` を使うことで API キーを環境変数から安全に読み込めます。
-* **Endpoints**:
-  * `llm.chat(request)` → `POST /chat/completions`
-  * `llm.completions(request)` → `POST /completions`
-  * `llm.response(request)` → `POST /responses`
-  * `llm.embeddings(request)` → `POST /embeddings`
-  * `llm.models()` → `GET /models`
-* **Streaming, Errors & Tool Calls**: When `"stream": true` is included in the request JSON, incremental text deltas are delivered to `setNotifyToken(func)`, streamed `tool_calls` chunks are reassembled in `llm.result()`, and SSE `error` or `response.failed` events fail the request and populate `"error"` in `llm.result()`.
-  * リクエスト JSON に `"stream": true` を指定すると、断片ごとに `setNotifyToken(func)` が呼ばれ、分割 `tool_calls` の結合および SSE `error` / `response.failed` イベントのエラー通知も行われます。
-* **Single Worker**: Local and remote jobs share a single worker lock; starting a new task while another is active logs `"The model is already working"` and returns `false`.
-  * ローカルモデルとリモートモデルのジョブは単一のワーカー状態を共有するため、実行中に別のジョブを依頼すると `"The model is already working"` を出力して `false` を返します。
-
----
-
-## Notifications / 通知コールバック
-
-* `setNotifyProgress(func)` → `func(epoch, epochs, steps, loss, seconds)` after every training epoch.
-  * 学習の各エポック完了時に `func(epoch, epochs, steps, loss, seconds)` を呼び出します。
-* `setNotifyToken(func)` → `func(piece)` for each generated token piece (both local and remote streaming).
-  * ローカルモデルまたはリモートストリーミングのトークン生成ごとに `func(piece)` を呼び出します。
-* `setNotifyDone(func)` → `func(kind, result)` when a job finishes (`kind` is `"train"`, `"evaluate"`, `"answer"`, `"chat"`, `"completions"`, `"response"`, `"embeddings"`, or `"models"`; `result` is the JSON result string up to 64 KB, also available via `llm.result()`).
-  * ジョブ完了時に `func(kind, result)` を呼び出します（`result` は最大 64 KB の JSON 文字列で、`llm.result()` でも取得でき、失敗時は `"error"` フィールドを含みます）。
-* `setNotifyLog(func)` → `func(message)` when the plug-in writes a log message.
-  * プラグインのログ出力時に `func(message)` を呼び出します。
-
----
-
-## Usage / 使い方
-
-Place `Llm.jar` in `web/plugins/` and restart the `WebViewer`.
-`Llm.jar` を `web/plugins/` フォルダーに配置し、`WebViewer` を再起動します。
-
-### Local On-Device Model Example / ローカルモデルの例
+### Promise Helper + Streaming Chat & Hybrid RAG
 
 ```javascript
-function progress(epoch, epochs, steps, loss, seconds) {
-  dbg.log('epoch ' + epoch + '/' + epochs + ' : ' + loss);
-}
-function token(piece) {
-  addMessage(piece);
-}
-function done(kind, result) {
-  addMessage(kind + ' : ' + result);
-}
-function setup() {
-  llm.setNotifyProgress('progress');
-  llm.setNotifyToken('token');
-  llm.setNotifyDone('done');
-  llm.newModel(JSON.stringify({ vocab: 'byte', dModel: 64, layers: 2, heads: 4, context: 128 }));
-  llm.train(JSON.stringify(['a text of the page', 'an other text of the page']), 40, null);
-  llm.answer('a prompt', 128, null, null, null, null);
-  llm.saveModel('./model/llm.model');
-}
-```
+const pending = new Map();
 
-### Remote OpenAI-Compatible Server Example / リモートモデルの例
+function handleLlmEvent(raw) {
+  const ev = JSON.parse(raw);
+  const entry = pending.get(ev.taskId);
+  if (ev.event === 'token' && entry && entry.onToken) entry.onToken(ev.text);
+  if (ev.event === 'reasoning' && entry && entry.onReasoning) entry.onReasoning(ev.text);
+  if (ev.event === 'done') {
+    pending.delete(ev.taskId);
+    if (entry) entry.resolve(ev.result ?? JSON.parse(llm.tasks().result(ev.taskId)));
+  } else if (ev.event === 'cancelled' || ev.event === 'error') {
+    pending.delete(ev.taskId);
+    if (entry) entry.reject(ev);
+  }
+}
 
-```javascript
-function setup() {
-  llm.setNotifyToken('token');
-  llm.setNotifyDone('done');
-  llm.setRemote(JSON.stringify({
+function awaitTask(taskId, callbacks = {}) {
+  return new Promise((resolve, reject) => {
+    if (!taskId) return reject(new Error(llm.lastError() || 'Task failed to start'));
+    pending.set(taskId, { resolve, reject, ...callbacks });
+  });
+}
+
+async function setup() {
+  llm.onEvent('handleLlmEvent');
+
+  // OpenAI / Ollama profile
+  llm.remote().setProfile('local', JSON.stringify({
     baseUrl: 'http://127.0.0.1:1234/v1',
-    apiKeyEnv: 'OPENAI_API_KEY',
-    model: 'local-model',
-    retries: 3
+    model: 'qwen2.5-coder'
   }));
-  llm.chat(JSON.stringify({
+
+  // Optional native Anthropic profile
+  llm.remote().setProfile('claude', JSON.stringify({
+    provider: 'anthropic',
+    baseUrl: 'https://api.anthropic.com/v1',
+    apiKeyEnv: 'ANTHROPIC_API_KEY',
+    model: 'claude-sonnet-4-20250514'
+  }));
+
+  // Index manual & run hybrid search
+  await awaitTask(llm.rag().indexFile('plc', 'manual.txt', JSON.stringify({
+    profile: 'local', model: 'text-embedding-nomic', metadata: { category: 'servo' }
+  })));
+  const hits = await awaitTask(llm.rag().retrieve('E042 過負荷', JSON.stringify({
+    profile: 'local', model: 'text-embedding-nomic', mode: 'hybrid', topK: 3
+  })));
+
+  // Multi-turn session (with optional ephemeral RAG context grounding & citations in result.ragHits)
+  llm.sessions().create(JSON.stringify({ id: 'diag', profile: 'local' }));
+  const reply = await awaitTask(llm.sessions().send('diag', 'Explain E042', JSON.stringify({
     stream: true,
-    messages: [{ role: 'user', content: 'Hello!' }]
-  }));
+    rag: { topK: 3 }
+  })), {
+    onToken: (t) => appendText(t)
+  });
 }
 ```
 
@@ -173,20 +202,16 @@ function setup() {
 
 ## Requirements & Build / 要件とビルド
 
-* No external JARs in `web/plugins/lib/` are needed (`llm-core` and `webviewer-plugin-kit` are shaded into `Llm.jar`, while `Gson` and `webviewer-plugin-api` are provided by the host `WebViewer`).
-  * `web/plugins/lib/` への JAR 配置は不要です（`llm-core` と `webviewer-plugin-kit` は `Llm.jar` に shade され、`Gson` とインターフェースはホスト側の `WebViewer` から提供されます）。
+* Java 21 or later. No external JARs in `web/plugins/lib/` are needed (`llm-core` and `webviewer-plugin-kit` are shaded into `Llm.jar`, while `Gson` and `webviewer-plugin-api` are provided by the host `WebViewer`).
 
 ```bash
 # Build deliverable shaded JAR (Llm/target/Llm.jar)
 mvn -B -pl Llm -am package
 
-# Run unit tests (uses an in-process mock HTTP server; no network needed)
+# Run full unit and integration suite (uses in-process loopback HTTP servers; no external network needed)
 mvn -B -pl Llm -am test
 ```
-
----
 
 ## Licenses / ライセンス
 
 * `llm.licenses()` displays `licenses.txt`. `Llm.jar` shades no third-party libraries of its own (`Gson` is provided and displayed by the host `WebViewer`).
-  * `llm.licenses()` はパッケージ内の `licenses.txt` を表示します（`Llm.jar` 自体は外部プロジェクトのライブラリを shade しておらず、`Gson` のライセンスはホスト側の `WebViewer` で表示されます）。
