@@ -2,136 +2,127 @@
 
 ## Overview / 概要
 
-* **WebCam** is the camera capture and computer-vision preprocessing plug-in for the `WebViewer`. Built on **JavaCV** and **OpenCV**, it enumerates cameras connected to the computer, captures frames in a background service, saves snapshots under the page's `web` folder, streams encoded image bytes or OpenCV DNN blobs (`blobFromImage`) to JavaScript callbacks, and optionally displays a live preview window.
-* **WebCam** は、`WebViewer` 向けのカメラ撮影・画像前処理プラグインです。**JavaCV** および **OpenCV** の上に構築されており、コンピューターに接続されたカメラの列挙、バックグラウンドでのフレーム取得、`web` フォルダー配下への静止画保存、画像バイト列やディープラーニング入力用 Blob（`blobFromImage`）の JavaScript コールバック通知、および専用プレビューウィンドウの表示を行います。
-* **All-Platform Native Presets**: `WebCam.jar` shades the JavaCV/OpenCV/FFmpeg native presets for all major platforms, so its JAR size is approximately **1.2 GB**. Place `WebCam.jar` in `web/plugins/` only on deployments that use camera functionality.
-* **全プラットフォーム向けネイティブ同梱**: `WebCam.jar` には JavaCV / OpenCV / FFmpeg の全プラットフォーム向けネイティブプリセットが shade されているため、ファイルサイズが約 **1.2 GB** あります。カメラ機能を使用する環境の `web/plugins/` にのみ配置してください。
+* **WebCam** is the camera capture and OpenCV DNN blob preprocessing plug-in for `WebViewer` built on **JavaCV**, **OpenCV**, **FFmpeg**, and **videoInput**, exposing `window.webcam` to JavaScript (`WebCam.jar` placed in `web/plugins/`).
+* **WebCam** は、**JavaCV** / **OpenCV** / **FFmpeg** を用いたカメラ撮影・画像前処理・DNN 入力用 Blob 生成プラグインです。`web/plugins/WebCam.jar` に配置すると、`window.webcam` からデバイス列挙、非同期フレーム撮影、ファイル保存、Base64 / Data URL 取得、画像・Blob コールバック通知、および独立プレビューウィンドウ制御が行えます。
+* **Packaging & Module Requirements**: Built `WebCam/target/WebCam.jar` is approximately **729 MB** because it bundles native OpenCV/FFmpeg presets across platforms (`windows-*`, `linux-*`, `macosx-*`, `ios-*`), and requires the JDK **`javafx.swing`** module at runtime. Place `WebCam.jar` in `web/plugins/` only on deployments that use camera functionality.
 
 ---
 
-## JavaScript Functions / JS 関数一覧
+## Installation & Host Lifecycle / 導入とライフサイクル
 
-```text
-void    webcam.licenses()
-String  webcam.getWebcams()
-Boolean webcam.open(int deviceNumber)
-Boolean webcam.isOpened()
-Boolean webcam.play()
-Boolean webcam.stop()
-Boolean webcam.isPlaying()
-Boolean webcam.save(String path)
-String  webcam.captureBase64()
-String  webcam.captureDataUrl()
-String  webcam.getResultImage()
-String  webcam.getResultImageBase64()
-String  webcam.getResultBlob()
-String  webcam.getImageType()
-Boolean webcam.setImageType(String type)
-String  webcam.getImageSize()
-void    webcam.setImageSize(int width, int height)
-Integer webcam.getCaptureWidth()
-Integer webcam.getCaptureHeight()
-Boolean webcam.setFrameRate(Double fps)
-Double  webcam.getFrameRate()
-int     webcam.getImageColor()
-String  webcam.getImageColorName()
-void    webcam.setImageColor(String color)
-void    webcam.setNotifyResultImage(String func)
-void    webcam.setNotifyResultBlob(String func, String blobInfo)
-Boolean webcam.isShowing()
-Boolean webcam.show()
-Boolean webcam.hide()
-Double  webcam.getWidth()
-Double  webcam.getHeight()
-Boolean webcam.isFocused()
-Boolean webcam.requestFocus()
-Double  webcam.getOpacity()
-Boolean webcam.setOpacity(double value)
-Boolean webcam.isAlwaysOnTop()
-Boolean webcam.setAlwaysOnTop(boolean state)
-Double  webcam.getX()
-Boolean webcam.setX(double x)
-Double  webcam.getY()
-Boolean webcam.setY(double y)
-```
-
-| Function / 関数 | Description / 説明 |
-| :--- | :--- |
-| `webcam.getWebcams()` | Returns the descriptions of connected camera devices as a JSON array string (silencing verbose native `videoInput` console output).<br>コンピューターに接続されているカメラの一覧を JSON 配列文字列として返します。 |
-| `webcam.open(deviceNumber)`, `webcam.isOpened()` | Opens and starts the camera at `deviceNumber` (applying configured `setImageSize` and `setFrameRate`). If starting fails, the grabber is immediately released and `isOpened()` remains `false`.<br>指定したデバイス番号のカメラを開きます（事前設定された解像度・フレームレートも適用）。起動失敗時は即座にリソースを解放します。 |
-| `webcam.play()`, `webcam.stop()`, `webcam.isPlaying()` | Starts or stops frame capture, or checks whether capture is currently running.<br>フレーム撮影の開始・停止、および撮影中かどうかの確認を行います。 |
-| `webcam.save(path)` | Saves one captured frame to `path` under the page's `web` folder (`SandboxPath`).<br>撮影した 1 枚の画像をページの `web` フォルダー配下（`SandboxPath`）のファイルへ保存します。 |
-| `webcam.captureBase64()`, `webcam.captureDataUrl()`, `webcam.getResultImage()`, `webcam.getResultImageBase64()`, `webcam.getResultBlob()` | Captures a single frame (synchronously when paused, or via snapshot latch when playing) as a Base64 string or `data:image/...;base64,...` URL, or reads the latest cached image/DNN blob payloads.<br>静止画 1 フレームの Base64 / Data URL 取得（再生中はスナップショットラッチ経由）、および直近の画像・Blob キャッシュの取得を行います。 |
-| `webcam.getImageType()`, `webcam.setImageType(type)` | Gets or sets the encoded image format (`"jpg"`, `"png"`, `"bmp"`, etc.).<br>エンコードする画像形式（`"jpg"`, `"png"` など）を取得・設定します。 |
-| `webcam.getImageSize()`, `webcam.setImageSize(width, height)`, `webcam.getCaptureWidth()`, `webcam.getCaptureHeight()` | Gets (`{"width":...,"height":...}` JSON) or sets the target image size, or queries the open grabber's actual capture dimensions.<br>画像サイズの JSON 取得・設定、およびオープン中カメラの実際の取得幅・高さを取得します。 |
-| `webcam.setFrameRate(fps)`, `webcam.getFrameRate()` | Configures target capture frame rate (`>= 0`, `0` leaves capture uncapped).<br>目標フレームレート（`0` で制限なし）を設定・取得します。 |
-| `webcam.getImageColor()`, `webcam.getImageColorName()`, `webcam.setImageColor(color)` | Gets or sets the OpenCV `cvtColor` color conversion constant name (e.g. `"COLOR_BGR2GRAY"`); passing `null`, `""`, or `"NONE"` resets color conversion.<br>OpenCV の色空間変換設定（コード番号／定数名）を取得・設定します（`null`・空文字・`"NONE"` で変換を解除）。 |
-| `webcam.setNotifyResultImage(func)` | Registers a callback `func(imageData, imageType)` receiving each frame's encoded bytes as a JSON array of numbers.<br>フレームごとにエンコード済みバイト配列（JSON 配列）を受け取るコールバック関数 `func(imageData, imageType)` を登録します。 |
-| `webcam.setNotifyResultBlob(func, blobInfo)` | Registers a callback `func(blobData)` receiving a 4D DNN blob (`blobFromImage`) configured by `blobInfo` JSON (`scalefactor`, `size`, `mean`, `swapRB`, `crop`, `ddepth`).<br>OpenCV の `blobFromImage` による変換結果を受け取るコールバック関数 `func(blobData)` と変換設定 JSON（`scalefactor`, `size`, `mean`, `swapRB`, `crop`, `ddepth`）を登録します。 |
-| `webcam.show()`, `webcam.hide()`, `webcam.isShowing()`, `getWidth()`, `getHeight()`, `isFocused()`, `requestFocus()`, `getOpacity()`, `setOpacity(value)`, `isAlwaysOnTop()`, `setAlwaysOnTop(state)`, `getX()`, `setX(x)`, `getY()`, `setY(y)` | Controls the standalone camera preview window (hidden by default unless `webcam.show()` is called).<br>カメラプレビュー用の独立ウィンドウの表示／非表示、位置、サイズ、最前面固定、不透明度を制御します（`show()` を呼ばない限りウィンドウは表示されません）。 |
+1. Ensure the host JVM includes `javafx.swing` (included in standard DecoTofu builds) and copy `WebCam/target/WebCam.jar` into `<appDir>/web/plugins/WebCam.jar` (`Gson` and `PluginApi` are `<scope>provided</scope>` by host `WebViewer`).
+2. `WebCam` extends `ServiceSupport<Void>` (`javafx.concurrent.Service<Void>`). Always set desired resolution (`setImageSize`) and FPS (`setFrameRate`) **before** calling `open(...)`.
+3. `stop()` only pauses frame capture (the camera remains open and locked to your process). To release or switch camera devices, call `webcam.close()` explicitly (waits up to `3,000 ms` for the capture task to exit). On application shutdown, the host calls Java `webcam.close()`.
 
 ---
 
-## Notifications / 通知コールバック
-
-* `setNotifyResultImage(func)` and `setNotifyResultBlob(func, blobInfo)` validate `func` via `scriptFunction(func)` (`ScriptFunction.isValid`) before registering the callback.
-  * `setNotifyResultImage(func)` と `setNotifyResultBlob(func, blobInfo)` は、登録時に関数名を `scriptFunction(func)` で検証します。
-* Because notifications run on every captured frame, use a modest resolution (e.g. `320 × 240`) when streaming frames into the page DOM.
-  * 通知は撮影フレームごとに呼び出されるため、ページ側で Base64 変換等を行う場合は小さめの解像度（`320 × 240` など）を推奨します。
-
----
-
-## Usage / 使い方
-
-Place `WebCam.jar` in `web/plugins/` and restart the `WebViewer`.
-`WebCam.jar` を `web/plugins/` フォルダーに配置し、`WebViewer` を再起動します。
+## Usage Example / 使用例
 
 ```javascript
-function resultImage(imageData, imageType) {
-  var bytes = new Uint8Array(JSON.parse(imageData));
-  var base64 = '';
+window.onWebcamImage = function (imageDataJson, imageType) {
+    // imageDataJson is a JSON array of signed Java bytes (-128..127); Uint8Array masks cleanly
+    var bytes = new Uint8Array(JSON.parse(imageDataJson));
+    var binary = "";
+    for (var i = 0; i < bytes.byteLength; i++) {
+        binary += String.fromCharCode(bytes[i]);
+    }
+    document.getElementById("preview").src = "data:image/" + imageType + ";base64," + btoa(binary);
+};
 
-  for (var i = 0; i < bytes.byteLength; i++) {
-    base64 += String.fromCharCode(bytes[i]);
-  }
-  document.getElementById('image').src = 'data:image/' + imageType + ';base64,' + btoa(base64);
-}
+window.onWebcamBlob = function (blobDataJson) {
+    var rawBytes = new Int8Array(JSON.parse(blobDataJson));
+    console.log("DNN blob bytes:", rawBytes.length);
+};
 
 function setup() {
-  dbg.log(webcam.getWebcams());
-  webcam.setNotifyResultImage('resultImage');
-  webcam.setImageType('jpg');
-  webcam.setImageSize(320, 240);
-  webcam.open(0);
-  webcam.play();
+    var cams = JSON.parse(webcam.getWebcams()); // [{"index":0,"name":"..."}]
+    console.log("Cameras:", cams);
+
+    webcam.setImageType("jpg");     // Default is "bmp"
+    webcam.setImageSize(320, 240); // Apply BEFORE open()
+    webcam.setFrameRate(15.0);
+    webcam.setNotifyResultImage("onWebcamImage");
+
+    // Optional: both "size" and "mean" are REQUIRED for blob callback to fire; scalefactor defaults to 0.0!
+    webcam.setNotifyResultBlob("onWebcamBlob", JSON.stringify({
+        scalefactor: 1.0 / 255.0,
+        size: { width: 224, height: 224 },
+        mean: [0, 0, 0],
+        swapRB: true,
+        crop: false,
+        ddepth: "CV_32F"
+    }));
+
+    if (cams.length > 0 && webcam.open(cams[0].index)) {
+        webcam.play();
+    }
 }
 
-function close() {
-  webcam.stop();
+function releaseCamera() {
+    webcam.close(); // Stops capture (up to 3000 ms) AND releases hardware handle
 }
 ```
+
+---
+
+## Function Reference / 関数リファレンス (43 API methods)
+
+*(As a subclass of `ServiceSupport<Void>`, `WebViewerPlugin` host methods and `javafx.concurrent.Service<Void>` methods are also technically public on `window.webcam`.)*
+
+### 1. Device, Capture Lifecycle & Snapshots / デバイス・撮影制御・スナップショット
+
+| Signature / シグネチャ | Return & Behavior / 戻り値・仕様 |
+| :--- | :--- |
+| `void webcam.licenses()` | Opens non-modal `LicenseDialog` displaying `licenses.txt`. / ライセンスダイアログを開きます。 |
+| `String webcam.getWebcams()` | Enumerates connected cameras via Windows DirectShow `videoInput` and returns JSON array `[{"index":0,"name":"..."}, ...]`.<br>接続カメラ一覧を `[{"index":番号,"name":"名称"}]` 形式の JSON 配列で返します。 |
+| `Boolean webcam.open(int deviceNumber)` *(throws `FrameGrabber.Exception`)* | Opens `OpenCVFrameGrabber(deviceNumber)`, applies configured `setImageSize` and `setFrameRate` (`> 0`), and calls `start()`. Populates `getImageSize()` from grabber dimensions if unset. Returns `false` if already open.<br>カメラを開きます（解像度・FPS は事前設定が反映、既に開いている場合は `false`）。 |
+| `Boolean webcam.isOpened()` | Returns `true` if grabber is currently open. / カメラが開いていれば `true` を返します。 |
+| `Boolean webcam.play()` | Starts background capture loop (`true` if open, `false` if closed). Note: grabs frames only while at least one consumer is active (preview window showing, image/blob callback registered, snapshot requested, or `save()` pending).<br>バックグラウンド撮影ループを開始します（プレビュー・通知・保存要求がある間フレーム取得を実行）。 |
+| `Boolean webcam.stop()` | Cancels capture loop while **keeping the camera device open**.<br>撮影を停止します（デバイス自体は開いたまま保持、`open()` し直すには `close()` が必要）。 |
+| `Boolean webcam.isPlaying()` | Returns `true` if playing (`false` and logs error if closed). / 撮影中かどうかを返します。 |
+| `Boolean webcam.save(String path)` *(throws `FrameGrabber.Exception`)* | Returns **`null` if not open**. Validates `path` via `SandboxPath` (`webPath()`). Format is inferred from file extension by OpenCV `imwrite` (NOT `setImageType()`). While playing: queues next frame asynchronously (`false` if another save is already pending). While paused: grabs 1 frame synchronously and saves.<br>静止画を保存します（未オープン時 `null`、拡張子で形式決定、再生中は非同期キュー）。 |
+| `String webcam.captureBase64()` *(throws `FrameGrabber.Exception`)* | Captures 1 frame (1,000 ms timeout while playing), applies `setImageColor`, encodes using `getImageType()` (default `"bmp"`), updates `getResultImageBase64()`, and returns Base64 string (or `null` on failure/timeout/closed).<br>1 フレームを `getImageType()` 形式で Base64 エンコードして返します（再生中タイムアウト `1000 ms`）。 |
+| `String webcam.captureDataUrl()` *(throws `FrameGrabber.Exception`)* | Same as `captureBase64()`, prefixed with `"data:<mime>;base64,"` (`jpg`/`jpeg`→`image/jpeg`, `png`→`image/png`, `bmp`→`image/bmp`, `tif`/`tiff`→`image/tiff`, `gif`→`image/gif`, `wbmp`→`image/vnd.wap.wbmp`), or `null`.<br>`captureBase64()` に Data URL プレフィックスを付けて返します。 |
+| `String webcam.getResultImage()` | Last signed-byte JSON array produced for `setNotifyResultImage`, or `null`. |
+| `String webcam.getResultImageBase64()` | Last Base64 image string captured/encoded, or `null`. |
+| `String webcam.getResultBlob()` | Last raw signed-byte JSON array produced for `setNotifyResultBlob`, or `null`. |
+| `boolean webcam.awaitTermination(int millis)` | Waits up to `millis` ms for capture task count to drop to `0`. / 撮影タスク完了を最大 `millis` ms 待機します。 |
+| `void webcam.close()` | Stops capture, waits up to **`3,000 ms`** (`awaitTermination(3000)` — logs error without freeing grabber if timed out), closes grabber & preview stage, and clears cached results.<br>撮影停止後に終了待機（最大 3 秒）し、カメラハンドル・プレビュー・キャッシュを解放します。 |
+
+### 2. Image Format, Resolution, FPS, Color & Callbacks / 設定・通知
+
+| Signature / シグネチャ | Return & Behavior / 戻り値・仕様 |
+| :--- | :--- |
+| `String webcam.getImageType()` / `Boolean setImageType(String type)` | Gets or sets `ImageIO` writer suffix (**default `"bmp"`**). Trimmed/lowercased; returns `null` if `type == null`, `false` if unsupported, `true` on success.<br>エンコード形式（既定 `"bmp"`）を取得・設定します。 |
+| `String webcam.getImageSize()` / `void setImageSize(int w, int h)` | Gets `{"width":w,"height":h}` JSON (or `null` if unset & never opened). `setImageSize` updates target capture size (applied on **next `open()`**) and resizes preview window when `w > 0 && h > 0`.<br>ターゲット解像度の取得・設定を行います（キャプチャ解像度への反映は次回 `open()` 時）。 |
+| `Integer webcam.getCaptureWidth()` / `getCaptureHeight()` | Returns open grabber's actual frame dimensions, or `null` if closed.<br>オープン中カメラの実際の取得幅・高さを返します。 |
+| `Boolean webcam.setFrameRate(Double fps)` / `Double getFrameRate()` | Sets target FPS (finite `>= 0.0`, **`0.0` = uncapped**, default `0.0`); applied on `open()` and as loop throttle while playing.<br>フレームレート（`0.0` で制限なし）を設定・取得します。 |
+| `int webcam.getImageColor()` / `String getImageColorName()` / `void setImageColor(String color)` | Gets/sets case-sensitive OpenCV `opencv_imgproc.COLOR_*` constant (e.g. `"COLOR_BGR2GRAY"`). Unknown names are silently ignored. `null`, blank, or `"NONE"` resets to `-1` / `null`.<br>OpenCV 色変換定数名（大文字小文字区別）を設定・取得・解除します。 |
+| `void webcam.setNotifyResultImage(String func)` | Validated via `ScriptFunction` (`null` disables). Invokes `func(imageData, imageType)` on FX thread (backpressure-throttled until prior callback finishes; active when `SUCCEEDED`). `imageData` is a JSON array of **signed Java bytes (`-128..127`)**.<br>画像通知コールバック `func(imageData, imageType)` を登録します。 |
+| `void webcam.setNotifyResultBlob(String func, String blobInfo)` | Validated via `ScriptFunction` (`null` disables). Merges `blobInfo` JSON over prior settings and invokes `func(blobData)` with JSON array of **signed raw native `Mat` bytes**.<br>**Important**: `blobInfo` MUST define **`size`** and **`mean`** (length 1–4) or the callback never fires; initial `scalefactor` defaults to `0.0` so set it explicitly (e.g. `1.0` or `1/255`)! Valid `ddepth`: `"CV_8U"` (default), `"CV_8S"`, `"CV_16U"`, `"CV_16S"`, `"CV_32S"`, `"CV_32F"`, `"CV_64F"`, `"CV_16F"`. `swapRB` & `crop` default to `false`. |
+
+### 3. Preview Window Control (15 methods — ALL require `isOpened() == true`) / プレビューウィンドウ
+
+All 15 methods return `false` or `null` (and log `"Camera device is not open"`) when called before `open()`:
+`Boolean isShowing()`, `Boolean show()`, `Boolean hide()`, `Double getWidth()`, `Double getHeight()`, `Boolean isFocused()`, `Boolean requestFocus()`, `Double getOpacity()`, `Boolean setOpacity(double value)`, `Boolean isAlwaysOnTop()`, `Boolean setAlwaysOnTop(boolean state)`, `Double getX()`, `Boolean setX(double x)`, `Double getY()`, `Boolean setY(double y)`.
 
 ---
 
 ## Requirements & Build / 要件とビルド
 
-* A camera connected to the computer.
-  * コンピューターに接続されたカメラ。
-* Note: The build message `Versions of org.bytedeco:javacpp:1.5.14 and org.bytedeco:videoinput:0.200-1.5.9 do not match` emitted by JavaCPP is benign and does not affect functionality.
-  * 注記: JavaCPP が出力する `Versions of org.bytedeco:javacpp:1.5.14 and org.bytedeco:videoinput:0.200-1.5.9 do not match` の警告は動作に影響ありません。
+* **Requirements**: JDK 21 or later (including **`javafx.swing`**, `javafx.controls`, `javafx.graphics`, `javafx.web`), Apache Maven 3.8 or later, connected camera.
 
 ```bash
-# Build deliverable shaded JAR (WebCam/target/WebCam.jar)
-mvn -B -pl WebCam -am package
-
-# Run unit tests (live capture test runs only when -Dwebcam.device=<index> is provided)
 mvn -B -pl WebCam -am test
+# Run live capture test on camera index 0
 mvn -B -pl WebCam -am test -Dwebcam.device=0
+mvn -B -pl WebCam -am package
 ```
+
+* Deliverable shaded JAR: `WebCam/target/WebCam.jar` (~729 MB).
 
 ---
 
 ## Licenses / ライセンス
 
-* `webcam.licenses()` displays the licenses stored in `licenses.txt`: **JavaCV**, **JavaCPP**, **OpenCV** presets, **videoInput** presets, and **Gson**.
-  * `webcam.licenses()` はパッケージ内の `licenses.txt` に保持されたライセンス（**JavaCV**、**JavaCPP**、**OpenCV** / **videoInput** プリセット、**Gson**）を表示します。
+* `webcam.licenses()` displays `licenses.txt`: **JavaCV**, **JavaCPP**, **OpenCV** presets, **videoInput** presets, and **Gson**. (`ffmpeg-platform` is also shaded into `WebCam.jar`; `Gson` has `<scope>provided</scope>` in `pom.xml`.)

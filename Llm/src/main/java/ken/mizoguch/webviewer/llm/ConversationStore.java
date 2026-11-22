@@ -181,7 +181,8 @@ final class ConversationStore {
             }
             for (Map.Entry<String, JsonElement> entry : opts.entrySet()) {
                 String key = entry.getKey();
-                if ("profile".equals(key) || "messages".equals(key) || "rag".equals(key)) {
+                if ("profile".equals(key) || "messages".equals(key)
+                        || "rag".equals(key) || "memory".equals(key)) {
                     continue;
                 }
                 request.add(key, entry.getValue().deepCopy());

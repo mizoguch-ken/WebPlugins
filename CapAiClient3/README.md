@@ -2,100 +2,165 @@
 
 ## Overview / 概要
 
-* **CapAiClient3** is the CAP-AI Link Box client plug-in for a third Link Box unit, exposing the `capaiclient3` object to the page's JavaScript environment so a single page can control up to three Link Boxes simultaneously.
-* **CapAiClient3** は、3 台目の Link Box と通信するための CAP-AI クライアントプラグインです。ページの JavaScript に `capaiclient3` オブジェクトを公開し、1 つのページから最大 3 台の Link Box を同時に制御できるようにします。
-* Shares the exact same Link Box protocol and methods as [CapAiClient](../CapAiClient/README.md) (via `capai-common`), under the object name `capaiclient3`.
-* プロトコルおよび提供される関数・通知の仕様は [CapAiClient](../CapAiClient/README.md) と完全に同一で、JavaScript のオブジェクト名のみが `capaiclient3` となります。
+* **CapAiClient3** is the CAP-AI Link Box III TCP client plug-in #3, exposing `window.capaiclient3` to `WebViewer` JavaScript (`CapAiClient3.jar` placed in `web/plugins/`).
+* **CapAiClient3** は、3 台目の Link Box III と通信する CAP-AI クライアントプラグインです。`web/plugins/CapAiClient3.jar` として配置すると、ページ上の `window.capaiclient3` からすべてのクライアント関数と通知コールバックを利用できます。
+* Pair with [CapAiClient](../CapAiClient/README.md) (`capaiclient`) and [CapAiClient2](../CapAiClient2/README.md) (`capaiclient2`) to control up to three Link Box units simultaneously from one page.
+* 1 つのページから最大 3 台の Link Box を同時制御する場合は [CapAiClient](../CapAiClient/README.md)（`capaiclient`）・[CapAiClient2](../CapAiClient2/README.md)（`capaiclient2`）と併用します。
 * *CAP-AI System is a product of Sekisui Jushi CAP-AI System Co., Ltd.*
-* *CAP-AI System は積水樹脂キャップアイシステム株式会社の製品です。*
 
 ---
 
-## JavaScript Functions / JS 関数一覧
+## Installation & Host Lifecycle / 導入とライフサイクル
 
-```text
-void    capaiclient3.licenses()
-void    capaiclient3.setNotifyClientStart(String func)
-void    capaiclient3.setNotifyClientStop(String func)
-void    capaiclient3.setNotifyClientRequest(String func)
-void    capaiclient3.setNotifyClientResponse(String func)
-void    capaiclient3.setNotifyClientError(String func)
-Boolean capaiclient3.isLinkBoxClientRunning()
-Boolean capaiclient3.setLinkBoxClientConfig(String address, int timeout)
-String  capaiclient3.getServerAddress()
-Integer capaiclient3.getTimeout()
-Boolean capaiclient3.openLinkBoxClient()
-Boolean capaiclient3.closeLinkBoxClient()
-String  capaiclient3.getLocalAddress()
-Integer capaiclient3.getConnectionPort()
-Boolean capaiclient3.portClose()
-Boolean capaiclient3.portClose(int port)
-Boolean capaiclient3.getPortInfo(int port)
-Boolean capaiclient3.initAK()
-Boolean capaiclient3.mnt()
-Boolean capaiclient3.mnt(int ch)
-Boolean capaiclient3.addrAK(int unit)
-Boolean capaiclient3.setAutoATT()
-Boolean capaiclient3.clearAutoATT()
-Boolean capaiclient3.setL1(int accNum, String normalDirection, String normalLed, String normalSeg, String normalBuz, String answerDirection, String answerLed, String answerSeg, String answerBuz, String jsonElement)
-Boolean capaiclient3.getAK()
-Boolean capaiclient3.startDev(String jsonElement)
-Boolean capaiclient3.demoAK(int unit, String view)
-Boolean capaiclient3.clearAK(String jsonElement)
-Boolean capaiclient3.lock(int unit)
-Boolean capaiclient3.unLock(int unit)
-Boolean capaiclient3.getLock(int unit)
-Boolean capaiclient3.clearLock(int unit)
-Boolean capaiclient3.getErrorCode()
-Boolean capaiclient3.clearErrorCode()
-Boolean capaiclient3.setIPAddr(String address, String mask, String gateway)
-Boolean capaiclient3.setHostAddr(String jsonElement)
-Boolean capaiclient3.reboot()
-```
-
-* See [CapAiClient](../CapAiClient/README.md) for full details on return values and notification callback signatures.
-  * 戻り値および通知コールバック引数の詳細は [CapAiClient](../CapAiClient/README.md) を参照してください。
+1. Copy `CapAiClient3/target/CapAiClient3.jar` into `<appDir>/web/plugins/CapAiClient3.jar` (`capai-common` and `webviewer-plugin-kit` are shaded; `Gson` and `PluginApi` are provided by host `WebViewer`).
+2. On `Worker.State.SUCCEEDED`, `WebViewer` binds `window.capaiclient3` (if undefined) and invokes global `setup()` if defined.
+3. On shutdown, `WebViewer` calls Java `close()` to close any active TCP socket (the host does **not** auto-call a JavaScript `close()` function — call `capaiclient3.closeLinkBoxClient()` explicitly when disconnecting from JS).
 
 ---
 
-## Usage / 使い方
-
-Place `CapAiClient3.jar` in the `web/plugins` folder and restart the `WebViewer`.
-`CapAiClient3.jar` を `web/plugins` フォルダーに配置し、`WebViewer` を再起動します。
+## Quick Start / 使用例
 
 ```javascript
+window.onClient3Start = function () {
+    console.log("LinkBox #3 started on port", capaiclient3.getConnectionPort());
+};
+
+window.onClient3Response = function (command, response, jsonStr) {
+    var info = JSON.parse(jsonStr); // null fields are omitted
+    console.log("CMD3:", command, "RAW:", response, "ERR:", info.errorCode, info);
+};
+
+window.onClient3Error = function (errorCode, message) {
+    console.error("LinkBox #3 error 0x" + errorCode.toString(16) + ":", message);
+};
+
 function setup() {
-  capaiclient3.setLinkBoxClientConfig('192.168.0.40', 3000);
-  capaiclient3.openLinkBoxClient();
-  capaiclient3.startDev(JSON.stringify([1, 2]));
+    capaiclient3.setNotifyClientStart("onClient3Start");
+    capaiclient3.setNotifyClientResponse("onClient3Response");
+    capaiclient3.setNotifyClientError("onClient3Error");
+
+    capaiclient3.setLinkBoxClientConfig("192.168.0.40", 3000);
+    if (capaiclient3.openLinkBoxClient()) {
+        capaiclient3.initAK();
+        capaiclient3.startDev(JSON.stringify([1, 2]));
+        capaiclient3.setL1(
+            1,
+            "DOWN", "GREEN", "LIGHT", "OFF",
+            "NONE", "OFF", "OFF", "OFF",
+            JSON.stringify([{ unit: 1, view: "00100" }])
+        );
+    }
 }
 
-function close() {
-  capaiclient3.closeLinkBoxClient();
+function disconnectLinkBox3() {
+    capaiclient3.closeLinkBoxClient();
 }
 ```
 
 ---
 
-## Requirements / 要件
+## Function Reference / 関数リファレンス (37 API methods)
 
-* A Link Box reachable over TCP/IP from the computer running the `WebViewer`.
-  * `WebViewer` を実行するコンピューターからネットワーク経由で到達可能な Link Box。
+### 1. Connection, State & Port Administration / 接続・状態・ポート管理
+
+| Signature / シグネチャ | Return & Behavior / 戻り値・仕様 |
+| :--- | :--- |
+| `void capaiclient3.licenses()` | Opens non-modal license dialog displaying `licenses.txt`.<br>ライセンス一覧ダイアログを開きます。 |
+| `String capaiclient3.functionName()` | Returns `"capaiclient3"`. / オブジェクト名 `"capaiclient3"` を返します。 |
+| `Boolean capaiclient3.isLinkBoxClientRunning()` | Returns `true` or `false` (**never `null`**). / 接続中かどうか（常に真偽値）を返します。 |
+| `Boolean capaiclient3.setLinkBoxClientConfig(String address, int timeout)` | Sets target Link Box IP/host (`null` defaults to **`"192.168.10.51"`**) and socket read timeout in ms (`0` = infinite, initially `0`). **Returns `null` if already running**, `true` on success, `false` on `UnknownHostException`.<br>IP（`null` 時は `"192.168.10.51"`）と読込タイムアウト（ms、既定 `0`=無制限）を設定します。接続中は `null` を返します。 |
+| `String capaiclient3.getServerAddress()` | Returns resolved server IP string, or `null` if unset. / 設定済み IP アドレスを返します。 |
+| `Integer capaiclient3.getTimeout()` | Returns configured socket timeout in ms (initial `0`). / タイムアウト（ms）を返します。 |
+| `Integer capaiclient3.getConnectionPort()` | Returns negotiated work-order TCP port (initial `0`). / 取得した作業指示ポート番号を返します。 |
+| `Boolean capaiclient3.openLinkBoxClient()` | Connects to port `50001` (30 s connect timeout, 1,000 ms sleep), connects work-order port (30 s connect timeout), and **sleeps 3,000 ms** for eco-mode. **Returns `null` if already running**, `true`/`false` otherwise.<br>ポート `50001` でネゴシエートし作業指示ポートへ接続します（約 4 秒以上ブロッキング）。既に起動中の場合は `null` を返します。 |
+| `Boolean capaiclient3.closeLinkBoxClient()` | Sends `"Disconnect\r"`, closes TCP resources, fires stop callback, returns `true`. **Returns `null` if not running**.<br>切断してソケットを閉じます（未接続時は `null`）。 |
+| `String capaiclient3.getLocalAddress()` | Returns JSON array of **uppercase hex-encoded byte strings** for all local network interfaces (e.g. `["7F000001","C0A80A0A"]`, 8 hex chars for IPv4, 32 for IPv6), or `null` on `SocketException`.<br>ローカル NIC の IP アドレス列を 16 進バイト表現（大文字）の JSON 配列で返します。 |
+| `Boolean capaiclient3.portClose()` | **Works even while stopped (never `null`).** Connects to TCP port **`50099`** (5 s connect timeout, `5000 + timeout` read timeout) and sends `"PortClose\r"`. Returns `false` (+ `0x101`) if server address unset.<br>未接続時でもポート **`50099`** へ接続して作業ポートの初期化（`PortClose`）を行います。 |
+| `Boolean capaiclient3.portClose(int port)` | **Works even while stopped (never `null`).** Connects to port `50099` and sends `"PortClose" + port + "\r"` if `port > 50000` (else `"PortClose\r"`).<br>指定ポート（`> 50000`）の強制クローズをポート `50099` 経由で実行します。 |
+| `Boolean capaiclient3.getPortInfo(int port)` | **Works even while stopped (never `null`).** Connects to port `50099` (5 s connect timeout) and sends `"GetPortInfo" + port + "\r"`.<br>指定ポートの接続状態情報をポート `50099` 経由で照会します。 |
+
+### 2. Link Box Commands (Require Running Client — Return `null` When Stopped) / 制御コマンド（未接続時は `null`）
+
+| Signature / シグネチャ | Wire Command & Behavior / 送信電文と仕様 |
+| :--- | :--- |
+| `Boolean capaiclient3.initAK()` | Sends `"InitAK\r"` (`100 + timeout` ms read timeout, sleeps `100 ms`). Initializes all connected answer-kit units.<br>接続されているすべての機器を初期化します。 |
+| `Boolean capaiclient3.mnt()` / `Boolean capaiclient3.mnt(int ch)` | Sends `"Mnt\r"` (or `"Mnt" + ch + "\r"` when `ch > 0`) for hardware maintenance mode.<br>メンテナンスモード（全点灯・アドレス表示）を実行します。 |
+| `Boolean capaiclient3.addrAK(int unit)` | Sends `"AddrAK%04d\r"`. Configures unit address.<br>機器アドレスを設定します。 |
+| `Boolean capaiclient3.setAutoATT()` / `Boolean capaiclient3.clearAutoATT()` | Sends `"SetAutoATT\r"` / `"ClearAutoATT\r"` to enable or disable auto-response mode.<br>自動応答モードの開始・解除を行います。 |
+| `Boolean capaiclient3.setL1(int accNum, String normalDirection, String normalLed, String normalSeg, String normalBuz, String answerDirection, String answerLed, String answerSeg, String answerBuz, String jsonElement)` | Sends `"SetL1%02d..."` work instruction using exact-case enums and unit/view JSON array (see below). Returns `false` on invalid/missing JSON.<br>作業指示（`SetL1`）を送信します。各パラメータの指定可能値・JSON 形式は下記仕様を参照してください。 |
+| `Boolean capaiclient3.getAK()` | Sends `"GetAK\r"`. **Quirk**: returns `true` **only when `errorCode == 0x80`** (`ERROR_AUTO_MODE_OPERATION`); other codes return `false` and fire `ClientError`.<br>通信状態を照会します（自動応答モード `0x80` 時のみ `true`）。 |
+| `Boolean capaiclient3.startDev(String jsonElement)` | `null` → `"StartDev\r"`, else JSON integer array `"[1,2]"` (`1000 * count + timeout` ms read timeout).<br>機器情報を登録します（`null` またはユニット番号の JSON 配列）。 |
+| `Boolean capaiclient3.demoAK(int unit, String view)` | Sends `"DemoAK%04d%5s\r"`. Displays demo text.<br>指定ユニットに表示データをデモ表示します。 |
+| `Boolean capaiclient3.clearAK(String jsonElement)` | Non-null JSON integer array `"[1,2]"` → `"ClearAK%04d...\r"`.<br>指定ユニット群の作業指示を消灯・完了させます。 |
+| `Boolean capaiclient3.lock(int unit)` / `unLock(int unit)` / `getLock(int unit)` / `clearLock(int unit)` | Sends `"Lock%04d\r"`, `"UnLock%04d\r"`, `"GetLock%04d\r"`, `"ClearLock%04d\r"`.<br>指定ユニットのホストロック取得・解除・照会・強制解除を行います。 |
+| `Boolean capaiclient3.getErrorCode()` / `Boolean capaiclient3.clearErrorCode()` | Sends `"GetErrCode\r"` / `"ClearErrCode\r"`.<br>Link Box のエラーコード履歴を取得・消去します。 |
+| `Boolean capaiclient3.setIPAddr(String address, String mask, String gateway)` | IPv4 configuration (`false` + `0x100` if `null`/IPv6).<br>Link Box の IPv4 アドレス・サブネット・ゲートウェイを設定します。 |
+| `Boolean capaiclient3.setHostAddr(String jsonElement)` | Non-null JSON array of IPv4 strings/hostnames (`'["192.168.10.10"]'`).<br>Link Box にホスト PC 側 IP アドレス一覧を登録します。 |
+| `Boolean capaiclient3.reboot()` | Sends `"Reboot\r"` then `"RebootR5F70855\r"` and **sleeps 5,000 ms**.<br>Link Box を再起動します（約 5 秒間ブロッキング）。 |
 
 ---
 
-## Build / ビルド
+## `setL1` Enum Values & JSON Schemas / パラメータ・JSON 形式
+
+### Case-Sensitive `setL1` String Constants (Unknown/`null` falls back to `NONE`/`OFF`)
+
+| Parameter(s) | Allowed Strings (Exact Case) / 指定可能な大文字文字列 | Default Fallback |
+| :--- | :--- | :--- |
+| `normalDirection`, `answerDirection` | `"DOWN"`, `"UP"`, `"NO_CHANGE"`, `"NONE"` | `"NONE"` |
+| `normalLed`, `answerLed` | `"RED"`, `"GREEN"`, `"BLUE"`, `"YELLOW"`, `"CYAN"`, `"MAGENTA"`, `"WHITE"`, `"*_BLINK"` *(all 7 colors)*, `"*_FAST_BLINK"` *(all 7 colors)*, `"NO_CHANGE"`, `"OFF"` | `"OFF"` |
+| `normalSeg`, `answerSeg`, `normalBuz`, `answerBuz` | `"LIGHT"`, `"BLINK"`, `"FAST_BLINK"`, `"NO_CHANGE"`, `"OFF"` | `"OFF"` |
+
+* **`setL1(..., jsonElement)`**: `'[{"unit":1,"view":"00100"},{"unit":2,"view":"  OK "}]'`
+* **`startDev(jsonElement)`**: `null` or `"[1, 2]"`
+* **`clearAK(jsonElement)`**: `"[1, 2]"` (`null` rejected)
+* **`setHostAddr(jsonElement)`**: `'["192.168.10.10"]'`
+
+---
+
+## Notifications / 通知コールバック
+
+Callback names are validated against `[A-Za-z_$][A-Za-z0-9_$]*(?:\.[A-Za-z_$][A-Za-z0-9_$]*)*` (pass `null` to unregister). Queued via `ScriptNotifier` (`QUEUE_MAX = 1024`, max `4,096` chars per string) on the FX thread once `Worker.State.SUCCEEDED`.
+
+| Registration Method / 登録メソッド | JS Callback Arguments / 呼び出し引数 |
+| :--- | :--- |
+| `void capaiclient3.setNotifyClientStart(String func)` | `func()` *(0 args)* |
+| `void capaiclient3.setNotifyClientStop(String func)` | `func()` *(0 args)* |
+| `void capaiclient3.setNotifyClientRequest(String func)` | `func(command, request)` *(2 strings; `Connect` passes `""` for `request`)* |
+| `void capaiclient3.setNotifyClientResponse(String func)` | `func(command, response, json)` *(3 strings; parse with `JSON.parse(json)`)* |
+| `void capaiclient3.setNotifyClientError(String func)` | `func(errorCode, message)` *(`int` number, string)* |
+
+* **`json` keys in `setNotifyClientResponse`** (`Gson` omits `null` fields): `"errorCode"` (always present), `"ipAddress"` (`GetPortInfo`/`GetLock`), `"unitNumber"` (`GetLock`), `"portNumber"` (`GetLock`), `"ipAddress1"` (`GetErrCode`), `"status"` (`GetAK`).
+
+---
+
+## Error Codes / エラーコード一覧
+
+* **Client-side codes**: `256` (`0x100`: exception), `257` (`0x101`: missing server address), `258` (`0x102`: port acquisition failed), `259` (`0x103`: no response / timeout / `> 8,192` chars), `260` (`0x104`: unknown response), `261` (`0x105`: malformed data).
+* **Protocol codes (`0x21`–`0xFB`)**: `0x00` NONE, `0x21`–`0x39` device/address/status, `0x53`–`0x5F` local comm, `0x61`–`0x6B` host comm, `0x71`–`0x76` overcurrent, `0x80` auto-mode operation, `0x91`–`0x94` control flags, `0xFB` forced disconnection.
+
+---
+
+## Notes & Threading / 注意点
+
+* All TCP commands execute **synchronously** on the FX UI thread, and default `timeout` is `0` (infinite read wait). Always configure a positive timeout via `setLinkBoxClientConfig(address, timeout)`.
+* Uses TCP ports `50001`, `50099`, and negotiated work-order ports (`50011`–`50014`).
+
+---
+
+## Requirements & Build / 要件とビルド
+
+* **Requirements**: JDK 21 or later (with JavaFX), Apache Maven 3.8 or later, Link Box reachable over TCP/IP.
 
 ```bash
 mvn -B -pl CapAiClient3 -am package
+mvn -B -pl CapAiClient3 -am test
 ```
 
 * Deliverable shaded JAR: `CapAiClient3/target/CapAiClient3.jar`.
-  * 配布用成果物（shaded JAR）: `CapAiClient3/target/CapAiClient3.jar`。
 
 ---
 
 ## Licenses / ライセンス
 
-* `capaiclient3.licenses()` displays the licenses stored in `licenses.txt`: **Gson** (Apache-2.0).
-  * `capaiclient3.licenses()` はパッケージ内の `licenses.txt` に保持されたライセンス（**Gson**: Apache-2.0）を表示します。
+* `capaiclient3.licenses()` displays `licenses.txt` (**Gson**: Apache-2.0, provided by host `WebViewer` via `<scope>provided</scope>`).
+* `capai-common` and `webviewer-plugin-kit` are shaded into `CapAiClient3.jar`.

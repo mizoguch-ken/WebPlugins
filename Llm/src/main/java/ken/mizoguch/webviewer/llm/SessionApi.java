@@ -5,15 +5,29 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import java.io.IOException;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import ken.mizoguch.webviewer.llm.core.ContinualConfig;
+import ken.mizoguch.webviewer.llm.core.MemoryBank;
 
 /**
  * Public JavaScript sub-facade ({@code llm.sessions()}) for persistent, forkable, per-session
  * concurrent multi-turn conversations with atomic commit-on-success, tool-call-safe history
- * trimming, and optional ephemeral RAG context grounding.
+ * trimming, and optional ephemeral RAG + biological memory context grounding.
  *
  * @author mizoguch-ken
  */
 public final class SessionApi {
+
+    private record MemoryPlan(
+            List<String> scopes,
+            MemoryBank.Layer maxLayer,
+            int limit,
+            boolean includeAvoidances,
+            boolean recordTurn,
+            int maxChars) {
+    }
 
     private final Llm owner_;
     private final ConversationStore sessions_;
@@ -22,9 +36,11 @@ public final class SessionApi {
     private final TaskManager tasks_;
     private final RemoteApi remoteApi_;
     private final RagApi ragApi_;
+    private final MemoryApi memoryApi_;
 
     SessionApi(Llm owner, ConversationStore sessions, RemoteProfileRegistry profiles,
-            RemoteHttpClient client, TaskManager tasks, RemoteApi remoteApi, RagApi ragApi) {
+            RemoteHttpClient client, TaskManager tasks, RemoteApi remoteApi, RagApi ragApi,
+            MemoryApi memoryApi) {
         owner_ = owner;
         sessions_ = sessions;
         profiles_ = profiles;
@@ -32,6 +48,7 @@ public final class SessionApi {
         tasks_ = tasks;
         remoteApi_ = remoteApi;
         ragApi_ = ragApi;
+        memoryApi_ = memoryApi;
     }
 
     /**
@@ -180,8 +197,10 @@ public final class SessionApi {
      */
     public String send(String sessionId, String userText, String optionsJson) {
         final RagApi.RetrievePlan ragPlan;
+        final MemoryPlan memoryPlan;
         try {
             ragPlan = parseRagPlan(userText, optionsJson);
+            memoryPlan = parseMemoryPlan(optionsJson);
         } catch (IllegalArgumentException | LlmRemoteException ex) {
             owner_.logException(ex);
             return null;
@@ -212,6 +231,18 @@ public final class SessionApi {
                 (id, cancel) -> {
                     boolean finished = false;
                     try {
+                        List<MemoryBank.SearchHit> memoryHits = null;
+                        if (memoryPlan != null) {
+                            String memQuery = (userText == null) ? "" : userText.trim();
+                            memoryHits = memoryApi_.recallForPrompt(
+                                    memQuery, memoryPlan.scopes(), memoryPlan.maxLayer(),
+                                    memoryPlan.limit(), memoryPlan.includeAvoidances());
+                            String memBlock = boundedMemoryBlock(memoryHits, memoryPlan.maxChars());
+                            if (!memBlock.isEmpty()) {
+                                injectSystemContext(prepared.requestBody(), memBlock);
+                            }
+                        }
+
                         RagApi.RetrieveOutcome retrieved = null;
                         if (ragPlan != null) {
                             retrieved = ragApi_.executeRetrieve(
@@ -237,8 +268,12 @@ public final class SessionApi {
                         sessions_.finishChatTurn(sessionId, prepared.committedUserText(),
                                 res.bodyJson(), !stopped);
                         finished = true;
-                        String resultBody = (retrieved != null)
-                                ? attachRagMetadata(res.bodyJson(), retrieved) : res.bodyJson();
+                        if (!stopped && (memoryPlan != null) && memoryPlan.recordTurn()
+                                && (userText != null) && !userText.trim().isEmpty()) {
+                            memoryApi_.recordSessionWorking(sessionId, userText.trim());
+                        }
+                        String resultBody = attachGroundingMetadata(
+                                res.bodyJson(), retrieved, memoryHits);
                         return new TaskManager.TaskOutcome(resultBody, stopped);
                     } finally {
                         if (!finished) {
@@ -280,6 +315,85 @@ public final class SessionApi {
         return plan;
     }
 
+    private MemoryPlan parseMemoryPlan(String optionsJson) {
+        if ((optionsJson == null) || optionsJson.trim().isEmpty()) {
+            return null;
+        }
+        JsonObject opts = JsonUtil.parseObject(optionsJson, "Session chat options");
+        if (!opts.has("memory") || opts.get("memory").isJsonNull()) {
+            return null;
+        }
+        JsonElement memEl = opts.get("memory");
+        if (memEl.isJsonPrimitive() && memEl.getAsJsonPrimitive().isBoolean()) {
+            if (!memEl.getAsBoolean()) {
+                return null;
+            }
+            return new MemoryPlan(List.of(), null, 6, true, false, 3000);
+        }
+        if (!memEl.isJsonObject()) {
+            throw new IllegalArgumentException(
+                    "\"memory\" option must be a boolean or JSON object");
+        }
+        JsonObject memObj = memEl.getAsJsonObject();
+        List<String> scopes = new ArrayList<>();
+        String singleScope = JsonUtil.optString(memObj, "scope");
+        if ((singleScope != null) && !singleScope.isBlank()) {
+            scopes.add(singleScope.trim());
+        }
+        JsonArray scopeArr = JsonUtil.optArray(memObj, "scopes");
+        if (scopeArr != null) {
+            for (int i = 0; i < scopeArr.size(); i++) {
+                JsonElement el = scopeArr.get(i);
+                if ((el != null) && el.isJsonPrimitive() && el.getAsJsonPrimitive().isString()) {
+                    String s = el.getAsString().trim();
+                    if (!s.isEmpty()) {
+                        scopes.add(s);
+                    }
+                }
+            }
+        }
+        MemoryBank.Layer maxLayer = null;
+        String layerStr = JsonUtil.optString(memObj, "maxLayer");
+        if ((layerStr != null) && !layerStr.isBlank()) {
+            try {
+                maxLayer = MemoryBank.Layer.valueOf(layerStr.trim().toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException ex) {
+                throw new IllegalArgumentException(
+                        "Invalid memory maxLayer: \"" + layerStr + "\"");
+            }
+        }
+        Integer limObj = JsonUtil.optInt(memObj, "limit");
+        if (limObj == null) {
+            limObj = JsonUtil.optInt(memObj, "topK");
+        }
+        int limit = (limObj == null) ? 6 : limObj.intValue();
+        if ((limit < 1) || (limit > 50)) {
+            throw new IllegalArgumentException("memory limit out of range (1..50): " + limit);
+        }
+        Boolean incAvoid = JsonUtil.optBoolean(memObj, "includeAvoidances");
+        boolean includeAvoidances = (incAvoid == null) || incAvoid.booleanValue();
+        Boolean recTurn = JsonUtil.optBoolean(memObj, "recordTurn");
+        boolean recordTurn = (recTurn != null) && recTurn.booleanValue();
+        Integer maxCharsObj = JsonUtil.optInt(memObj, "maxChars");
+        int maxChars = (maxCharsObj == null) ? 3000 : maxCharsObj.intValue();
+        if ((maxChars < 128) || (maxChars > 32000)) {
+            throw new IllegalArgumentException(
+                    "memory maxChars out of range (128..32000): " + maxChars);
+        }
+        return new MemoryPlan(List.copyOf(scopes), maxLayer, limit, includeAvoidances,
+                recordTurn, maxChars);
+    }
+
+    private static String boundedMemoryBlock(List<MemoryBank.SearchHit> hits, int maxChars) {
+        String full = MemoryStoreJson.formatPromptMemoryBlock(hits);
+        if (full.isEmpty() || (full.length() <= maxChars)) {
+            return full;
+        }
+        String suffix = "\n[/MEMORY]";
+        int keep = Math.max(32, maxChars - suffix.length());
+        return full.substring(0, keep) + suffix;
+    }
+
     private static void injectSystemContext(JsonObject requestBody, String contextBlock) {
         JsonArray messages = requestBody.getAsJsonArray("messages");
         if (messages == null) {
@@ -312,13 +426,28 @@ public final class SessionApi {
         requestBody.add("messages", updated);
     }
 
-    private static String attachRagMetadata(String responseJson, RagApi.RetrieveOutcome retrieved) {
+    private static String attachGroundingMetadata(String responseJson,
+            RagApi.RetrieveOutcome retrieved, List<MemoryBank.SearchHit> memoryHits) {
+        if ((retrieved == null) && (memoryHits == null)) {
+            return responseJson;
+        }
         JsonObject obj = JsonUtil.tryParseObject(responseJson);
         if (obj == null) {
             return responseJson;
         }
-        obj.addProperty("ragMode", retrieved.mode());
-        obj.add("ragHits", RagApi.summarizeHits(retrieved.hits()));
+        if (retrieved != null) {
+            obj.addProperty("ragMode", retrieved.mode());
+            obj.add("ragHits", RagApi.summarizeHits(retrieved.hits()));
+        }
+        if (memoryHits != null) {
+            long now = System.currentTimeMillis();
+            ContinualConfig defaults = ContinualConfig.defaults();
+            JsonArray arr = new JsonArray(memoryHits.size());
+            for (MemoryBank.SearchHit hit : memoryHits) {
+                arr.add(MemoryStoreJson.searchHitToJson(hit, now, defaults));
+            }
+            obj.add("memoryHits", arr);
+        }
         return JsonUtil.GSON.toJson(obj);
     }
 

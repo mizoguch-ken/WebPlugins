@@ -1131,7 +1131,7 @@ class LlmCoreTest {
     }
 
     @Test
-    void loraMaskedUnlikelihoodAndDistillGradientsMatchFiniteDifferences() {
+    void maskedCrossEntropyAndUnlikelihoodGradientsMatchFiniteDifferences() {
         TransformerModel model = new TransformerModel(aModel());
         int[] tokens = { 2, 3, 4, 5, 6, 7 };
         for (float[] weight : model.weights()) {
@@ -1139,416 +1139,425 @@ class LlmCoreTest {
                 weight[i] *= 3f;
             }
         }
-        LoraAdapter lora = new LoraAdapter(model.config(), 2, 4.0d);
-        Random bRng = new Random(99L);
-        for (int s = 0; s < lora.slotCount(); s++) {
-            float[] b = lora.weights()[(s * 2) + 1];
-            for (int i = 0; i < b.length; i++) {
-                b[i] = (float) (bRng.nextGaussian() * 0.25d);
-            }
-        }
-        lora.markUpdated();
-        model.attachLora(lora);
 
+        int lossStart = 3;
+        float delta = 2e-3f;
         TransformerModel.Step step = model.newStep(tokens.length, true);
+
+        for (TransformerModel.LossMode mode : new TransformerModel.LossMode[] {
+                TransformerModel.LossMode.CROSS_ENTROPY,
+                TransformerModel.LossMode.UNLIKELIHOOD }) {
+            model.forward(tokens, tokens.length, step);
+            double loss = model.backward(tokens, tokens.length, lossStart, mode, step, false, 1.0d);
+            assertTrue(Double.isFinite(loss) && (loss >= 0d));
+
+            int[][] checks = {
+                    { TransformerModel.W_TOKEN, (tokens[3] * model.width()) + 2 },
+                    { TransformerModel.W_HEAD, model.vocabulary() + 5 },
+                    { TransformerModel.W_HEAD_BIAS, 4 },
+                    { TransformerModel.W_LAYERS + TransformerModel.F_WQ, 7 },
+                    { TransformerModel.W_LAYERS + TransformerModel.F_W1, 9 },
+                    { TransformerModel.W_LAYERS + TransformerModel.F_N1_SCALE, 3 }
+            };
+            for (int[] c : checks) {
+                double ana = model.gradients()[c[0]][c[1]];
+                double num = numericLossMode(model, model.weights()[c[0]], c[1], delta, tokens,
+                        lossStart, mode);
+                double spread = Math.max(Math.abs(num), Math.abs(ana));
+                if (spread < 1e-4d) {
+                    continue;
+                }
+                assertEquals(ana, num, (0.03d * spread) + 5e-4d,
+                        () -> mode + " grad mismatch leaf=" + c[0] + " idx=" + c[1]);
+            }
+        }
+
+        // LossStart at sequence end produces zero loss and zeroed gradients when not accumulating
         model.forward(tokens, tokens.length, step);
-        model.backward(tokens, tokens.length, 3, TransformerModel.LossMode.CROSS_ENTROPY,
-                null, 0d, step, false, 1d, false, true, model.vocabulary());
-
-        // Base gradients must stay untouched during LoRA-only Wake backward
-        for (float[] bg : model.gradients()) {
-            for (float v : bg) {
-                assertEquals(0f, v, 0f);
-            }
-        }
-        for (int leaf = 0; leaf < lora.weights().length; leaf++) {
-            float[] w = lora.weights()[leaf];
-            for (int pick = 0; pick < Math.min(w.length, 6); pick++) {
-                double num = numericLossMode(model, w, pick, 2e-3f, tokens, 3,
-                        TransformerModel.LossMode.CROSS_ENTROPY, null, 0d);
-                double ana = lora.gradients()[leaf][pick];
-                double spread = Math.max(Math.abs(num), Math.abs(ana));
-                if (spread < 1e-4d) {
-                    continue;
-                }
-                assertEquals(ana, num, (0.03d * spread) + 5e-4d,
-                        "LoRA masked CE leaf " + leaf + " idx " + pick);
-            }
-        }
-
-        // Unlikelihood loss gradients match finite differences on backbone
-        model.forward(tokens, tokens.length, step);
-        model.backward(tokens, tokens.length, 2, TransformerModel.LossMode.UNLIKELIHOOD,
-                null, 0d, step, false, 1d, false, true, model.vocabulary());
-        for (int leaf = 0; leaf < Math.min(4, lora.weights().length); leaf++) {
-            float[] w = lora.weights()[leaf];
-            for (int pick = 0; pick < Math.min(w.length, 4); pick++) {
-                double num = numericLossMode(model, w, pick, 2e-3f, tokens, 2,
-                        TransformerModel.LossMode.UNLIKELIHOOD, null, 0d);
-                double ana = lora.gradients()[leaf][pick];
-                double spread = Math.max(Math.abs(num), Math.abs(ana));
-                if (spread < 1e-4d) {
-                    continue;
-                }
-                assertEquals(ana, num, (0.03d * spread) + 5e-4d,
-                        "LoRA Unlikelihood leaf " + leaf + " idx " + pick);
-            }
-        }
-
-        // Distillation loss gradients match finite differences on Sleep base update
-        int v = model.vocabulary();
-        float[][] teacher = new float[tokens.length - 1][v];
-        Random tRng = new Random(17L);
-        for (int p = 0; p < teacher.length; p++) {
-            double s = 0d;
-            for (int j = 0; j < v; j++) {
-                teacher[p][j] = 0.1f + tRng.nextFloat();
-                s += teacher[p][j];
-            }
-            for (int j = 0; j < v; j++) {
-                teacher[p][j] /= (float) s;
-            }
-        }
-        model.attachLora(null);
-        TransformerModel.Step baseStep = model.newStep(tokens.length, true);
-        model.forward(tokens, tokens.length, baseStep);
-        model.backward(tokens, tokens.length, 1, TransformerModel.LossMode.DISTILL,
-                teacher, 0.5d, baseStep, false, 1d, true, false, v);
-        for (int leaf = 0; leaf < Math.min(8, model.weights().length); leaf++) {
-            float[] w = model.weights()[leaf];
-            for (int pick = 0; pick < Math.min(w.length, 4); pick++) {
-                double num = numericLossMode(model, w, pick, 2e-3f, tokens, 1,
-                        TransformerModel.LossMode.DISTILL, teacher, 0.5d);
-                double ana = model.gradients()[leaf][pick];
-                double spread = Math.max(Math.abs(num), Math.abs(ana));
-                if (spread < 1e-4d) {
-                    continue;
-                }
-                assertEquals(ana, num, (0.03d * spread) + 5e-4d,
-                        "Base Distill leaf " + leaf + " idx " + pick);
-            }
-        }
+        double zeroLoss = model.backward(tokens, tokens.length, tokens.length,
+                TransformerModel.LossMode.CROSS_ENTROPY, step, false, 1.0d);
+        assertEquals(0d, zeroLoss, 0d);
+        assertEquals(0d, Tensor.norm(model.gradients()), 0d);
     }
 
     @Test
-    void episodicMemoryOneShotRecallInstantForgetAndNegativeSuppression() {
+    void biologicalInstinctImmutabilityAndInheritancePack() {
+        MutableClock clock = new MutableClock(1_700_000_000_000L);
+        MemoryBank parent = new MemoryBank();
+        parent.setClock(clock);
+
+        MemoryBank.Entry inst = parent.addInstinct(MemoryBank.Kind.RULE, "global",
+                "Safety rule", "Never leak API keys", 1.0d, "parent-policy");
+        assertEquals(MemoryBank.Origin.INSTINCT, inst.origin());
+        assertEquals(MemoryBank.Layer.INSTINCT, inst.layer());
+        assertTrue(inst.pinned());
+        assertTrue(inst.confirmed());
+        assertEquals(0L, inst.expiresAtMs());
+
+        parent.seedInstinctCorpus(List.of("base anchor alpha", "base anchor beta"));
+
+        MemoryBank.Entry cog = parent.confirmSemantic(MemoryBank.Kind.FACT, "global",
+                "Safety rule", "Cognitive override attempt", "", 0.9d, "user",
+                ContinualConfig.defaults());
+        assertEquals(MemoryBank.Origin.COGNITION, cog.origin());
+        assertEquals(MemoryBank.Layer.SEMANTIC, cog.layer());
+        assertEquals(0L, parent.get(inst.id()).supersededById());
+
+        // Advance clock by 10 years: INSTINCT never decays, expires, or gets forgotten
+        clock.advanceMillis(10L * 365L * 24L * 3600L * 1000L);
+        parent.curate(ContinualConfig.defaults());
+        MemoryBank.Entry instAfter = parent.get(inst.id());
+        assertNotNull(instAfter);
+        assertEquals(1.0d, instAfter.strength(), 1e-12d);
+        assertFalse(parent.forget(inst.id()));
+        assertNotNull(parent.get(inst.id()));
+
+        int removedCog = parent.clearCognition();
+        assertEquals(1, removedCog);
+        assertNotNull(parent.get(inst.id()));
+        assertEquals(2, parent.instinctCorpus().size());
+
+        // Child agent inherits parent instincts while preserving child's own cognition
+        MemoryBank.InstinctPack pack = parent.exportInstinctPack();
+        MemoryBank child = new MemoryBank();
+        child.setClock(clock);
+        MemoryBank.Entry childFact = child.confirmSemantic(MemoryBank.Kind.FACT, "project:local",
+                "Local port", "8080", "", 0.8d, "local", ContinualConfig.defaults());
+        int inherited = child.inheritInstinctPack(pack, false);
+        assertEquals(1, inherited);
+        assertNotNull(child.get(childFact.id()));
+        assertEquals(1, child.count(MemoryBank.Origin.INSTINCT, MemoryBank.Layer.INSTINCT, true));
+        assertEquals(2, child.instinctCorpus().size());
+    }
+
+    @Test
+    void biologicalCognitionWallClockTtlHalfLifeDecayAndPromotion() {
+        MutableClock clock = new MutableClock(1_700_000_000_000L);
+        MemoryBank bank = new MemoryBank();
+        bank.setClock(clock);
+        ContinualConfig cfg = ContinualConfig.builder()
+                .workingTtlMinutes(10L)
+                .episodicHalfLifeHours(1.0d)
+                .confirmEvidenceThreshold(2)
+                .episodicPromoteStrength(0.70d)
+                .episodicForgetThreshold(0.25d)
+                .build();
+
+        MemoryBank.Entry transientWork = bank.recordWorking("s1", "Note", "ephemeral thought",
+                0.5d, "chat", cfg);
+        assertEquals(MemoryBank.Layer.WORKING, transientWork.layer());
+
+        // Advancing past 10-minute wall-clock TTL expires raw WORKING entry on curate()
+        clock.advanceMillis(11L * 60_000L);
+        MemoryBank.CurateSummary expSummary = bank.curate(cfg);
+        assertEquals(1, expSummary.expiredWorking());
+        assertEquals(null, bank.get(transientWork.id()));
+
+        // Repeated identical WORKING observations corroborate and auto-promote to EPISODIC
+        MemoryBank.Entry w1 = bank.recordWorking("s1", "Topic", "verified twice", 0.6d, "chat", cfg);
+        assertEquals(MemoryBank.Layer.WORKING, w1.layer());
+        MemoryBank.Entry w2 = bank.recordWorking("s1", "Topic", "verified twice", 0.6d, "chat", cfg);
+        assertEquals(MemoryBank.Layer.EPISODIC, w2.layer());
+        assertEquals(2, w2.evidenceCount());
+        assertEquals(0L, w2.expiresAtMs());
+
+        // Weak EPISODIC decays below forget threshold after 3 half-lives; pinned EPISODIC survives
+        MemoryBank.Entry weakEp = bank.recordEpisodic(MemoryBank.Kind.EXPERIENCE, "s1", "Weak",
+                "fading detail", 0.5d, 0.7d, "chat", cfg);
+        MemoryBank.Entry pinnedEp = bank.recordEpisodic(MemoryBank.Kind.EXPERIENCE, "s1", "Pinned",
+                "important clue", 0.8d, 0.9d, "chat", cfg);
+        bank.setPinned(pinnedEp.id(), true);
+
+        clock.advanceMillis(3L * 3_600_000L);
+        MemoryBank.CurateSummary decaySummary = bank.curate(cfg);
+        assertTrue(decaySummary.forgottenEpisodic() >= 1);
+        assertEquals(null, bank.get(weakEp.id()));
+        assertNotNull(bank.get(pinnedEp.id()));
+
+        // Retrieval strengthens EPISODIC and corroboration promotes to SEMANTIC
+        MemoryBank.Entry corrob = bank.recordEpisodic(MemoryBank.Kind.EXPERIENCE, "s1", "City",
+                "Kyoto", 0.8d, 0.9d, "chat", cfg);
+        bank.recall("Kyoto", List.of("s1"), null, 4, true, cfg);
+        corrob = bank.recordEpisodic(MemoryBank.Kind.EXPERIENCE, "s1", "City", "Kyoto",
+                0.85d, 0.92d, "chat", cfg);
+        assertTrue(corrob.evidenceCount() >= 2);
+        MemoryBank.CurateSummary promSummary = bank.curate(cfg);
+        assertTrue(promSummary.promotedToSemantic() >= 1);
+        MemoryBank.Entry promoted = bank.get(corrob.id());
+        assertNotNull(promoted);
+        assertEquals(MemoryBank.Layer.SEMANTIC, promoted.layer());
+        assertTrue(promoted.confirmed());
+    }
+
+    @Test
+    void beliefRevisionLocalPrefixRecallAndAvoidanceSuppression() {
         LlmCore core = new LlmCore();
         core.newModel(aModel());
-        core.train(List.of("alpha:11;", "beta :22;", "zeta :00;", "delta:90;"), 25, 0.02d, null);
+        core.train(List.of("Server port is 8080\nBad cmd: rm -rf /tmp\nUnrelated XYZ\n9"),
+                2, 0.01d, null);
 
-        core.continual().setConfig(ContinualConfig.defaults().toBuilder()
-                .memoryRecallEnabled(true)
-                .memoryMaxLambda(0.85d)
-                .memoryMinSimilarity(0.70d)
-                .memoryTemperature(0.15d)
-                .negativeInhibitionGamma(3.0d)
-                .build());
-
-        long stepsBefore = core.steps();
-        // 1-shot observePair with ZERO gradient updates!
-        long epId = core.continual().observePair("zeta :", "99;", 2.0d, false, true);
-        assertTrue(epId > 0L);
-
-        LlmCore.AnswerResult recalled = core.generate("zeta :", 6, new Sampler(), null);
-        assertEquals(stepsBefore, core.steps());
-        assertTrue(recalled.memoryHits > 0);
-        assertTrue(recalled.memoryLambda > 0.1d);
-        assertTrue(recalled.text.startsWith("99"), "Expected 1-shot 99*, got: " + recalled.text);
-
-        List<EpisodicMemory.RecallMatch> matches = core.recallMemory("zeta :99", 3);
-        assertFalse(matches.isEmpty());
-        assertEquals("99;", matches.get(0).response());
-
-        // Exact instant unlearning
-        assertTrue(core.continual().memory().forget(epId));
-        LlmCore.AnswerResult forgotten = core.generate("zeta :", 6, new Sampler(), null);
-        assertEquals(0, forgotten.memoryHits);
-        assertFalse(forgotten.text.startsWith("99"),
-                "Forgotten response must disappear immediately, got: " + forgotten.text);
-    }
-
-    @Test
-    void negativeFeedbackOnlyUnlikelihoodAndInhibitionSuppressBadContinuation() {
-        LlmCore core = new LlmCore();
-        core.newModel(aModel());
-        core.train(List.of("cmd:bad!", "cmd:bad!", "cmd:bad!", "cmd:good"), 20, 0.02d, null);
-        core.continual().setConfig(ContinualConfig.defaults().toBuilder()
-                .loraRank(2)
-                .loraAlpha(8.0d)
-                .maxLearningRate(0.015d)
-                .unlikelihoodWeight(0.6d)
-                .negativeInhibitionGamma(4.0d)
-                .surpriseThreshold(0d)
-                .holdoutCapacity(8)
-                .maxRegression(0.5d)
-                .build());
-
-        double nllBadBefore = core.evaluate(List.of("cmd:bad!")).loss;
-
-        // Negative-only feedback (no correction supplied)
-        assertTrue(core.continual().feedback("inf-neg", "cmd:", "bad!", false, -1.0d, null));
-
-        // Tier-1 immediate negative inhibition before any gradient step
-        LlmCore.AnswerResult inhibited = core.generate("cmd:", 6, new Sampler(), null);
-        assertFalse(inhibited.text.startsWith("bad!"),
-                "Negative episodic inhibition should suppress bad!, got: " + inhibited.text);
-
-        // Tier-2 Wake Unlikelihood reduces parametric likelihood of rejected continuation
-        ContinualLearner.StepResult res = core.continualStep();
-        assertEquals(ContinualLearner.StepPhase.WAKE, res.phase());
-        assertEquals(ContinualLearner.StepOutcome.ACCEPTED, res.outcome());
-
-        double nllBadAfter = core.evaluate(List.of("cmd:bad!")).loss;
-        assertTrue(nllBadAfter > nllBadBefore,
-                "Expected Unlikelihood to raise NLL(bad!) from " + nllBadBefore + " -> "
-                        + nllBadAfter);
-    }
-
-    @Test
-    void wakeLoraKeepsBackboneFrozenAndSleepConsolidatesWithDistillationAndOnlineEwc() {
-        LlmCore core = new LlmCore();
-        ModelConfig byteCfg = new ModelConfig();
-        byteCfg.setVocabType(ModelConfig.VOCAB_BYTE);
-        byteCfg.setDModel(32);
-        byteCfg.setHeads(4);
-        byteCfg.setLayers(2);
-        byteCfg.setContext(32);
-        byteCfg.setSeed(13L);
-        core.newModel(byteCfg);
-
-        List<String> baseCorpus = List.of(
-                "abcdefgh", "abcdabcd", "efghefgh", "abefcdgh", "ghefcdab");
-        core.train(baseCorpus, 25, 0.02d, null);
-        assertTrue(core.continual().stats().holdoutSize() > 0);
-        assertTrue(core.continual().stats().coreHoldoutSize() > 0);
-        assertTrue(core.isEwcActive());
-
-        Path beforeWakePath = tempDir.resolve("before_wake.lmc");
-        Path afterWakePath = tempDir.resolve("after_wake.lmc");
-        core.save(beforeWakePath);
-
-        String conflicting = "~0!1@2#3$4%5^6&7*8(9)-_=+".repeat(2);
-
-        core.continual().setConfig(ContinualConfig.defaults().toBuilder()
-                .loraRank(2)
-                .loraAlpha(4.0d)
-                .maxLearningRate(0.01d)
-                .minLearningRate(0.0005d)
-                .maxRegression(0.10d)
-                .surpriseThreshold(0d)
-                .consolidateEvery(2)
-                .ewcLambda(2.0d)
-                .distillAlpha(0.5d)
-                .build());
-
-        core.continual().observe("abcdmnop", 1.5d, false);
-        ContinualLearner.StepResult w1 = core.continualStep();
-        assertEquals(ContinualLearner.StepPhase.WAKE, w1.phase());
-        assertEquals(ContinualLearner.StepOutcome.ACCEPTED, w1.outcome());
-        assertNotNull(core.lora());
-        assertFalse(core.lora().isZero());
-
-        core.save(afterWakePath);
-        float[][] wBefore = ModelStore.load(beforeWakePath).weights();
-        float[][] wAfterWake = ModelStore.load(afterWakePath).weights();
-        assertEquals(wBefore.length, wAfterWake.length);
-        for (int leaf = 0; leaf < wBefore.length; leaf++) {
-            assertTrue(Arrays.equals(wBefore[leaf], wAfterWake[leaf]),
-                    "Backbone weight leaf " + leaf + " changed during Wake LoRA adaptation");
-        }
-
-        // Forced rollback preserves stats and decays LR
         core.continual().setConfig(core.continual().config().toBuilder()
-                .maxLearningRate(0.09d)
-                .minLearningRate(0.08d)
+                .localRecallEnabled(true)
+                .localRecallBoost(10.0d)
                 .build());
-        core.continual().setConfig(core.continual().config().toBuilder()
-                .minLearningRate(0.0001d)
-                .maxRegression(0.0d)
-                .microEpochs(6)
-                .replayRatio(0.0d)
-                .build());
-        core.continual().observe(conflicting, 1.0d, false);
-        double coreLossBefore = core.evaluate(List.of("abcdefgh")).loss;
-        ContinualLearner.StepResult rolled = core.continualStep();
-        assertEquals(ContinualLearner.StepOutcome.ROLLED_BACK, rolled.outcome());
-        assertEquals(coreLossBefore, core.evaluate(List.of("abcdefgh")).loss, 1e-12d);
-        assertTrue(core.continual().stats().adaptiveLearningRate() < 0.08d);
+        MemoryBank bank = core.continual().memory();
+        ContinualConfig cfg = core.continual().config();
+        MemoryBank.Entry v1 = bank.confirmSemantic(MemoryBank.Kind.FACT, "global",
+                "Server port is", "8080", "", 0.85d, "doc", cfg);
+        MemoryBank.Entry v2 = bank.confirmSemantic(MemoryBank.Kind.FACT, "global",
+                "Server port is", "9090", "", 0.95d, "override", cfg);
 
-        // Second accepted Wake hits consolidateEvery=2 threshold -> next continualStep runs Sleep!
-        core.continual().setConfig(core.continual().config().toBuilder()
-                .maxLearningRate(0.01d)
-                .maxRegression(0.15d)
-                .microEpochs(1)
-                .replayRatio(0.5d)
-                .build());
-        core.continual().observe("abefmnop", 1.2d, true);
-        ContinualLearner.StepResult w2 = core.continualStep();
-        assertEquals(ContinualLearner.StepOutcome.ACCEPTED, w2.outcome());
-        assertEquals(2L, core.continual().stats().wakeStepsSinceConsolidation());
+        assertEquals(v2.id(), bank.get(v1.id()).supersededById());
+        assertEquals("8080", bank.get(v2.id()).alternative());
 
-        ContinualLearner.StepResult sleep = core.continualStep();
-        assertEquals(ContinualLearner.StepPhase.SLEEP, sleep.phase());
-        assertEquals(ContinualLearner.StepOutcome.ACCEPTED, sleep.outcome());
-        assertTrue(core.lora().isZero(), "LoRA must merge & reset to zero after Sleep consolidation");
-        assertTrue(core.isEwcActive());
-        assertEquals(0L, core.continual().stats().wakeStepsSinceConsolidation());
-        assertTrue(core.continual().stats().sleepConsolidations() >= 1L);
+        LlmCore.AnswerResult res = core.generate("Server port is ", 4, new Sampler(), null);
+        assertTrue(res.memoryHits > 0);
+        assertTrue(res.text.startsWith("9090"), "Expected revised fact, got: " + res.text);
+
+        // Unrelated short prompt must not falsely match due to 1-char suffix overlap
+        float[] probeLogits = new float[core.tokenizer().size()];
+        MemoryBank.LocalAssist noMatch = bank.applyLocalAssist(core.tokenizer(), "XYZ",
+                probeLogits, cfg);
+        assertEquals(0, noMatch.matchedEntries());
+
+        // Explicit AVOIDANCE suppresses forbidden continuation
+        MemoryBank.Entry avoid = bank.confirmSemantic(MemoryBank.Kind.AVOIDANCE, "global",
+                "Bad cmd:", "rm -rf", "", 1.0d, "safety", cfg);
+        LlmCore.AnswerResult avoidedRes = core.generate("Bad cmd: ", 2, new Sampler(), null);
+        assertTrue(avoidedRes.suppressedForbidden);
+        assertFalse(avoidedRes.text.startsWith("rm"));
+
+        assertTrue(bank.forget(avoid.id()));
+        assertEquals(null, bank.get(avoid.id()));
     }
 
     @Test
-    void surpriseGatingSkipsRoutineObservationsWhileReinforcingMemory() {
+    void batchConsolidationHoldoutVerificationRollbackPreemptionAndVocabGrowth() {
         LlmCore core = new LlmCore();
         core.newModel(aModel());
-        core.train(List.of("abcdefgh"), 45, 0.02d, null);
-        core.continual().setConfig(ContinualConfig.defaults().toBuilder()
-                .surpriseThreshold(1.5d)
-                .consolidateEvery(0)
-                .build());
+        core.train(List.of("abcdefgh", "efghabcd", "abcdabcd"), 35, 0.02d, null);
+        assertTrue(core.continual().stats().instinctCorpusCount() >= 2L);
 
-        long stepsBefore = core.steps();
-        core.continual().observe("abcdefgh", 1.0d, false);
-        ContinualLearner.StepResult res = core.continualStep();
-        assertEquals(ContinualLearner.StepOutcome.SKIPPED, res.outcome());
-        assertEquals(stepsBefore, core.steps());
-        assertTrue(core.continual().stats().surpriseSkipped() >= 1L);
-        assertTrue(core.continual().stats().episodeCount() >= 1);
-    }
+        // Raw WORKING cognition must yield NO_PENDING during weight consolidation
+        core.continual().recordWorking("chat", "ephemeral", "abcdefgh", 0.5d, "chat");
+        ContinualLearner.StepResult noPending = core.consolidate();
+        assertEquals(ContinualLearner.StepOutcome.NO_PENDING, noPending.outcome());
 
-    @Test
-    void lmc3PersistsAndReloadsFullCognitiveStateAcrossRestart() throws Exception {
-        Path lmc3Path = tempDir.resolve("cognitive_v3.lmc");
-        LlmCore core = new LlmCore();
-        core.newModel(aModel());
-        core.train(List.of("abc:ok00", "def:ok11"), 25, 0.02d, null);
-
-        core.continual().setConfig(ContinualConfig.defaults().toBuilder()
-                .loraRank(2)
-                .loraAlpha(6.0d)
-                .surpriseThreshold(0d)
-                .memoryRecallEnabled(true)
-                .memoryMaxLambda(0.85d)
-                .build());
-        long memEpId = core.continual().observePair("ghi:", "77!!", 2.0d, true, true);
-        assertTrue(memEpId > 0L);
-        ContinualLearner.StepResult wake = core.continualStep();
-        assertEquals(ContinualLearner.StepOutcome.ACCEPTED, wake.outcome());
-
-        double savedLoraNorm = core.lora().norm();
-        assertTrue(savedLoraNorm > 0d);
-        int savedEpisodes = core.continual().stats().episodeCount();
-        int savedHoldout = core.continual().stats().holdoutSize();
-
-        core.save(lmc3Path);
-        ModelStore.Content rawContent = ModelStore.load(lmc3Path);
-        assertTrue(rawContent.isLoaded());
-        assertEquals(ModelStore.VERSION_V3, rawContent.formatVersion());
-
-        LlmCore reloaded = new LlmCore();
-        reloaded.load(lmc3Path);
-        reloaded.continual().setConfig(core.continual().config());
-        assertTrue(reloaded.isEwcActive());
-        assertNotNull(reloaded.lora());
-        assertEquals(savedLoraNorm, reloaded.lora().norm(), 1e-6d);
-        assertEquals(savedEpisodes, reloaded.continual().stats().episodeCount());
-        assertEquals(savedHoldout, reloaded.continual().stats().holdoutSize());
-
-        // Immediate 1-shot episodic recall right after restart!
-        LlmCore.AnswerResult recalled = reloaded.generate("ghi:", 6, new Sampler(), null);
-        assertTrue(recalled.memoryHits > 0);
-        assertTrue(recalled.text.startsWith("77"),
-                "Expected reloaded LMC3 episodic recall 77*, got: " + recalled.text);
-    }
-
-    @Test
-    void continualLearnerSelfInferenceConfidenceMarginDegenerationGrowthRollbackAndPreemption() {
-        LlmCore core = new LlmCore();
-        core.newModel(aModel());
-        core.train(List.of("abcdefgh", "abcdabcd", "efghefgh", "abefcdgh"), 20, 0.02d, null);
-
-        LlmCore.AnswerResult ans = core.generate("abc", 8, new Sampler(), null);
-        assertFalse(ans.text.isEmpty());
-        assertTrue(Double.isFinite(ans.meanLogProb) && (ans.meanLogProb <= 0d));
-        assertTrue((ans.confidence > 0d) && (ans.confidence <= 1d));
-        assertTrue(Double.isFinite(ans.meanMargin) && (ans.meanMargin >= 0d));
-
-        assertTrue(ContinualLearner.isDegenerate("aaaaaaaaaaaaaaaa"));
-        assertTrue(ContinualLearner.isDegenerate("abababababababab"));
-        assertFalse(ContinualLearner.isDegenerate("motor OK 123"));
-
-        ContinualLearner learner = core.continual();
-        learner.setConfig(ContinualConfig.defaults().toBuilder()
-                .loraRank(2)
-                .maxRegression(0.25d)
-                .surpriseThreshold(0d)
-                .selfConfidenceThreshold(0.2d)
-                .selfMarginThreshold(0.15d)
-                .allowVocabularyGrowth(true)
-                .build());
-
-        assertFalse(learner.recordInference("bad-deg", "abc", "abababababababab", 0.99d, -0.01d,
-                0.95d));
-        assertFalse(learner.recordInference("bad-conf", "abc", "defg", 0.01d, -4.6d, 0.9d));
-        assertFalse(learner.recordInference("bad-margin", "abc", "defg", 0.90d, -0.1d, 0.02d));
-        assertTrue(learner.stats().selfRejectedDegenerate() >= 3L);
-
-        assertTrue(learner.recordInference("inf-1", "abc", "defg", 0.85d, -0.16d, 0.7d));
-        assertEquals(1, learner.stats().pendingSelfCount());
-
-        assertTrue(learner.feedback("inf-1", null, null, false, -1.0d, "dexyz"));
-        assertEquals(0, learner.stats().pendingSelfCount());
-        assertEquals(1L, learner.stats().negativeFeedback());
-        assertEquals(1L, learner.stats().corrections());
-
-        // Dynamic CharTokenizer growth + preemption + rollback
-        int baseVocab = core.tokenizer().size();
-        core.continual().observe("abcdXYZ123", 1.0d, false);
-
+        // Confirmed SEMANTIC with unseen character triggers vocabulary growth + preemption check
+        MemoryBank.Entry sem = core.continual().confirmSemantic(MemoryBank.Kind.FACT, "project",
+                "ab", "cdZ", "cdX", 0.9d, "user");
         core.requestLearningPreemption();
-        long stepsBefore = core.steps();
-        ContinualLearner.StepResult preempted = core.continualStep();
+        long preSteps = core.steps();
+        ContinualLearner.StepResult preempted = core.consolidate();
         assertEquals(ContinualLearner.StepOutcome.PREEMPTED, preempted.outcome());
-        assertEquals(stepsBefore, core.steps());
+        assertEquals(preSteps, core.steps());
         core.releaseLearningPreemption();
 
-        ContinualLearner.StepResult grown = core.continualStep();
-        assertEquals(ContinualLearner.StepOutcome.ACCEPTED, grown.outcome());
-        assertTrue(grown.vocabExpanded());
-        assertEquals(baseVocab + 9, core.tokenizer().size());
-        assertEquals(baseVocab + 9, core.config().vocabSize());
+        int vocabBefore = core.tokenizer().size();
+        ContinualLearner.StepResult consolidated = core.consolidate();
+        assertEquals(ContinualLearner.StepOutcome.CONSOLIDATED, consolidated.outcome(),
+                () -> "Unexpected outcome: " + consolidated.message());
+        assertTrue(consolidated.vocabularyExpanded());
+        assertTrue(core.tokenizer().size() > vocabBefore);
+        assertEquals(1, consolidated.consolidatedEntries());
+        assertTrue(core.continual().memory().get(sem.id()).consolidated());
+        assertTrue(Double.isFinite(consolidated.instinctLossAfter()));
 
-        int grownVocab = core.tokenizer().size();
-        learner.setConfig(learner.config().toBuilder()
-                .maxLearningRate(0.09d)
-                .minLearningRate(0.08d)
+        // Forced instinct holdout regression must roll back weights, vocab, steps, and mark bit-for-bit
+        core.continual().setConfig(core.continual().config().toBuilder()
+                .consolidationLearningRate(0.05d)
+                .consolidationEpochs(8)
+                .instinctReplayRatio(0.0d)
+                .maxInstinctRegression(0.0d)
                 .build());
-        learner.setConfig(learner.config().toBuilder()
-                .minLearningRate(0.0001d)
-                .maxRegression(0.0d)
-                .microEpochs(6)
-                .replayRatio(0d)
-                .build());
-        core.continual().observe("hgfedcbahgfedcba!@#$%^&*()_+QWERTYUIO", 1.0d, false);
-        ContinualLearner.StepResult rollbackGrown = core.continualStep();
-        assertEquals(ContinualLearner.StepOutcome.ROLLED_BACK, rollbackGrown.outcome());
-        assertEquals(grownVocab, core.tokenizer().size());
-        assertEquals(grownVocab, core.config().vocabSize());
+        int vocabStable = core.tokenizer().size();
+        long stepsStable = core.steps();
+        LlmCore.EvalResult evalBefore = core.evaluate(List.of("abcdefgh", "efghabcd"));
+        MemoryBank.Entry badEntry = core.continual().confirmSemantic(MemoryBank.Kind.FACT,
+                "project", "", "QQQQWWWWEEEE!!!!@@@@####$$$$", "", 0.9d, "adversarial");
+
+        ContinualLearner.StepResult rolledBack = core.consolidate();
+        assertEquals(ContinualLearner.StepOutcome.ROLLED_BACK, rolledBack.outcome());
+        assertEquals(stepsStable, core.steps());
+        assertEquals(vocabStable, core.tokenizer().size());
+        assertEquals(vocabStable, core.config().vocabSize());
+        assertFalse(core.continual().memory().get(badEntry.id()).consolidated());
+        LlmCore.EvalResult evalAfter = core.evaluate(List.of("abcdefgh", "efghabcd"));
+        assertEquals(evalBefore.loss, evalAfter.loss, 1e-12d);
+    }
+
+    @Test
+    void modelStoreWritesCleanLmc2AndLoadsLegacyLmc3AndLmc4Cleanly() throws Exception {
+        LlmCore core = new LlmCore();
+        core.newModel(aModel());
+        core.train(List.of("abcdefgh"), 6, 0.01d, null);
+        core.continual().addInstinct(MemoryBank.Kind.RULE, "global", "Rule", "Stay safe", 1.0d,
+                "parent");
+        core.continual().confirmSemantic(MemoryBank.Kind.FACT, "global", "Fact", "Sky is blue",
+                "", 0.9d, "user");
+
+        Path cleanV2 = tempDir.resolve("clean_v2.lmc");
+        core.save(cleanV2);
+        ModelStore.Content v2Content = ModelStore.load(cleanV2);
+        assertTrue(v2Content.isLoaded());
+        assertEquals(ModelStore.VERSION_V2, v2Content.formatVersion());
+
+        // Construct valid legacy LMC3 and LMC4 binaries with embedded continual blocks & CRC32
+        ModelConfig cfg = core.config();
+        Tokenizer tok = core.tokenizer();
+        TransformerModel refModel = new TransformerModel(cfg);
+        ModelStore.Metadata meta = new ModelStore.Metadata(5L, 0.42d, 0.01d, 0.01d, 1.0d);
+
+        for (int ver : new int[] { ModelStore.VERSION_V3, ModelStore.VERSION_V4 }) {
+            Path legacyFile = tempDir.resolve("legacy_v" + ver + ".lmc");
+            java.util.zip.CRC32 crc = new java.util.zip.CRC32();
+            try (DataOutputStream rawOut = new DataOutputStream(Files.newOutputStream(legacyFile))) {
+                java.util.zip.CheckedOutputStream checkedOut =
+                        new java.util.zip.CheckedOutputStream(rawOut, crc);
+                DataOutputStream out = new DataOutputStream(checkedOut);
+
+                out.writeInt(ModelStore.MAGIC);
+                out.writeInt(ver);
+                out.writeInt(cfg.vocabType());
+                out.writeInt(cfg.vocabSize());
+                out.writeInt(cfg.dModel());
+                out.writeInt(cfg.heads());
+                out.writeInt(cfg.layers());
+                out.writeInt(cfg.context());
+                out.writeLong(cfg.seed());
+                out.writeLong(meta.steps());
+                out.writeDouble(meta.loss());
+                out.writeDouble(meta.learningRate());
+                out.writeDouble(meta.weightDecay());
+                out.writeDouble(meta.largestGradient());
+                tok.writeVocab(out);
+                out.writeInt(refModel.weights().length);
+                for (float[] w : refModel.weights()) {
+                    out.writeInt(w.length);
+                    for (float f : w) {
+                        out.writeFloat(f);
+                    }
+                }
+                // Embedded legacy continual block
+                out.writeBoolean(true); // present
+                out.writeBoolean(false); // hasLora
+                out.writeBoolean(false); // hasEwc
+                if (ver >= ModelStore.VERSION_V4) {
+                    out.writeBoolean(true); // hasHiddenMean
+                    out.writeLong(2L);
+                    out.writeInt(cfg.dModel());
+                    for (int i = 0; i < cfg.dModel(); i++) {
+                        out.writeFloat(0.25f);
+                    }
+                }
+                out.writeLong(10L); // tick
+                out.writeLong(3L); // nextEpisodeId
+                out.writeDouble(0.002d); // adaptiveLr
+                out.writeDouble(0.5d); // bestValLoss
+                out.writeDouble(0.6d); // lastValLoss
+                out.writeLong(1L); // wakeAccepted
+                out.writeLong(0L); // sleepConsolidations
+                out.writeLong(0L); // rejectedUpdates
+                out.writeLong(1L); // wakeStepsSinceConsolidation
+                out.writeInt(1); // 1 legacy episode
+                out.writeLong(1L); // id
+                out.writeInt(0); // kindOrdinal
+                writeUtf8(out, "prompt");
+                writeUtf8(out, "response");
+                writeUtf8(out, null);
+                writeUtf8(out, "inf-1");
+                out.writeBoolean(true);
+                out.writeDouble(0.8d);
+                out.writeDouble(0.3d);
+                out.writeDouble(0.9d);
+                out.writeInt(1);
+                out.writeInt(1);
+                out.writeBoolean(false);
+                out.writeBoolean(true);
+                out.writeBoolean(false);
+                out.writeLong(1L);
+                out.writeLong(2L);
+                if (ver >= ModelStore.VERSION_V4) {
+                    out.writeDouble(0.5d);
+                    out.writeLong(0L);
+                }
+                out.writeInt(1); // coreHoldout count
+                writeUtf8(out, "abcdefgh");
+                out.writeInt(0); // recentHoldout count
+                out.flush();
+                rawOut.writeLong(crc.getValue());
+            }
+            ModelStore.Content loaded = ModelStore.load(legacyFile);
+            assertTrue(loaded.isLoaded(), () -> "Legacy V" + ver + " failed: " + loaded.error());
+            assertEquals(ver, loaded.formatVersion());
+        }
+
+        // Loading another .lmc or calling newModel preserves external biological MemoryBank
+        Path v4Path = tempDir.resolve("legacy_v4.lmc");
+        core.load(v4Path);
+        assertEquals(1, core.continual().stats().instinctCount());
+        assertEquals(1, core.continual().stats().semanticCount());
+        core.newModel(aModel());
+        assertEquals(1, core.continual().stats().instinctCount());
+        assertEquals(1, core.continual().stats().semanticCount());
+    }
+
+    private static final class MutableClock extends java.time.Clock {
+
+        private long millis_;
+
+        private MutableClock(long initialMillis) {
+            millis_ = initialMillis;
+        }
+
+        private void advanceMillis(long delta) {
+            millis_ += delta;
+        }
+
+        @Override
+        public java.time.ZoneId getZone() {
+            return java.time.ZoneOffset.UTC;
+        }
+
+        @Override
+        public java.time.Clock withZone(java.time.ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public java.time.Instant instant() {
+            return java.time.Instant.ofEpochMilli(millis_);
+        }
+
+        @Override
+        public long millis() {
+            return millis_;
+        }
+    }
+
+    private static void writeUtf8(DataOutputStream out, String text) throws java.io.IOException {
+        if (text == null) {
+            out.writeInt(-1);
+            return;
+        }
+        byte[] b = text.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        out.writeInt(b.length);
+        out.write(b);
     }
 
     private static double numericLossMode(TransformerModel model, float[] weight, int pick,
-            float delta, int[] tokens, int lossStart, TransformerModel.LossMode mode,
-            float[][] teacher, double distillAlpha) {
+            float delta, int[] tokens, int lossStart, TransformerModel.LossMode mode) {
         float original = weight[pick];
         weight[pick] = original + delta;
-        double up = evalModeLoss(model, tokens, lossStart, mode, teacher, distillAlpha);
+        double up = evalModeLoss(model, tokens, lossStart, mode);
         weight[pick] = original - delta;
-        double down = evalModeLoss(model, tokens, lossStart, mode, teacher, distillAlpha);
+        double down = evalModeLoss(model, tokens, lossStart, mode);
         weight[pick] = original;
         return (up - down) / (2d * delta);
     }
 
     private static double evalModeLoss(TransformerModel model, int[] tokens, int lossStart,
-            TransformerModel.LossMode mode, float[][] teacher, double distillAlpha) {
+            TransformerModel.LossMode mode) {
         int length = tokens.length;
         int v = model.vocabulary();
         TransformerModel.Step step = model.newStep(length, false);
@@ -1570,23 +1579,11 @@ class LlmCoreTest {
                 sum += Math.exp((double) head[(pos * v) + j] - max);
             }
             int target = tokens[pos + 1];
-            switch (mode) {
-                case UNLIKELIHOOD -> {
-                    double p = Math.exp((double) head[(pos * v) + target] - max) / sum;
-                    total += -Math.log(Math.max(1e-4d, 1d - p));
-                }
-                case DISTILL -> {
-                    float[] tp = teacher[pos];
-                    for (int j = 0; j < v; j++) {
-                        double p = Math.exp((double) head[(pos * v) + j] - max) / sum;
-                        double q = ((1d - distillAlpha) * ((j == target) ? 1d : 0d))
-                                + (distillAlpha * Math.max(0d, tp[j]));
-                        if (q > 0d) {
-                            total += -q * Math.log(Math.max(1e-12d, p));
-                        }
-                    }
-                }
-                default -> total += Math.log(sum) - ((double) head[(pos * v) + target] - max);
+            if (mode == TransformerModel.LossMode.UNLIKELIHOOD) {
+                double p = Math.exp((double) head[(pos * v) + target] - max) / sum;
+                total += -Math.log(Math.max(1e-4d, 1d - p));
+            } else {
+                total += Math.log(sum) - ((double) head[(pos * v) + target] - max);
             }
         }
         return total / count;

@@ -2,56 +2,236 @@
 
 ## Overview / 概要
 
-* **PluginKit** (`webviewer-plugin-kit`) provides the common base classes, thread-safe notification queues, JavaScript escaping utilities, callback validators, and path sandboxing helpers shared by all `WebViewer` plug-ins.
-* **PluginKit**（`webviewer-plugin-kit`）は、すべての `WebViewer` プラグインで共通利用される基底クラス、JavaFX スレッド通知キュー、JavaScript エスケープ処理、コールバック関数名検証、およびパスサンドボックス機能を提供するサポートライブラリです。
-* It is built as a plain library JAR (`webviewer-plugin-kit-<version>.jar`). Do **not** place it directly in `web/plugins`; each plug-in shades `PluginKit` into its own deliverable JAR.
-* 通常のライブラリ JAR（`webviewer-plugin-kit-<version>.jar`）としてビルドされます。`web/plugins` フォルダーには直接置かず、各プラグインが自身の JAR に shade して使用します。
+* **PluginKit** (`webviewer-plugin-kit`) provides the common base classes, thread-safe host holder, bounded JavaFX notification queue, JavaScript escaping utilities, callback name validator, path sandboxing helpers, and license dialog shared by `WebViewer` plug-ins.
+* **PluginKit**（`webviewer-plugin-kit`）は、すべての `WebViewer` プラグインで共通利用される基底クラス、スレッドセーフなホスト参照保持、JavaFX スレッド通知キュー、JavaScript エスケープ、コールバック関数名検証、パスサンドボックス、ライセンス表示ダイアログを提供するサポートライブラリです。
+* It builds as a plain library JAR (`webviewer-plugin-kit-<version>.jar`). Do **not** place it directly in `web/plugins`; each plug-in shades `PluginKit` into its own deliverable JAR.
+* 通常のライブラリ JAR（`webviewer-plugin-kit-<version>.jar`）としてビルドされます。`web/plugins` フォルダーには直接置かず、各プラグインの JAR に shade して使用します。
 
 ---
 
-## Classes / クラス一覧
+## Module & Maven Dependency / モジュールと Maven 設定
 
+* **Artifact**: `ken.mizoguch:webviewer-plugin-kit:2026.10.11`
 * **Java Module**: `ken.mizoguch.webviewer.plugin.kit`
-* **Exported Package**: `ken.mizoguch.webviewer.plugin.kit`
+  * `exports ken.mizoguch.webviewer.plugin.kit;`
+  * `requires transitive ken.mizoguch.webviewer.plugin.api;`
+  * `requires transitive javafx.base;`
+  * `requires transitive javafx.graphics;`
+  * `requires transitive javafx.web;`
+  * `requires javafx.controls;`
+  * `requires jdk.jsobject;`
 
-| Class / クラス | Description / 説明 |
-| :--- | :--- |
-| `PluginSupport` | Base class for standard plug-ins implementing `WebViewerPlugin`. Delegates `webViewer()`, `stage()`, `icons()`, `webEngine()`, `webPath()`, `write()`, `writeStackTrace()`, `state()`, and `close()` through `HostRef`, and provides `protected String scriptFunction(String func)` to validate JavaScript callback names.<br>`WebViewerPlugin` を実装する標準プラグインの基底クラスです。`HostRef` を通じたホスト委譲メソッドと、通知コールバック関数名を検証する `protected String scriptFunction(String func)` を提供します。 |
-| `ServiceSupport<V>` | Base class for plug-ins that run a background worker task (`javafx.concurrent.Service<V>`, used by `OnlineArt` and `WebCam`). Provides `awaitTermination(int millis)` for clean shutdown and `protected String scriptFunction(String func)` for callback validation.<br>バックグラウンドスレッドでタスクを実行するプラグイン（`OnlineArt`, `WebCam`）向けの基底クラスで、`javafx.concurrent.Service<V>` を継承します。終了待機の `awaitTermination(int millis)` と `scriptFunction(String func)` を提供します。 |
-| `HostRef` | Thread-safe holder (`volatile`) for the host `WebViewerPlugin` reference. Safely returns `null` or empty values before `initialize(...)` is called.<br>ホスト側 `WebViewerPlugin` 参照をスレッドセーフ（`volatile`）に保持するラッパーです。未初期化時は安全に `null` や空リストを返します。 |
-| `ScriptNotifier` | Bounded queue (`QUEUE_MAX = 1024`) that dispatches JavaScript callbacks on the JavaFX Application Thread once the page reaches `Worker.State.SUCCEEDED`. Safely buffers pre-ready events without scheduling JavaFX tasks when no `WebEngine` is attached, drains queued events once function, engine, and `SUCCEEDED` state are set, and logs dropped notifications on overflow.<br>ページが `Worker.State.SUCCEEDED` の状態のときに JavaFX アプリケーションスレッド上で登録済み JavaScript 関数を呼び出す通知キュー（上限 `QUEUE_MAX = 1024`）です。未準備時のイベントは安全にバッファリングし、`setFunction` / `setEngine` / `setState(SUCCEEDED)` が揃った時点で自動フラッシュします。 |
-| `ScriptFunction` | Validates via `isValid(String name)` that a callback name supplied by the page is a strict JavaScript function identifier or dotted property path (`^[A-Za-z_$][A-Za-z0-9_$]*(\.[A-Za-z_$][A-Za-z0-9_$]*)*\z`), preventing arbitrary script injection.<br>ページから渡されたコールバック関数名が正当な JavaScript 関数識別子（またはドット区切りのプロパティ参照）であるかを `isValid(String name)` で検証し、スクリプトインジェクションを防ぎます。 |
-| `ScriptValue` | Escapes Java strings into safe JavaScript string literals via `quote(String)` and `literal(String)` (escaping `\`, `'`, `"`, `\r`, `\n`, `\u0000`, `\u2028`, `\u2029`, and control characters). Overloads with a max length (`MAX_LENGTH = 4096`) truncate long payloads safely.<br>文字列を安全な JavaScript リテラルに変換する `quote(String)` と `literal(String)` を提供します（改行・制御文字・`\u2028`・`\u2029` 等を単一パスでエスケープし、別のスクリプトの混入を防ぎます）。長さ制限付きのオーバーロード（既定 `MAX_LENGTH = 4096`）も備えています。 |
-| `SandboxPath` | Resolves and canonicalizes page-supplied file paths via `resolve(Path directory, String path)`, `resolve(Path directory, Path page, String path)`, `require(Path directory, String path)`, and `require(Path directory, Path page, String path)`, throwing `IOException` or returning `null` if any path escapes the page's root `web` folder.<br>ページから指定されたファイルパスを正規化し、ページの `web` フォルダー配下に収まっていることを検証します（2 引数・3 引数の `require` を提供し、領域外パスを拒否します）。 |
-| `LicenseDialog` | JavaFX dialog window that displays the third-party licenses stored in a plug-in's `licenses.txt` resource when `<plugin>.licenses()` is called.<br>`<plugin>.licenses()` 呼び出し時に、プラグインパッケージ内の `licenses.txt` を読み込んで表示するダイアログウィンドウです。 |
+```xml
+<dependency>
+    <groupId>ken.mizoguch</groupId>
+    <artifactId>webviewer-plugin-kit</artifactId>
+    <version>2026.10.11</version>
+</dependency>
+```
 
 ---
 
-## Usage / 使い方
+## API Reference / API リファレンス (All 8 Public Classes)
+
+Package: `ken.mizoguch.webviewer.plugin.kit`
+
+### 1. `PluginSupport` (`public abstract class PluginSupport implements WebViewerPlugin`)
+Standard base class delegating `WebViewerPlugin` host calls via an internal `HostRef`.
+
+| Constructor / Method | Behavior / 仕様 |
+| :--- | :--- |
+| `protected PluginSupport()` | Creates internal `HostRef`. / 内部 `HostRef` を初期化します。 |
+| `public void initialize(WebViewerPlugin webViewer)` | Stores `webViewer` in `HostRef`. / ホスト参照を保存します。 |
+| `protected WebViewerPlugin webViewer()` | Returns stored host `WebViewerPlugin` (`null` before `initialize`). |
+| `public abstract String functionName()` | Subclass must return JS property name (`window.<functionName>`). |
+| `public void state(Worker.State state)` | Default no-op hook invoked on page load state transitions. |
+| `public void close()` | Default no-op hook invoked on host shutdown. |
+| `public Stage stage()` / `WebEngine webEngine()` / `Path webPath()` | Delegates to `HostRef` (`null` if unset). |
+| `public List<Image> icons()` | Delegates to `HostRef` (empty `ArrayList<>()` if unset or host returns `null`). |
+| `public void writeStackTrace(String name, Throwable throwable)` / `write(String name, String msg, boolean err)` | Delegates console logging to `HostRef` (no-op if unset). |
+| `protected String scriptFunction(String func)` | Returns `func` unchanged if `null` or `ScriptFunction.isValid(func)` is `true`; otherwise logs `"Incorrect script function name"` (`err=true`) and returns `null`.<br>`null` または有効な識別子ならそのまま返し、不正文字列はエラーログを出して `null` を返します。 |
+
+### 2. `ServiceSupport<V>` (`public abstract class ServiceSupport<V> extends javafx.concurrent.Service<V> implements WebViewerPlugin`)
+Base class for background-task plug-ins (`OnlineArt`, `WebCam`) extending JavaFX `Service<V>`.
+
+| Constructor / Method | Behavior / 仕様 |
+| :--- | :--- |
+| `protected ServiceSupport()` | Creates `Service<V>` with internal `HostRef`. (Does **not** define `awaitTermination`; subclasses manage their own task synchronization if needed.)<br>内部 `HostRef` を備えた `Service<V>` 基底クラスです（`awaitTermination` は持たないため必要に応じて各プラグインで実装します）。 |
+| `public void initialize(WebViewerPlugin webViewer)`, `protected WebViewerPlugin webViewer()`, `public abstract String functionName()`, `state`, `close`, `stage`, `icons`, `webEngine`, `webPath`, `writeStackTrace`, `write`, `protected String scriptFunction(String func)` | Identical `WebViewerPlugin` / `HostRef` delegation and callback validation contract as `PluginSupport`. All JavaFX `Service` methods (`start`, `restart`, `cancel`, etc.) are also inherited.<br>`PluginSupport` と同一のホスト委譲・検証メソッドに加え、`javafx.concurrent.Service<V>` の全メソッドを継承します。 |
+
+### 3. `HostRef` (`public class HostRef`)
+Thread-safe (`volatile`) wrapper holding the `WebViewerPlugin` host reference. Constructor `HostRef()` is package-private (`PluginSupport` and `ServiceSupport` instantiate it internally).
+
+| Method / メソッド | Behavior / 仕様 |
+| :--- | :--- |
+| `public void setWebViewer(WebViewerPlugin webViewer)` | Updates the `volatile` host reference. |
+| `public WebViewerPlugin webViewer()` | Returns stored reference or `null`. |
+| `public boolean isSet()` | Returns `true` if `webViewer != null`. |
+| `public void state(Worker.State state)` / `void close()` | Default no-op helpers. |
+| `public Stage stage()` / `WebEngine webEngine()` / `Path webPath()` | Returns host value or `null` when unset. |
+| `public List<Image> icons()` | Returns host icons or a new empty `ArrayList<>()` when unset/null. |
+| `public void writeStackTrace(String name, Throwable t)` / `write(String name, String msg, boolean err)` | Forwards to host when set; safe no-op when unset. |
+
+### 4. `SandboxPath` (`public final class SandboxPath`)
+Canonicalizes user-supplied paths and blocks path traversal (`..`) and symlinks resolving outside the permitted root directory.
+
+| Method / メソッド | Behavior / 仕様 |
+| :--- | :--- |
+| `public static Path resolve(Path directory, String path)` | Equivalent to `resolve(directory, directory, path)`. |
+| `public static Path resolve(Path directory, Path page, String path)` | Returns `null` if `directory == null`, `path == null`, or trimmed `path` is empty. Paths starting with `~` resolve against `page` (falling back to `directory` if `page == null`) after stripping `~` and leading `/` or `\`. Normalizes paths, rejects `InvalidPathException`, rejects normalized paths escaping base (`!file.startsWith(base)`), and rejects any existing ancestor symlink (`LinkOption.NOFOLLOW_LINKS`) whose `toRealPath()` exits `base.toRealPath()`.<br>`~` 始まりは `page`（未指定時は `directory`）基準、それ以外は `directory` 基準で正規化し、`..` やシンボリックリンクによるサンドボックス脱出時は `null` を返します。 |
+| `public static Path require(Path directory, String path) throws IOException` | Calls `resolve(directory, path)`; throws `IOException("Incorrect file path [" + path + "]")` if `null`. |
+| `public static Path require(Path directory, Path page, String path) throws IOException` | Calls `resolve(directory, page, path)`; throws `IOException("Incorrect file path [" + path + "]")` if `null`. |
+
+### 5. `ScriptFunction` (`public final class ScriptFunction`)
+
+| Method / メソッド | Behavior / 仕様 |
+| :--- | :--- |
+| `public static boolean isValid(String name)` | Validates `name` using `Pattern.compile("[A-Za-z_$][A-Za-z0-9_$]*(?:\\.[A-Za-z_$][A-Za-z0-9_$]*)*").matcher(name).matches()` (`false` if `null` or empty).<br>JavaScript の識別子またはドット区切りプロパティ参照のみを許可し、式や文のインジェクションを防ぎます。 |
+
+### 6. `ScriptValue` (`public final class ScriptValue`)
+Escapes strings into JavaScript string literals in a single pass. Constant: `public static final int MAX_LENGTH = 4096`.
+
+| Method / メソッド | Behavior / 仕様 |
+| :--- | :--- |
+| `public static String quote(String value)` | Calls `quote(value, MAX_LENGTH)`. |
+| `public static String quote(String value, int maxLength)` | Returns `""` if `value == null`. Uses `MAX_LENGTH` (`4096`) when `maxLength < 0`. Truncates cleanly without splitting a trailing UTF-16 high surrogate at the cut boundary, and escapes `\`, `'`, `"`, `\r`, `\n`, `\t`, chars `< 0x20` (`\uXXXX`), `\u2028`, `\u2029`. Returns content **without** surrounding quotes.<br>`null` は `""`、`maxLength < 0` は `4096` 扱い。サロゲートペア境界を考慮して切り詰め、制御文字等をエスケープした中身だけを返します。 |
+| `public static String literal(String value)` | Equivalent to `"'" + quote(value) + "'"`. |
+| `public static String literal(String value, int maxLength)` | Equivalent to `"'" + quote(value, maxLength) + "'"` (`''` when `value == null`).<br>シングルクォート `'...'` で囲んだ安全な JS 文字列リテラルを返します。 |
+
+### 7. `ScriptNotifier` (`public final class ScriptNotifier`)
+Bounded asynchronous dispatcher for page callbacks (`public static final int QUEUE_MAX = 1024`).
+
+| Constructor / Method / メソッド | Behavior / 仕様 |
+| :--- | :--- |
+| `public ScriptNotifier(WebViewerPlugin host, String dropped)` | Creates notifier using `host` for FX error logging with message `dropped` (cannot be `null`). |
+| `public void setFunction(String function)` / `public String function()` | Sets or reads callback target expression (e.g. `onDone`). |
+| `public void setEngine(WebEngine engine)` | Stores active `WebEngine` and drains queued notifications if `SUCCEEDED`. |
+| `public void setState(Worker.State state)` | Stores `Worker.State` and drains queued notifications once `state == Worker.State.SUCCEEDED`. |
+| `public int pending()` | Returns count of queued parameterized notifications (`queue_.size()`, excluding coalesced no-arg notification). |
+| `public void clear()` | Clears queued notifications and resets the pending no-arg notification flag. |
+| `public void send()` | Schedules a **0-argument** call (`function();`), coalesced via `AtomicBoolean` so repeated calls before drain collapse into one. No-op if `function == null`.<br>引数なし通知を予約します（ドレイン前の連続呼び出しは 1 回に集約）。 |
+| `public void send(String arguments)` | Enqueues pre-formatted JS argument string (`function(arguments);`). No-op if `function == null`. Drops and logs `dropped` as an error if queue reaches `QUEUE_MAX = 1024`. Invokes `engine.executeScript` on FX thread via `Platform.runLater`, logging any `JSException` via `host.writeStackTrace`.<br>引数付き通知をキューに積みます（上限 `1024` 件）。必ず呼び出し前に各文字列を `ScriptValue.literal(...)` 等でエスケープしてください。 |
+
+### 8. `LicenseDialog` (`public class LicenseDialog`)
+
+| Constructor / Method / メソッド | Behavior / 仕様 |
+| :--- | :--- |
+| `protected LicenseDialog()` | Subclass helper: reads UTF-8 resource `licenses.txt` relative to `getClass()`'s package (`""` if missing or error).<br>派生クラス自身のパッケージ配下にある `licenses.txt` (UTF-8) を読み込みます。 |
+| `public LicenseDialog(String licenses)` | Uses provided text directly (`null` → `""`). |
+| `public String text()` | Returns loaded license text string. |
+| `public void show()` | Opens a non-modal resizable `Alert.AlertType.INFORMATION` titled `"Licenses"` with a wrapped non-editable `TextArea` (auto-marshals onto FX thread via `Platform.runLater`).<br>非モーダルかつリサイズ可能なライセンス表示ダイアログを開きます。 |
+
+---
+
+## Usage Examples / 使い方
+
+### Example 1: `PluginSupport` + `ScriptNotifier` Lifecycle (`initialize`, `state`, `close`)
+Plug-ins using `ScriptNotifier` **must** wire `setEngine(webEngine())` in `initialize()`, `setState(state)` in `state()`, and `clear()` in `close()`:
 
 ```java
 package example;
 
+import javafx.concurrent.Worker;
+import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
 import ken.mizoguch.webviewer.plugin.kit.ScriptNotifier;
 import ken.mizoguch.webviewer.plugin.kit.ScriptValue;
 
 public class MyPlugin extends PluginSupport {
 
-    private final ScriptNotifier done_ = new ScriptNotifier(this, "done");
+    private final ScriptNotifier done_ = new ScriptNotifier(this, "Notification of done is dropped");
 
     @Override
     public String functionName() {
         return "myplugin";
     }
 
+    @Override
+    public void initialize(WebViewerPlugin webViewer) {
+        super.initialize(webViewer);
+        done_.setEngine(webEngine());
+    }
+
+    @Override
+    public void state(Worker.State state) {
+        done_.setState(state);
+    }
+
+    @Override
+    public void close() {
+        done_.clear();
+    }
+
+    public void licenses() {
+        new Licenses().show();
+    }
+
     public void setNotifyDone(String func) {
         done_.setFunction(scriptFunction(func));
     }
 
-    public void work() {
-        // Escaped as a safe JS string literal so arbitrary JS cannot be injected
-        done_.send(ScriptValue.literal("the end of the work"));
+    public void work(String payload) {
+        done_.send(ScriptValue.literal(payload));
+    }
+
+    public static class Licenses extends ken.mizoguch.webviewer.plugin.kit.LicenseDialog {
+    }
+}
+```
+
+### Example 2: `ServiceSupport<Void>`, `SandboxPath` & `ScriptFunction`
+
+```java
+package example;
+
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import javafx.concurrent.Task;
+import javafx.concurrent.Worker;
+import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
+import ken.mizoguch.webviewer.plugin.kit.ScriptFunction;
+import ken.mizoguch.webviewer.plugin.kit.ServiceSupport;
+
+public class WorkerPlugin extends ServiceSupport<Void> {
+
+    @Override
+    public String functionName() {
+        return "worker";
+    }
+
+    @Override
+    public void initialize(WebViewerPlugin webViewer) {
+        super.initialize(webViewer);
+    }
+
+    @Override
+    public void state(Worker.State state) {
+    }
+
+    @Override
+    public void close() {
+        cancel();
+    }
+
+    public boolean validateCallback(String callbackName) {
+        return ScriptFunction.isValid(callbackName);
+    }
+
+    public String readSafeFile(String userPath) throws IOException {
+        Path resolved = SandboxPath.require(webPath(), userPath); // blocks ".." and symlink escapes
+        return Files.readString(resolved);
+    }
+
+    @Override
+    protected Task<Void> createTask() {
+        return new Task<>() {
+            @Override
+            protected Void call() {
+                return null;
+            }
+        };
     }
 }
 ```
@@ -68,10 +248,7 @@ public class MyPlugin extends PluginSupport {
 ## Build & Test / ビルドとテスト
 
 ```bash
-# Build the library JAR
 mvn -B -pl PluginKit -am package
-
-# Run unit tests
 mvn -B -pl PluginKit -am test
 ```
 

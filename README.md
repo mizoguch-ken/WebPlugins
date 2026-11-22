@@ -26,8 +26,8 @@ Plug-in modules are packaged as self-contained shaded JARs (`target/<Module>.jar
 | **Dbg** | `Dbg.jar` | `dbg` | Built-in DevTools debugger panel & console logger / 開発者ツールパネル・デバッガー | [Dbg](Dbg/README.md) |
 | **File** | `File.jar` | `file` | Sandboxed local file & directory operations / Web フォルダー配下のファイル・ディレクトリ操作 | [File](File/README.md) |
 | **Ftp** | `Ftp.jar` | `ftp` | FTP / FTPS client (Apache Commons Net) / FTP・FTPS クライアント | [Ftp](Ftp/README.md) |
-| **Jasper** | `Jasper.jar` | `jasper` | JasperReports compilation, printing & HTML/XML/XLSX/CSV/DOCX/text/PDF export / JasperReports 帳票出力・印刷 | [Jasper](Jasper/README.md) |
-| **Llm** | `Llm.jar` | `llm` | Local pure-Java Transformer training/inference & OpenAI-compatible remote client / ローカル Transformer 学習・推論および OpenAI 互換クライアント | [Llm](Llm/README.md) |
+| **Jasper** | `Jasper.jar` | `jasper` | JasperReports compilation, printing & HTML/XML/XLSX/CSV/DOCX/text/PDF export (PDF requires `jasperreports-pdf` on classpath) / JasperReports 帳票出力・印刷 | [Jasper](Jasper/README.md) |
+| **Llm** | `Llm.jar` | `llm` | Local Transformer (`LlmCore`), continual learning & biological memory, multi-provider remote APIs (OpenAI-compatible & Anthropic), sessions, RAG & tasks / ローカル Transformer 学習・継続学習・二層記憶、マルチプロバイダ外部 LLM、セッション、RAG | [Llm](Llm/README.md) |
 | **OnlineArt** | `OnlineArt.jar` | `onlineArt` | Online Art serial link relay/register exchange / オンラインアート通信リンク | [OnlineArt](OnlineArt/README.md) |
 | **Printer** | `Printer.jar` | `printer` | Page, text, and image printing via JavaFX Print API / ページ・テキスト・画像の印刷 | [Printer](Printer/README.md) |
 | **Serial** | `Serial.jar` | `serial` | Serial port communication (`nrjavaserial`) / シリアルポート通信 | [Serial](Serial/README.md) |
@@ -43,7 +43,7 @@ Library modules produce plain (unshaded) JARs. They are **not** placed in `web/p
 | **PluginApi** | `webviewer-plugin-api-<version>.jar` | Host `WebViewer` & all plug-ins | `WebViewerPlugin` host-plugin interface / `WebViewer` とプラグイン間のインターフェース | [PluginApi](PluginApi/README.md) |
 | **PluginKit** | `webviewer-plugin-kit-<version>.jar` | All plug-ins (shaded) | Base classes (`PluginSupport`, `ServiceSupport`) & security helpers (`SandboxPath`, `ScriptValue`, `ScriptFunction`, `ScriptNotifier`, `LicenseDialog`) / 基底クラスおよびセキュリティ・通知ヘルパー | [PluginKit](PluginKit/README.md) |
 | **CapAiCommon** | `capai-common-<version>.jar` | `CapAiClient`, `CapAiClient2`, `CapAiClient3`, `CapAiServer` (shaded) | CAP-AI Link Box protocol client & `LinkBoxClientPlugin` base class / CAP-AI Link Box プロトコル共通実装 | [CapAiCommon](CapAiCommon/README.md) |
-| **LlmCore** | `llm-core-<version>.jar` | `Llm` (shaded) | Zero-dependency pure-Java Transformer language model (`LlmCore`, `TransformerModel`, `Tensor`, `AdamW`, `Tokenizer`) / 純粋 Java 実装の Transformer 言語モデルコア | [LlmCore](LlmCore/README.md) |
+| **LlmCore** | `llm-core-<version>.jar` | `Llm` (shaded) | Zero-dependency pure-Java Transformer runtime, biological two-origin memory (`MemoryBank`), continual consolidation (`ContinualLearner`), and `LMC2` weights / 純粋 Java 実装 Transformer・二層記憶・継続学習・`LMC2` 重み保存 | [LlmCore](LlmCore/README.md) |
 
 ---
 
@@ -55,12 +55,16 @@ Library modules produce plain (unshaded) JARs. They are **not** placed in `web/p
    * 使用したいプラグインの shaded JAR（`Dbg.jar`, `File.jar`, `Serial.jar`, `Llm.jar` など）を `web/plugins/` に配置します。
    * Do **not** place library JARs (`webviewer-plugin-api-*.jar`, `webviewer-plugin-kit-*.jar`, `capai-common-*.jar`, `llm-core-*.jar`) or unshaded `*-<version>.jar` files in `web/plugins/`.
    * ライブラリ JAR やバージョン番号付きの unshaded JAR（`*-<version>.jar`）は `web/plugins/` に置かないでください。
-3. For plug-ins that load external runtime libraries, place those JARs in `web/plugins/lib/`:
-   * 外部ライブラリを実行時に読み込むプラグインでは、`web/plugins/lib/` フォルダーに該当 JAR を配置します：
-   * **Db**: JDBC driver JARs (e.g. `postgresql.jar`, `ojdbc10.jar`, `orai18n.jar`)
-   * **Jasper**: Custom font extension JAR (`jasperfonts.jar`)
-4. Restart the `WebViewer` (DecoTofu). When the page finishes loading, `setup()` is invoked and plug-ins can be called via `window.<objectName>`.
-   * `WebViewer`（DecoTofu）を再起動すると、ページ読み込み完了時に `setup()` が呼び出され、各プラグインのオブジェクトが使用可能になります。
+3. External library handling (the host `WebViewer` scans **only** `web/plugins/*.jar` and does **not** auto-load `web/plugins/lib/`):
+   * 外部ライブラリの扱い（`WebViewer` は `web/plugins/*.jar` のみを読み込み、`web/plugins/lib/` は自動走査しません）:
+   * **Db**: Place JDBC driver JARs anywhere inside `web/` (for example `web/plugins/lib/postgresql.jar`) and pass the relative path (such as `'plugins/lib/postgresql.jar'`) to `db.connect(...)` or `db.connectWithLibraries(...)`.
+   * **Db**: JDBC ドライバー JAR を `web/` 配下（例: `web/plugins/lib/postgresql.jar`）に配置し、JavaScript から `'plugins/lib/postgresql.jar'` のように指定して読み込みます。
+   * **Jasper**: Custom font extension JARs and `jasperreports-pdf` (required for `jasper.pdf(path)`) must be placed on the host's JVM classpath (`-cp`) or added to `Jasper/pom.xml` and shaded into `Jasper.jar`.
+   * **Jasper**: カスタムフォント JAR や `jasper.pdf(path)` 用の `jasperreports-pdf` は、ホスト起動時の JVM クラスパス（`-cp`）に追加するか `Jasper/pom.xml` で `Jasper.jar` に shade してください。
+   * **Gson / JavaFX**: Host `WebViewer` supplies `Gson` (`<scope>provided</scope>`) at runtime; `WebCam` additionally requires the `javafx.swing` JDK module.
+   * **Gson / JavaFX**: `Gson` はホストの `WebViewer` が実行時に提供します（`<scope>provided</scope>`）。`WebCam` を使用する場合は `javafx.swing` モジュールも必要です。
+4. Restart the `WebViewer` (DecoTofu). When the page finishes loading, `setup()` is invoked automatically and plug-ins can be called via `window.<objectName>`. (Note: host calls Java `plugin.close()` on window close; a JavaScript `close()` function is not auto-called.)
+   * `WebViewer`（DecoTofu）を再起動すると、ページ読み込み完了時に `setup()` が自動実行され、`window.<objectName>` から各プラグインを利用できます（終了時はホストが Java 側の `close()` を呼び出します）。
 
 ---
 
@@ -72,8 +76,8 @@ Library modules produce plain (unshaded) JARs. They are **not** placed in `web/p
   * Every notification callback name registered via `setNotify*(func)` is validated by `ScriptFunction.isValid(func)` to ensure it is a strict JavaScript identifier/property path before execution.
   * All data passed into `WebEngine.executeScript(...)` is escaped via `ScriptValue.literal(...)` or `ScriptValue.quote(...)` (including `\`, `'`, `"`, `\r`, `\n`, `\u0000`, `\u2028`, `\u2029`, and control characters).
   * **JavaScript インジェクション防止 (`ScriptFunction` / `ScriptValue`)**: `setNotify*(func)` に渡されるコールバック関数名は `ScriptFunction.isValid(func)` により厳密な識別子として検証され、通知引数はすべて `ScriptValue` によりエスケープされます。
-* **Bounded Queues & Resource Limits**: `ScriptNotifier` caps pending FX-thread notifications at `1,024` entries (`Dbg` caps console logs at `2,000` and network logs at `500`, `Serial` caps its receive buffer at `65,536` bytes, `Ftp.readAsText` caps downloads at `16 MB`) so a flood of events cannot exhaust JVM memory.
-  * **キュー上限とメモリ保護**: `ScriptNotifier` の通知キュー上限（`1,024` 件）や、`Dbg`・`Serial`・`Ftp` のバッファ上限により、大量イベント発生時でも JVM のメモリ枯渇を防ぎます。
+* **Bounded Queues & Resource Limits**: `ScriptNotifier` caps pending FX-thread notifications at `1,024` entries (`Dbg` caps console logs at `2,000` and network logs at `500`, `Serial` caps its receive buffer at `65,536` bytes, `Ftp.readAsText` caps downloads at `16,777,216` chars, `File.readAsText` caps text at `8,388,608` chars, `Printer.printTextFile` caps text files at `4 MB`) so a flood of events or large payloads cannot exhaust JVM memory.
+  * **キュー上限とメモリ保護**: `ScriptNotifier` の通知キュー上限（`1,024` 件）や、`Dbg`・`Serial`・`Ftp`・`File`・`Printer` のバッファ上限により、大量イベントや過大ファイルでも JVM のメモリ枯渇を防ぎます。
 
 ---
 
@@ -104,5 +108,5 @@ mvn -B -pl Db -am package
 
 * Every plug-in provides `<plugin>.licenses()` in JavaScript, which opens a `LicenseDialog` displaying the third-party license notices bundled in that plug-in's `licenses.txt`.
   * 各プラグインは JavaScript から `<plugin>.licenses()` を呼び出すことで、内包するライブラリのライセンス表示ダイアログ（`licenses.txt`）を開きます。
-* Internal support modules (`PluginApi`, `PluginKit`, `CapAiCommon`, `LlmCore`) contain no third-party code of their own. Shaded third-party libraries (`Gson`, `Netty`, `Apache Commons Net`, `nrjavaserial`, `JasperReports`, `JavaCV` / `OpenCV` / `FFmpeg`, `Firebug Lite`, `SLF4J`) are documented in each plug-in's `README.md`.
-  * 内部サポートモジュール（`PluginApi`, `PluginKit`, `CapAiCommon`, `LlmCore`）自体は外部ライブラリを内包しません。各プラグインに shade される外部ライブラリのライセンス詳細は、各モジュールの `README.md` を参照してください。
+* Internal support modules (`PluginApi`, `PluginKit`, `CapAiCommon`, `LlmCore`) contain no third-party code of their own. Most plug-ins use `Gson` (`<scope>provided</scope>` from the host `WebViewer`) alongside their shaded libraries (`Netty`, `Apache Commons Net`, `nrjavaserial`, `JasperReports`, `JavaCV` / `OpenCV` / `FFmpeg`, `Firebug Lite`, `SLF4J`), which are documented in each plug-in's `README.md`.
+  * 内部サポートモジュール（`PluginApi`, `PluginKit`, `CapAiCommon`, `LlmCore`）自体は外部ライブラリを内包しません。各プラグインが依存・内包する外部ライブラリおよび `Gson`（ホスト `WebViewer` が提供）のライセンス詳細は、各モジュールの `README.md` を参照してください。

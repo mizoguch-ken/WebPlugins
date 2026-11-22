@@ -38,6 +38,7 @@ public final class Llm extends PluginSupport {
     private final RemoteApi remoteApi_;
     private final SessionApi sessionApi_;
     private final RagApi ragApi_;
+    private final MemoryApi memoryApi_;
     private final TaskApi taskApi_;
 
     private volatile Path webPath_;
@@ -57,13 +58,14 @@ public final class Llm extends PluginSupport {
     Llm(EventDispatcher.EventSink sink) {
         dispatcher_ = new EventDispatcher(this, sink);
         tasks_ = new TaskManager(dispatcher_);
+        memoryApi_ = new MemoryApi(this, localService_.core());
         continualController_ = new ContinualController(this, localService_, tasks_, dispatcher_);
         localService_.attachContinual(continualController_);
         localApi_ = new LocalApi(this, localService_, continualController_, tasks_, dispatcher_);
         remoteApi_ = new RemoteApi(this, profiles_, remoteClient_, tasks_, dispatcher_);
         ragApi_ = new RagApi(this, ragStore_, profiles_, remoteClient_, tasks_, remoteApi_);
         sessionApi_ = new SessionApi(this, sessionStore_, profiles_, remoteClient_, tasks_,
-                remoteApi_, ragApi_);
+                remoteApi_, ragApi_, memoryApi_);
         taskApi_ = new TaskApi(this, localService_, tasks_);
     }
 
@@ -114,6 +116,7 @@ public final class Llm extends PluginSupport {
         root.add("remote", profiles_.allProfilesPublicJson(remoteState));
         root.add("sessions", JsonUtil.parseArray(sessionStore_.listJson(), "sessions"));
         root.add("rag", JsonUtil.tryParseObject(ragStore_.infoJson()));
+        root.add("memory", memoryApi_.statusJsonObject());
         root.add("activeTasks", tasks_.activeTasksJsonArray());
         return JsonUtil.GSON.toJson(root);
     }
@@ -144,6 +147,13 @@ public final class Llm extends PluginSupport {
      */
     public RagApi rag() {
         return ragApi_;
+    }
+
+    /**
+     * Sub-API for biological two-origin memory (immutable Instinct vs layered Cognition).
+     */
+    public MemoryApi memory() {
+        return memoryApi_;
     }
 
     /**

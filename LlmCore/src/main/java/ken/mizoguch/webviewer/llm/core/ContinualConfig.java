@@ -1,155 +1,59 @@
 package ken.mizoguch.webviewer.llm.core;
 
 /**
- * Configuration governing the 3-Tier Complementary Learning Systems (CLS) architecture:
- * Tier-1 neural associative kNN-LM memory & negative inhibition, Tier-2 Wake LoRA adaptation &
- * unlikelihood/surprise gating, and Tier-3 Sleep consolidation (distillation + Online EWC +
- * stratified holdout rollback gate).
+ * Immutable configuration governing biological memory lifetimes (wall-clock TTL for working
+ * memory, half-life decay for episodic memory, evidence thresholds for semantic promotion),
+ * lightweight symbolic local recall assist, and periodic holdout-verified batch weight
+ * consolidation.
  *
  * @author mizoguch-ken
  */
-public record ContinualConfig(
-        int memoryCapacity,
-        int maxTokenTraces,
-        int holdoutCapacity,
-        double holdoutRatio,
-        int batchSize,
-        int microEpochs,
-        double maxLearningRate,
-        double minLearningRate,
-        double lrDecayFactor,
-        double maxRegression,
-        double replayRatio,
-        double selfMixRatio,
-        boolean learnFromSelfInference,
-        double selfConfidenceThreshold,
-        double selfMarginThreshold,
-        int minSelfTokens,
-        boolean allowVocabularyGrowth,
-        boolean memoryRecallEnabled,
-        double memoryMaxLambda,
-        double memoryMinSimilarity,
-        double memoryTemperature,
-        double negativeInhibitionGamma,
-        int loraRank,
-        double loraAlpha,
-        double surpriseThreshold,
-        double unlikelihoodWeight,
-        int consolidateEvery,
-        double ewcLambda,
-        double distillAlpha) {
+public final class ContinualConfig {
 
-    public ContinualConfig {
-        if ((memoryCapacity < 16) || (memoryCapacity > 10000)) {
-            throw new LlmCoreException("memoryCapacity out of range [16, 10000]: " + memoryCapacity);
-        }
-        if ((maxTokenTraces < 0) || (maxTokenTraces > 50000)) {
-            throw new LlmCoreException("maxTokenTraces out of range [0, 50000]: " + maxTokenTraces);
-        }
-        if ((holdoutCapacity < 0) || (holdoutCapacity > 2000)) {
-            throw new LlmCoreException("holdoutCapacity out of range [0, 2000]: "
-                    + holdoutCapacity);
-        }
-        if (!Double.isFinite(holdoutRatio) || (holdoutRatio < 0d) || (holdoutRatio > 0.5d)) {
-            throw new LlmCoreException("holdoutRatio out of range [0, 0.5]: " + holdoutRatio);
-        }
-        if ((batchSize < 1) || (batchSize > 64)) {
-            throw new LlmCoreException("batchSize out of range [1, 64]: " + batchSize);
-        }
-        if ((microEpochs < 1) || (microEpochs > 10)) {
-            throw new LlmCoreException("microEpochs out of range [1, 10]: " + microEpochs);
-        }
-        if (!Double.isFinite(maxLearningRate) || (maxLearningRate <= 0d)
-                || (maxLearningRate > 0.1d)) {
-            throw new LlmCoreException("maxLearningRate out of range (0, 0.1]: "
-                    + maxLearningRate);
-        }
-        if (!Double.isFinite(minLearningRate) || (minLearningRate <= 0d)
-                || (minLearningRate > maxLearningRate)) {
-            throw new LlmCoreException("minLearningRate out of range (0, maxLearningRate]: "
-                    + minLearningRate);
-        }
-        if (!Double.isFinite(lrDecayFactor) || (lrDecayFactor <= 0d) || (lrDecayFactor >= 1d)) {
-            throw new LlmCoreException("lrDecayFactor out of range (0, 1): " + lrDecayFactor);
-        }
-        if (!Double.isFinite(maxRegression) || (maxRegression < 0d) || (maxRegression > 10d)) {
-            throw new LlmCoreException("maxRegression out of range [0, 10]: " + maxRegression);
-        }
-        if (!Double.isFinite(replayRatio) || (replayRatio < 0d) || (replayRatio > 1d)) {
-            throw new LlmCoreException("replayRatio out of range [0, 1]: " + replayRatio);
-        }
-        if (!Double.isFinite(selfMixRatio) || (selfMixRatio < 0d) || (selfMixRatio > 1d)) {
-            throw new LlmCoreException("selfMixRatio out of range [0, 1]: " + selfMixRatio);
-        }
-        if (!Double.isFinite(selfConfidenceThreshold) || (selfConfidenceThreshold < 0d)
-                || (selfConfidenceThreshold > 1d)) {
-            throw new LlmCoreException("selfConfidenceThreshold out of range [0, 1]: "
-                    + selfConfidenceThreshold);
-        }
-        if (!Double.isFinite(selfMarginThreshold) || (selfMarginThreshold < 0d)
-                || (selfMarginThreshold > 1d)) {
-            throw new LlmCoreException("selfMarginThreshold out of range [0, 1]: "
-                    + selfMarginThreshold);
-        }
-        if ((minSelfTokens < 1) || (minSelfTokens > 256)) {
-            throw new LlmCoreException("minSelfTokens out of range [1, 256]: " + minSelfTokens);
-        }
-        if (!Double.isFinite(memoryMaxLambda) || (memoryMaxLambda < 0d) || (memoryMaxLambda > 0.95d)) {
-            throw new LlmCoreException("memoryMaxLambda out of range [0, 0.95]: "
-                    + memoryMaxLambda);
-        }
-        if (!Double.isFinite(memoryMinSimilarity) || (memoryMinSimilarity < 0d)
-                || (memoryMinSimilarity > 0.99d)) {
-            throw new LlmCoreException("memoryMinSimilarity out of range [0, 0.99]: "
-                    + memoryMinSimilarity);
-        }
-        if (!Double.isFinite(memoryTemperature) || (memoryTemperature < 0.02d)
-                || (memoryTemperature > 2.0d)) {
-            throw new LlmCoreException("memoryTemperature out of range [0.02, 2.0]: "
-                    + memoryTemperature);
-        }
-        if (!Double.isFinite(negativeInhibitionGamma) || (negativeInhibitionGamma < 0d)
-                || (negativeInhibitionGamma > 10.0d)) {
-            throw new LlmCoreException("negativeInhibitionGamma out of range [0, 10]: "
-                    + negativeInhibitionGamma);
-        }
-        if ((loraRank < 0) || (loraRank > 64)) {
-            throw new LlmCoreException("loraRank out of range [0, 64]: " + loraRank);
-        }
-        if (!Double.isFinite(loraAlpha) || (loraAlpha <= 0d) || (loraAlpha > 128d)) {
-            throw new LlmCoreException("loraAlpha out of range (0, 128]: " + loraAlpha);
-        }
-        if (!Double.isFinite(surpriseThreshold) || (surpriseThreshold < 0d)
-                || (surpriseThreshold > 5.0d)) {
-            throw new LlmCoreException("surpriseThreshold out of range [0, 5.0]: "
-                    + surpriseThreshold);
-        }
-        if (!Double.isFinite(unlikelihoodWeight) || (unlikelihoodWeight < 0d)
-                || (unlikelihoodWeight > 2.0d)) {
-            throw new LlmCoreException("unlikelihoodWeight out of range [0, 2.0]: "
-                    + unlikelihoodWeight);
-        }
-        if ((consolidateEvery < 0) || (consolidateEvery > 1000)) {
-            throw new LlmCoreException("consolidateEvery out of range [0, 1000]: "
-                    + consolidateEvery);
-        }
-        if (!Double.isFinite(ewcLambda) || (ewcLambda < 0d) || (ewcLambda > 100d)) {
-            throw new LlmCoreException("ewcLambda out of range [0, 100]: " + ewcLambda);
-        }
-        if (!Double.isFinite(distillAlpha) || (distillAlpha < 0d) || (distillAlpha > 1d)) {
-            throw new LlmCoreException("distillAlpha out of range [0, 1]: " + distillAlpha);
-        }
-    }
+    private final int maxWorkingEntries_;
+    private final long workingTtlMinutes_;
+    private final int maxEpisodicEntries_;
+    private final double episodicHalfLifeHours_;
+    private final int maxSemanticEntries_;
+    private final int confirmEvidenceThreshold_;
+    private final double episodicPromoteStrength_;
+    private final double episodicForgetThreshold_;
 
-    /**
-     * Alias preserving prior name while mapping cleanly to {@link #memoryCapacity()}.
-     */
-    public int replayCapacity() {
-        return memoryCapacity;
+    private final boolean localRecallEnabled_;
+    private final double localRecallBoost_;
+
+    private final int consolidationBatchSize_;
+    private final int consolidationEpochs_;
+    private final double consolidationLearningRate_;
+    private final double instinctReplayRatio_;
+    private final int holdoutSize_;
+    private final double maxInstinctRegression_;
+    private final double maxCognitiveRegression_;
+    private final boolean allowVocabularyGrowth_;
+
+    private ContinualConfig(Builder b) {
+        maxWorkingEntries_ = b.maxWorkingEntries;
+        workingTtlMinutes_ = b.workingTtlMinutes;
+        maxEpisodicEntries_ = b.maxEpisodicEntries;
+        episodicHalfLifeHours_ = b.episodicHalfLifeHours;
+        maxSemanticEntries_ = b.maxSemanticEntries;
+        confirmEvidenceThreshold_ = b.confirmEvidenceThreshold;
+        episodicPromoteStrength_ = b.episodicPromoteStrength;
+        episodicForgetThreshold_ = b.episodicForgetThreshold;
+        localRecallEnabled_ = b.localRecallEnabled;
+        localRecallBoost_ = b.localRecallBoost;
+        consolidationBatchSize_ = b.consolidationBatchSize;
+        consolidationEpochs_ = b.consolidationEpochs;
+        consolidationLearningRate_ = b.consolidationLearningRate;
+        instinctReplayRatio_ = b.instinctReplayRatio;
+        holdoutSize_ = b.holdoutSize;
+        maxInstinctRegression_ = b.maxInstinctRegression;
+        maxCognitiveRegression_ = b.maxCognitiveRegression;
+        allowVocabularyGrowth_ = b.allowVocabularyGrowth;
     }
 
     public static ContinualConfig defaults() {
-        return builder().build();
+        return new Builder().build();
     }
 
     public static Builder builder() {
@@ -157,114 +61,274 @@ public record ContinualConfig(
     }
 
     public Builder toBuilder() {
-        return new Builder(this);
+        return new Builder()
+                .maxWorkingEntries(maxWorkingEntries_)
+                .workingTtlMinutes(workingTtlMinutes_)
+                .maxEpisodicEntries(maxEpisodicEntries_)
+                .episodicHalfLifeHours(episodicHalfLifeHours_)
+                .maxSemanticEntries(maxSemanticEntries_)
+                .confirmEvidenceThreshold(confirmEvidenceThreshold_)
+                .episodicPromoteStrength(episodicPromoteStrength_)
+                .episodicForgetThreshold(episodicForgetThreshold_)
+                .localRecallEnabled(localRecallEnabled_)
+                .localRecallBoost(localRecallBoost_)
+                .consolidationBatchSize(consolidationBatchSize_)
+                .consolidationEpochs(consolidationEpochs_)
+                .consolidationLearningRate(consolidationLearningRate_)
+                .instinctReplayRatio(instinctReplayRatio_)
+                .holdoutSize(holdoutSize_)
+                .maxInstinctRegression(maxInstinctRegression_)
+                .maxCognitiveRegression(maxCognitiveRegression_)
+                .allowVocabularyGrowth(allowVocabularyGrowth_);
     }
 
+    public int maxWorkingEntries() {
+        return maxWorkingEntries_;
+    }
+
+    public long workingTtlMinutes() {
+        return workingTtlMinutes_;
+    }
+
+    public int maxEpisodicEntries() {
+        return maxEpisodicEntries_;
+    }
+
+    public double episodicHalfLifeHours() {
+        return episodicHalfLifeHours_;
+    }
+
+    public int maxSemanticEntries() {
+        return maxSemanticEntries_;
+    }
+
+    public int confirmEvidenceThreshold() {
+        return confirmEvidenceThreshold_;
+    }
+
+    public double episodicPromoteStrength() {
+        return episodicPromoteStrength_;
+    }
+
+    public double episodicForgetThreshold() {
+        return episodicForgetThreshold_;
+    }
+
+    public boolean localRecallEnabled() {
+        return localRecallEnabled_;
+    }
+
+    public double localRecallBoost() {
+        return localRecallBoost_;
+    }
+
+    public int consolidationBatchSize() {
+        return consolidationBatchSize_;
+    }
+
+    public int consolidationEpochs() {
+        return consolidationEpochs_;
+    }
+
+    public double consolidationLearningRate() {
+        return consolidationLearningRate_;
+    }
+
+    public double instinctReplayRatio() {
+        return instinctReplayRatio_;
+    }
+
+    public int holdoutSize() {
+        return holdoutSize_;
+    }
+
+    public double maxInstinctRegression() {
+        return maxInstinctRegression_;
+    }
+
+    public double maxCognitiveRegression() {
+        return maxCognitiveRegression_;
+    }
+
+    public boolean allowVocabularyGrowth() {
+        return allowVocabularyGrowth_;
+    }
+
+    /**
+     * Mutable fluent builder with strict biological and optimization bounds validation.
+     */
     public static final class Builder {
-        private int memoryCapacity = 512;
-        private int maxTokenTraces = 4096;
-        private int holdoutCapacity = 64;
-        private double holdoutRatio = 0.20d;
-        private int batchSize = 4;
-        private int microEpochs = 1;
-        private double maxLearningRate = 0.008d;
-        private double minLearningRate = 0.0005d;
-        private double lrDecayFactor = 0.5d;
-        private double maxRegression = 0.03d;
-        private double replayRatio = 0.50d;
-        private double selfMixRatio = 0.25d;
-        private boolean learnFromSelfInference = true;
-        private double selfConfidenceThreshold = 0.35d;
-        private double selfMarginThreshold = 0.10d;
-        private int minSelfTokens = 2;
+
+        public Builder() {
+        }
+
+        private int maxWorkingEntries = 128;
+        private long workingTtlMinutes = 30L;
+        private int maxEpisodicEntries = 1024;
+        private double episodicHalfLifeHours = 72.0d;
+        private int maxSemanticEntries = 2048;
+        private int confirmEvidenceThreshold = 2;
+        private double episodicPromoteStrength = 0.70d;
+        private double episodicForgetThreshold = 0.08d;
+
+        private boolean localRecallEnabled = true;
+        private double localRecallBoost = 4.0d;
+
+        private int consolidationBatchSize = 16;
+        private int consolidationEpochs = 2;
+        private double consolidationLearningRate = 0.0005d;
+        private double instinctReplayRatio = 1.0d;
+        private int holdoutSize = 32;
+        private double maxInstinctRegression = 0.03d;
+        private double maxCognitiveRegression = 0.05d;
         private boolean allowVocabularyGrowth = true;
-        private boolean memoryRecallEnabled = true;
-        private double memoryMaxLambda = 0.60d;
-        private double memoryMinSimilarity = 0.65d;
-        private double memoryTemperature = 0.20d;
-        private double negativeInhibitionGamma = 2.0d;
-        private int loraRank = 4;
-        private double loraAlpha = 8.0d;
-        private double surpriseThreshold = 0.15d;
-        private double unlikelihoodWeight = 0.30d;
-        private int consolidateEvery = 8;
-        private double ewcLambda = 2.0d;
-        private double distillAlpha = 0.50d;
 
-        private Builder() {
+        public Builder maxWorkingEntries(int value) {
+            if ((value < 4) || (value > 10_000)) {
+                throw new LlmCoreException("maxWorkingEntries out of range (4..10000): " + value);
+            }
+            maxWorkingEntries = value;
+            return this;
         }
 
-        private Builder(ContinualConfig src) {
-            memoryCapacity = src.memoryCapacity;
-            maxTokenTraces = src.maxTokenTraces;
-            holdoutCapacity = src.holdoutCapacity;
-            holdoutRatio = src.holdoutRatio;
-            batchSize = src.batchSize;
-            microEpochs = src.microEpochs;
-            maxLearningRate = src.maxLearningRate;
-            minLearningRate = src.minLearningRate;
-            lrDecayFactor = src.lrDecayFactor;
-            maxRegression = src.maxRegression;
-            replayRatio = src.replayRatio;
-            selfMixRatio = src.selfMixRatio;
-            learnFromSelfInference = src.learnFromSelfInference;
-            selfConfidenceThreshold = src.selfConfidenceThreshold;
-            selfMarginThreshold = src.selfMarginThreshold;
-            minSelfTokens = src.minSelfTokens;
-            allowVocabularyGrowth = src.allowVocabularyGrowth;
-            memoryRecallEnabled = src.memoryRecallEnabled;
-            memoryMaxLambda = src.memoryMaxLambda;
-            memoryMinSimilarity = src.memoryMinSimilarity;
-            memoryTemperature = src.memoryTemperature;
-            negativeInhibitionGamma = src.negativeInhibitionGamma;
-            loraRank = src.loraRank;
-            loraAlpha = src.loraAlpha;
-            surpriseThreshold = src.surpriseThreshold;
-            unlikelihoodWeight = src.unlikelihoodWeight;
-            consolidateEvery = src.consolidateEvery;
-            ewcLambda = src.ewcLambda;
-            distillAlpha = src.distillAlpha;
+        public Builder workingTtlMinutes(long value) {
+            if ((value < 1L) || (value > 10_080L)) {
+                throw new LlmCoreException("workingTtlMinutes out of range (1..10080): " + value);
+            }
+            workingTtlMinutes = value;
+            return this;
         }
 
-        public Builder memoryCapacity(int v) { memoryCapacity = v; return this; }
-        public Builder maxTokenTraces(int v) { maxTokenTraces = v; return this; }
-        public Builder holdoutCapacity(int v) { holdoutCapacity = v; return this; }
-        public Builder holdoutRatio(double v) { holdoutRatio = v; return this; }
-        public Builder batchSize(int v) { batchSize = v; return this; }
-        public Builder microEpochs(int v) { microEpochs = v; return this; }
-        public Builder maxLearningRate(double v) { maxLearningRate = v; return this; }
-        public Builder minLearningRate(double v) { minLearningRate = v; return this; }
-        public Builder lrDecayFactor(double v) { lrDecayFactor = v; return this; }
-        public Builder maxRegression(double v) { maxRegression = v; return this; }
-        public Builder replayRatio(double v) { replayRatio = v; return this; }
-        public Builder selfMixRatio(double v) { selfMixRatio = v; return this; }
-        public Builder learnFromSelfInference(boolean v) { learnFromSelfInference = v; return this; }
-        public Builder selfConfidenceThreshold(double v) { selfConfidenceThreshold = v; return this; }
-        public Builder selfMarginThreshold(double v) { selfMarginThreshold = v; return this; }
-        public Builder minSelfTokens(int v) { minSelfTokens = v; return this; }
-        public Builder allowVocabularyGrowth(boolean v) { allowVocabularyGrowth = v; return this; }
-        public Builder memoryRecallEnabled(boolean v) { memoryRecallEnabled = v; return this; }
-        public Builder memoryMaxLambda(double v) { memoryMaxLambda = v; return this; }
-        public Builder memoryMinSimilarity(double v) { memoryMinSimilarity = v; return this; }
-        public Builder memoryTemperature(double v) { memoryTemperature = v; return this; }
-        public Builder negativeInhibitionGamma(double v) { negativeInhibitionGamma = v; return this; }
-        public Builder loraRank(int v) { loraRank = v; return this; }
-        public Builder loraAlpha(double v) { loraAlpha = v; return this; }
-        public Builder surpriseThreshold(double v) { surpriseThreshold = v; return this; }
-        public Builder unlikelihoodWeight(double v) { unlikelihoodWeight = v; return this; }
-        public Builder consolidateEvery(int v) { consolidateEvery = v; return this; }
-        public Builder ewcLambda(double v) { ewcLambda = v; return this; }
-        public Builder distillAlpha(double v) { distillAlpha = v; return this; }
+        public Builder maxEpisodicEntries(int value) {
+            if ((value < 16) || (value > 20_000)) {
+                throw new LlmCoreException("maxEpisodicEntries out of range (16..20000): " + value);
+            }
+            maxEpisodicEntries = value;
+            return this;
+        }
+
+        public Builder episodicHalfLifeHours(double value) {
+            if (!Double.isFinite(value) || (value < 0.01d) || (value > 87_600d)) {
+                throw new LlmCoreException(
+                        "episodicHalfLifeHours out of range (0.01..87600): " + value);
+            }
+            episodicHalfLifeHours = value;
+            return this;
+        }
+
+        public Builder maxSemanticEntries(int value) {
+            if ((value < 16) || (value > 50_000)) {
+                throw new LlmCoreException("maxSemanticEntries out of range (16..50000): " + value);
+            }
+            maxSemanticEntries = value;
+            return this;
+        }
+
+        public Builder confirmEvidenceThreshold(int value) {
+            if ((value < 1) || (value > 100)) {
+                throw new LlmCoreException(
+                        "confirmEvidenceThreshold out of range (1..100): " + value);
+            }
+            confirmEvidenceThreshold = value;
+            return this;
+        }
+
+        public Builder episodicPromoteStrength(double value) {
+            if (!Double.isFinite(value) || (value < 0d) || (value > 1d)) {
+                throw new LlmCoreException(
+                        "episodicPromoteStrength out of range [0, 1]: " + value);
+            }
+            episodicPromoteStrength = value;
+            return this;
+        }
+
+        public Builder episodicForgetThreshold(double value) {
+            if (!Double.isFinite(value) || (value < 0d) || (value > 0.95d)) {
+                throw new LlmCoreException(
+                        "episodicForgetThreshold out of range [0, 0.95]: " + value);
+            }
+            episodicForgetThreshold = value;
+            return this;
+        }
+
+        public Builder localRecallEnabled(boolean value) {
+            localRecallEnabled = value;
+            return this;
+        }
+
+        public Builder localRecallBoost(double value) {
+            if (!Double.isFinite(value) || (value < 0d) || (value > 20d)) {
+                throw new LlmCoreException("localRecallBoost out of range [0, 20]: " + value);
+            }
+            localRecallBoost = value;
+            return this;
+        }
+
+        public Builder consolidationBatchSize(int value) {
+            if ((value < 1) || (value > 256)) {
+                throw new LlmCoreException(
+                        "consolidationBatchSize out of range (1..256): " + value);
+            }
+            consolidationBatchSize = value;
+            return this;
+        }
+
+        public Builder consolidationEpochs(int value) {
+            if ((value < 1) || (value > 20)) {
+                throw new LlmCoreException("consolidationEpochs out of range (1..20): " + value);
+            }
+            consolidationEpochs = value;
+            return this;
+        }
+
+        public Builder consolidationLearningRate(double value) {
+            if (!Double.isFinite(value) || (value < 1e-7d) || (value > 0.05d)) {
+                throw new LlmCoreException(
+                        "consolidationLearningRate out of range [1e-7, 0.05]: " + value);
+            }
+            consolidationLearningRate = value;
+            return this;
+        }
+
+        public Builder instinctReplayRatio(double value) {
+            if (!Double.isFinite(value) || (value < 0d) || (value > 10d)) {
+                throw new LlmCoreException("instinctReplayRatio out of range [0, 10]: " + value);
+            }
+            instinctReplayRatio = value;
+            return this;
+        }
+
+        public Builder holdoutSize(int value) {
+            if ((value < 1) || (value > 512)) {
+                throw new LlmCoreException("holdoutSize out of range (1..512): " + value);
+            }
+            holdoutSize = value;
+            return this;
+        }
+
+        public Builder maxInstinctRegression(double value) {
+            if (!Double.isFinite(value) || (value < 0d) || (value > 1d)) {
+                throw new LlmCoreException("maxInstinctRegression out of range [0, 1]: " + value);
+            }
+            maxInstinctRegression = value;
+            return this;
+        }
+
+        public Builder maxCognitiveRegression(double value) {
+            if (!Double.isFinite(value) || (value < 0d) || (value > 1d)) {
+                throw new LlmCoreException("maxCognitiveRegression out of range [0, 1]: " + value);
+            }
+            maxCognitiveRegression = value;
+            return this;
+        }
+
+        public Builder allowVocabularyGrowth(boolean value) {
+            allowVocabularyGrowth = value;
+            return this;
+        }
 
         public ContinualConfig build() {
-            return new ContinualConfig(
-                    memoryCapacity, maxTokenTraces, holdoutCapacity, holdoutRatio, batchSize,
-                    microEpochs, maxLearningRate, minLearningRate, lrDecayFactor, maxRegression,
-                    replayRatio, selfMixRatio, learnFromSelfInference, selfConfidenceThreshold,
-                    selfMarginThreshold, minSelfTokens, allowVocabularyGrowth, memoryRecallEnabled,
-                    memoryMaxLambda, memoryMinSimilarity, memoryTemperature,
-                    negativeInhibitionGamma, loraRank, loraAlpha, surpriseThreshold,
-                    unlikelihoodWeight, consolidateEvery, ewcLambda, distillAlpha);
+            return new ContinualConfig(this);
         }
     }
 }

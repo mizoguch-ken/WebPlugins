@@ -2,143 +2,109 @@
 
 ## Overview / 概要
 
-* **Dbg** is the built-in browser-style developer tools and debugger plug-in for the `WebViewer`. It captures the page's console messages, uncaught errors, and `XMLHttpRequest` / `fetch` network requests, and presents them alongside live DOM `Elements`, `Sources`, `Storage`, and `About` tabs in a dedicated DevTools window.
-* **Dbg** は、`WebViewer` 向けのブラウザ開発者ツール（DevTools）およびデバッガープラグインです。ページのコンソール出力・未捕捉エラー・ネットワーク通信（`XMLHttpRequest` / `fetch`）を記録し、専用の DevTools パネル上で `Console`・`Elements`・`Sources`・`Storage`・`About` の各タブとして表示・編集できます。
-* **Offline & Port-Free Isolation**: All DevTools panel assets, the in-page agent script, and standalone test pages are bundled inside `Dbg.jar`. At runtime they are extracted to a private temporary directory created for the `WebViewer` session and deleted on close. Communication between the page and the DevTools panel occurs strictly in-process through the plug-in—no network port is opened.
-* **オフライン・ポートレス設計**: DevTools パネル、ページ注入エージェント、および単体テスト用ページはすべて `Dbg.jar` に同梱されており、実行時に専用のテンポラリディレクトリへ展開され終了時に自動削除されます。ページとパネル間の通信はすべてプラグイン内部のブリッジ経由で行われ、ネットワークポートを一切開きません。
-* **Firebug Lite**: Also bundled for backward compatibility with existing pages via `dbg.firebug()`.
-* **Firebug Lite**: 既存ページとの後方互換性のために `dbg.firebug()` も引き続き同梱されています。
+* **Dbg** is the built-in offline DevTools window and console/network logger plug-in for `WebViewer`, exposing `window.dbg` to JavaScript (`Dbg.jar` placed in `web/plugins/`). It captures `console.*`, uncaught page errors/rejections, and JS-initiated `XMLHttpRequest` / `fetch` traffic into a 6-tab DevTools window (`Console`, `Elements`, `Sources`, `Network`, `Storage`, `About`).
+* **Dbg** は、`WebViewer` 向けのオフライン開発者ツール（DevTools）・コンソールロガープラグインです。`web/plugins/Dbg.jar` に配置すると `window.dbg` が登録され、`console.*` 出力、未捕捉エラー、`XMLHttpRequest` / `fetch` 通信記録、DOM / CSS / ソース / ストレージの閲覧・編集機能を提供します。
+* **Ephemeral Session Temp Directory**: Bundled panel/agent HTML/JS resources extract into a private temp dir (`dbg_<random>`), which is **recursively deleted when `dbg.close()` runs**.
 
 ---
 
-## JavaScript Functions / JS 関数一覧
+## Installation & Host Lifecycle / 導入とライフサイクル
 
-```text
-void    dbg.licenses()
-void    dbg.devtools()
-void    dbg.devtoolsClose()
-boolean dbg.isDevtools()
-void    dbg.setConsoleHook(boolean state)
-boolean dbg.isConsoleHook()
-String  dbg.journal(String kind, String limit)
-String  dbg.save(String kind, String file)
-String  dbg.cmd(String name, String arguments)
-void    dbg.up(String kind, String json)
-void    dbg.clear()
-void    dbg.clearConsole()
-void    dbg.clearNetwork()
-boolean dbg.copyText(String text)
-String  dbg.version()
-void    dbg.setConsoleOut(boolean state)
-boolean dbg.isConsoleOut()
-void    dbg.firebug()
-void    dbg.debug(String value)
-void    dbg.info(String value)
-void    dbg.log(String value)
-void    dbg.error(String value)
-void    dbg.warn(String value)
-```
-
-| Function / 関数 | Description / 説明 |
-| :--- | :--- |
-| `dbg.devtools()` | Opens the DevTools panel window and starts capturing console logs, errors, and network requests.<br>DevTools パネルを開き、ページのコンソール・エラー・ネットワーク要求の取得を開始します。 |
-| `dbg.devtoolsClose()` | Closes the DevTools panel window while retaining captured journal entries in memory.<br>DevTools パネルを閉じます（記録されたメッセージは保持され、再度開いた時に表示されます）。 |
-| `dbg.isDevtools()` | Returns `true` if the DevTools panel is currently open.<br>DevTools パネルが開いているかどうかを返します。 |
-| `dbg.setConsoleHook(state)` | Enables or disables capturing console messages, errors, and network requests even without opening the DevTools panel.<br>パネルを開かずにページのコンソール・エラー・ネットワーク要求の取得を有効／無効にします。 |
-| `dbg.isConsoleHook()` | Returns `true` if the in-page console/network hook is enabled.<br>コンソールフックが有効かどうかを返します。 |
-| `dbg.journal(kind, limit)` | Returns captured messages as a JSON array string (`kind` is `"console"` or `"network"`).<br>記録されたメッセージを JSON 配列文字列として返します（`kind` は `"console"` または `"network"`）。 |
-| `dbg.save(kind, file)` | Saves captured `"console"` or `"network"` journal entries to `file` inside the session run directory (`.txt` for plain text, otherwise JSON).<br>記録されたメッセージを実行用ディレクトリ内のファイルに保存します（`.txt` はテキスト形式、それ以外は JSON 形式）。 |
-| `dbg.cmd(name, arguments)` | Dispatches an inspection command from the DevTools panel to the page agent and returns the command identifier.<br>DevTools パネルからページ側エージェントへコマンドを発行し、識別子（ID）を返します。 |
-| `dbg.up(kind, json)` | Internal bridge endpoint called by the injected page agent to push console/network/command results to the plug-in.<br>ページ内のエージェントがプラグインへメッセージを送信するための内部ブリッジ関数です。 |
-| `dbg.clear()`, `dbg.clearConsole()`, `dbg.clearNetwork()` | Clears all captured journal entries (`clear()`), or clears only console or network journal entries independently.<br>コンソール・ネットワーク双方の履歴消去（`clear()`）、または個別の消去（`clearConsole()` / `clearNetwork()`）を行います。 |
-| `dbg.copyText(text)` | Copies `text` to the system clipboard on the JavaFX Application Thread.<br>JavaFX アプリケーションスレッド経由でテキストを OS クリップボードへコピーします。 |
-| `dbg.version()` | Returns the plug-in version from `MANIFEST.MF`.<br>JAR のマニフェストからプラグインのバージョンを返します。 |
-| `dbg.setConsoleOut(state)`, `dbg.isConsoleOut()` | Enables/disables or queries whether `dbg.*` and hooked page `console.*` messages are mirrored to the `WebViewer` console.<br>ページ側の出力を `WebViewer` 本体のコンソールにも出力するかの設定・取得を行います。 |
-| `dbg.firebug()` | Injects the legacy Firebug Lite panel into the page.<br>同梱されている Firebug Lite をページ内に表示します。 |
-| `dbg.debug(value)`, `dbg.info(value)`, `dbg.log(value)`, `dbg.error(value)`, `dbg.warn(value)` | Writes escaped text to the page's `console.debug` / `info` / `log` / `error` / `warn` (and mirrors without duplication to the `WebViewer` console when `isConsoleOut()` is `true`). Injected `agent.js` also supports `console.assert`, `console.time`/`timeEnd`, `console.count`/`countReset`, and `$0` element binding in Console REPL.<br>エスケープ済みテキストをページの `console.*` へ出力します（`agent.js` は `assert` / `time` / `timeEnd` / `count` / `countReset` および Console REPL での `$0` 参照にも対応します）。 |
+1. Copy `Dbg/target/Dbg.jar` into `<appDir>/web/plugins/Dbg.jar` (all UI assets bundled inside `Dbg.jar`).
+2. On `Worker.State.SUCCEEDED`, `WebViewer` binds `window.dbg` (if undefined) and invokes `setup()` if defined.
+3. On shutdown, the host calls Java `dbg.close()` (closes the DevTools panel, clears hook/Firebug flags, and deletes the session temp directory including any files written by `dbg.save(...)`).
 
 ---
 
-## DevTools Panel Tabs / DevTools パネルの各機能
-
-* **Console**: Displays `console.*` messages, uncaught errors, interactive object trees, and an expression input box evaluated in the page context. Includes a **Save** button to export logs to disk.
-  * **Console**: ページのコンソール出力やエラー、展開可能なオブジェクトツリーを表示し、任意の式の評価やログのファイル保存（**Save** ボタン）が行えます。
-* **Elements**: Inspects and live-edits DOM elements, attributes, inline styles, text content, and computed box model metrics (position, size, padding, border, margin, computed styles). Includes an **Inspect** cursor picker that highlights hovered elements on the page.
-  * **Elements**: DOM 要素・属性・スタイル・テキストの閲覧と書き換え、ボックスモデル（位置・サイズ・余白・計算済みスタイル）の確認、および **Inspect** ボタンによるマウスカーソル下の要素選択が行えます。
-* **Sources**: Displays the page HTML, JavaScript, and CSS sources, with full-text keyword search across all loaded scripts and stylesheets.
-  * **Sources**: ページの HTML・JavaScript・CSS ソースを表示し、全ファイル横断のキーワード検索と該当行へのジャンプが可能です。
-* **Network**: Lists `XMLHttpRequest` and `fetch` calls with method, URL, HTTP status, duration, and size. Clicking a row reveals response headers and body (retains the last 60 response bodies for XHR).
-  * **Network**: JavaScript が発行した `XMLHttpRequest` と `fetch` のメソッド・URL・ステータス・時間・サイズを一覧表示し、直近 60 件の応答ヘッダーと本文を確認できます。
-* **Storage**: Views, edits, and deletes `localStorage`, `sessionStorage`, and JavaScript-accessible `document.cookie` entries (automatically verifying whether `WebEngine` accepted cookie changes).
-  * **Storage**: `localStorage`、`sessionStorage`、および JavaScript から参照可能な `cookie` の閲覧・編集・削除が行えます。
-* **About**: Shows the plug-in version, live page metrics (title, URL, `readyState`, language, viewport/screen size, scroll position, DOM element count, stylesheet/script count, cookie count), dropped message counts, and engine limitations.
-  * **About**: プラグインのバージョン、ページの現在の状態（タイトル・URL・画面サイズ・要素数・破棄メッセージ数など）、およびエンジンの制限事項を表示します。
-
----
-
-## Engine Limitations / WebEngine 上の制限事項
-
-* **No JS Breakpoints / Step Execution**: JavaFX `WebEngine` does not expose a JavaScript VM debugger protocol to plug-ins.
-  * **ブレークポイント・ステップ実行なし**: JavaFX `WebEngine` は JavaScript VM のステップ実行プロトコルをプラグインに公開していないため、ブレークポイント機能はありません。
-* **JS-Initiated Network Requests Only**: Only `XMLHttpRequest` and `fetch` requests made by JavaScript are captured; native browser resource loads (`<img>`, `<link>`, `<iframe>`) are handled internally by `WebEngine`.
-  * **JS 発行の通信のみ記録**: JavaScript の `XMLHttpRequest` および `fetch` による通信のみを取得します（`<img>` や `<link>` 等のエンジン内部ロードは通知されません）。
-
----
-
-## Safety & Memory Limits / 安全性とメモリ保護
-
-* Messages larger than **256 KB** are rejected, and the internal ring buffers cap console entries at **2,000** and network entries at **500** (counting dropped items) so runaway logging never exhausts JVM memory.
-  * **256 KB** を超えるメッセージは拒否され、キューはコンソール最大 **2,000 件**・ネットワーク最大 **500 件**まで保持します（超過分はカウントして破棄し、メモリ枯渇を防ぎます）。
-* All console inputs and agent command names are strictly validated and escaped via `ScriptValue` / `ScriptFunction` so untrusted page values cannot inject script into the panel or host.
-  * コンソール出力文字列やコマンド名はすべて検証・エスケープされ、スクリプトインジェクションを防ぎます。
-
----
-
-## Usage / 使い方
-
-Place `Dbg.jar` in `web/plugins/` and restart the `WebViewer`.
-`Dbg.jar` を `web/plugins/` フォルダーに配置し、`WebViewer` を再起動します。
+## Quick Start & Standalone Testing / 使用例と単体テスト
 
 ```javascript
 function setup() {
-  dbg.setConsoleOut(true);
-  dbg.log('the page is ready');
-  dbg.devtools();
+    dbg.setConsoleOut(true); // Mirror console output to host DecoTofu log
+    dbg.log("Application initialized");
+    dbg.devtools();          // Automatically calls setConsoleHook(true) and opens DevTools
+}
+
+function exportLogs() {
+    var saved = JSON.parse(dbg.save("console", "session-console.json"));
+    console.log("Saved to session temp dir:", saved.file, "entries:", saved.count);
 }
 ```
 
-### Standalone Execution / 単体でのスタンドアロン起動
-
-You can launch `Dbg.jar` directly without DecoTofu to test the DevTools panel against the bundled `sample.html` or `probe.html` pages:
-DecoTofu 本体がなくても、`Dbg.jar` と `PluginApi` を指定して単体ウィンドウで DevTools パネルを起動・テストできます：
+### Standalone Execution (`Harness`) / DecoTofu なしでの単体起動
 
 ```bash
 mvn -B -pl PluginApi,PluginKit install -DskipTests
 mvn -B -pl Dbg package
+
+# Windows (;)
 java --add-modules javafx.controls,javafx.web -cp "Dbg/target/Dbg.jar;PluginApi/target/webviewer-plugin-api-2026.10.11.jar" ken.mizoguch.webviewer.dbg.Dbg sample.html
+
+# Linux / macOS (:)
+java --add-modules javafx.controls,javafx.web -cp "Dbg/target/Dbg.jar:PluginApi/target/webviewer-plugin-api-2026.10.11.jar" ken.mizoguch.webviewer.dbg.Dbg sample.html
 ```
 
-* `sample.html`: Interactive demo page that logs messages, triggers network requests, throws sample errors, and renders DOM elements to inspect.
-* `probe.html`: Diagnostic probe page that tests `WebEngine` capabilities.
+---
+
+## Function Reference / 関数リファレンス (24 API methods)
+
+*(Inherited `PluginSupport`/`WebViewerPlugin` methods and `public static void main(String[])` are also present on `Dbg`.)*
+
+| Signature / シグネチャ | Return & Behavior / 戻り値・仕様 |
+| :--- | :--- |
+| `void dbg.licenses()` | Opens non-modal `LicenseDialog` displaying `licenses.txt`. / ライセンスダイアログを開きます。 |
+| `void dbg.devtools()` | Calls `setConsoleHook(true)` and opens (or focuses) the 960×640 non-modal `"DevTools"` window.<br>コンソールフックを有効化し DevTools ウィンドウ（960×640）を開きます。 |
+| `void dbg.devtoolsClose()` | Closes the DevTools window while **keeping `isConsoleHook()` active** and retaining journals.<br>DevTools ウィンドウを閉じます（フック状態と履歴は維持されます）。 |
+| `boolean dbg.isDevtools()` | Returns `true` if the DevTools window is currently open.<br>DevTools ウィンドウが開いているか返します。 |
+| `void dbg.setConsoleHook(boolean state)` | Hooks/unhooks `console.*` (17 methods incl. `assert`/`time`/`timeEnd`/`count`/`countReset`), `window.onerror`, `unhandledrejection`, `XMLHttpRequest`, and `fetch` via injected `agent.js` (`window.__dbg`). Re-applied across page reloads while `true`.<br>ページ内のコンソール・エラー・XHR/fetch フックを有効／無効にします。 |
+| `boolean dbg.isConsoleHook()` | Returns current console/network hook state (`false` default). / フック有効状態を返します。 |
+| `String dbg.journal(String kind, String limit)` | Returns JSON array of captured entries (`kind === "network"` → network entries; any other value/null → console entries). `limit` is a **String** (`null`/non-numeric → max `2000` console / `500` network; `<= 0` → `"[]"`). Returns the newest `limit` entries ordered oldest-first.<br>記録済みログを古い順の JSON 配列で返します（`"network"` 以外はコンソール扱い、`limit` は文字列）。 |
+| `String dbg.save(String kind, String file)` | Saves `"network"` or console entries into `file` inside the private ephemeral session temp directory (`SandboxPath`; `null`/blank defaults to `"journal.json"`). `.txt` saves plain text lines; otherwise saves JSON. **Deleted on `dbg.close()`!** Returns `{"file":"<rel>","count":<int>}` or `{"error":"<msg>"}`.<br>一時ディレクトリ内へログを書き出します（`close()` 時に自動削除）。 |
+| `String dbg.cmd(String name, String arguments)` | Validates agent command `name` (`ScriptFunction`) and executes `window.__dbg.exec(id, name, arguments)` (`arguments` truncated at `262144` chars). Async result goes to panel. Returns `{"id":"<seq>"}`, `{"id":"...","unavailable":true}`, or `{"error":"..."}`.<br>ページ側エージェントコマンドを実行しコマンド ID JSON を返します。 |
+| `void dbg.up(String kind, String json)` | Internal bridge endpoint (`kind` must be `"log"`, `"net"`, `"result"`, `"inspect"`, or `"notice"`).<br>注入エージェントからの内部ブリッジ受信用エンドポイントです。 |
+| `void dbg.clear()` | Clears both console and network journals AND resets the `dropped` counter to `0`.<br>両ジャーナルを消去し、`dropped` カウンターも 0 に戻します。 |
+| `void dbg.clearConsole()` / `dbg.clearNetwork()` | Clears only console or only network journal (does **not** reset `dropped`).<br>片方のみ消去します（`dropped` は維持）。 |
+| `boolean dbg.copyText(String text)` | Copies `text` to OS clipboard on FX thread (`false` if `text == null`, else `true`).<br>文字列を OS クリップボードへコピーします（`null` は `false`）。 |
+| `String dbg.version()` | Returns JAR `Implementation-Version` (fallback `"dev"`). / バージョン文字列を返します。 |
+| `void dbg.setConsoleOut(boolean state)` / `boolean isConsoleOut()` | Enables/queries mirroring of `dbg.*` and hooked `console.*` logs to host console.<br>ホスト側コンソールへのミラー出力を設定・取得します。 |
+| `void dbg.firebug()` *(throws `IOException`)* | Injects legacy Firebug Lite (`#startOpened`), re-injected on page reloads until `close()`.<br>互換用 Firebug Lite を注入します。 |
+| `void dbg.debug(val)`, `info(val)`, `log(val)`, `error(val)`, `warn(val)` | Logs directly to page `console.<level>(...)` (escaped & capped at `4,096` chars via `ScriptValue`), mirroring to host console without duplication when `isConsoleOut()` is enabled.<br>ページコンソールへエスケープ済み文字列を出力します（最大 `4,096` 文字）。 |
+| `void dbg.close()` | Closes DevTools, clears hook/Firebug flags, and **deletes session temp directory**. / DevTools を閉じ一時ディレクトリを消去します。 |
+
+---
+
+## Journal & Command JSON Schemas / ジャーナル・コマンド仕様
+
+* **Console Journal Entry**: `{"level":"log|info|warn|error|debug|...","time":<epochMs>,"src":"page|webviewer","args":[{"t":"string","v":"..."}]}`
+* **Network Journal Entry**: `{"id":<int>,"method":"GET|POST|...","url":"...","status":<int>,"text":"...","mime":"...","kind":"xhr|fetch","time":<epochMs>,"duration":<ms>,"size":<int>,"body":"..."}`
+* **Valid `cmd(name, arguments)` agent actions**: `page`, `children`, `node`, `styles`, `setAttr`, `delAttr`, `setText`, `removeNode`, `setStyle`, `setHtml`, `insertChild`, `html`, `search`, `scripts`, `scriptText`, `sheets`, `sheetText`, `storage`, `writeStorage`, `readValue`, `writeSource`, `find`, `cookies`, `writeCookie`, `highlight`, `unhighlight`, `inspect`, `scrollIntoView`, `exec`, `netText`, `netFiles`, `info`, `probe`, `unhook`.
+
+---
+
+## Network Tab, Limits & Engine Notes / 制限事項とバッファ仕様
+
+* **Network Response Body Retention**: In `agent.js`, `MAX_NET = 100` retains response bodies for the last **100** requests for **both** `XMLHttpRequest` and `fetch` (each response's header list is capped at 60 headers).
+* **Character & Ring Limits**:
+  * Bridge messages larger than `Bridge.MAX_MESSAGE = 262144` **characters** skip panel UI forwarding (a `notice` is shown instead while `Journal` still records them).
+  * `dbg.log/debug/info/warn/error` truncate inputs at **`4,096` chars** (`ScriptValue.MAX_LENGTH`); `agent.js` truncates strings at `4,096` chars and HTML/script/stylesheet sources at `60,000` chars.
+  * Ring buffers cap console entries at **`2,000`** and network entries at **`500`** (counting dropped entries).
+* **Engine Limitations**: JavaFX `WebEngine` exposes no JS debugger protocol (no breakpoints/stepping), and only JS-initiated `XHR`/`fetch` calls are captured (`<img>`/`<link>`/`<iframe>` loads are excluded).
 
 ---
 
 ## Requirements & Build / 要件とビルド
 
-* Requires no external JARs in `web/plugins/lib/` and no network connection.
-  * 外部 JAR やネットワーク接続は不要です。
+* **Requirements**: JDK 21 or later (with `javafx.controls`, `javafx.web`, `jdk.jsobject`), Apache Maven 3.8 or later.
 
 ```bash
-# Run unit & WebEngine integration tests
 mvn -B -pl Dbg -am test
-
-# Build deliverable shaded JAR (Dbg/target/Dbg.jar)
 mvn -B -pl Dbg -am package
 ```
+
+* Deliverable shaded JAR: `Dbg/target/Dbg.jar`.
 
 ---
 
 ## Licenses / ライセンス
 
-* `dbg.licenses()` displays the licenses stored in `licenses.txt`: **Firebug Lite** (BSD-3-Clause).
-  * `dbg.licenses()` はパッケージ内の `licenses.txt` に保持されたライセンス（**Firebug Lite**: BSD-3-Clause）を表示します。
+* `dbg.licenses()` displays `licenses.txt`: **Firebug Lite** (BSD-3-Clause).

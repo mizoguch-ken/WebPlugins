@@ -1,83 +1,201 @@
-# WebPlugins LlmCore
+# WebPlugins LlmCore (`llm-core`)
 
 ## Overview / 概要
 
-* **LlmCore** (`llm-core`) is the pure-Java Transformer language model library shaded by the [`Llm`](../Llm/README.md) plug-in. It implements model construction, tokenization, forward/backward propagation, AdamW optimization, sampling, and binary model persistence using standard Java 21 only.
-* **LlmCore**（`llm-core`）は、[`Llm`](../Llm/README.md) プラグインに shade される純粋 Java 実装の Transformer 言語モデルライブラリです。モデルの構築、トークナイザー、順伝播・逆伝播（誤差逆伝播法）、AdamW オプティマイザ、サンプリング、およびモデルファイルの保存・読み込みを標準 Java 21 のみで実装しています。
-* **Zero External Dependencies**: Uses no third-party libraries, no native code, no GPU/JNI bindings, no JavaFX, and no network access.
-* **外部依存ゼロ**: 第三者ライブラリ、ネイティブライブラリ、JavaFX、ネットワークを一切使用しません。
-* **Deterministic Multi-Threaded Matrix Algebra**: Large matrix/vector operations (`Tensor.ab`, `Tensor.atb`, `Tensor.abt`, `Tensor.mv`) automatically partition non-overlapping work units (`PART_VALUES = 131,072`) across `ForkJoinPool.commonPool()` controlled by `-Dwebviewer.llm.threads=<N>` (setting `0` or `1` runs single-threaded on the caller thread). Multi-head self-attention also parallelizes deterministically across heads, preserving bit-exact results regardless of thread count.
-* **決定論的な並列行列演算**: 大きな行列／ベクトル演算（`Tensor.ab`, `Tensor.atb`, `Tensor.abt`, `Tensor.mv`）はシステムプロパティ `webviewer.llm.threads` で指定された並列度（`0` または `1` でシングルスレッド）に従い、非重複領域ごとに並列実行されます。マルチヘッド注意演算もヘッド単位で決定論的に並列化され、スレッド数に依存せずビット再現性を保ちます。
+* **LlmCore** (`llm-core`) is a zero-dependency pure Java 21 CPU Transformer inference, training, biological two-origin memory, and holdout-verified continual consolidation library powering the [`Llm`](../Llm/README.md) plug-in.
+* **LlmCore**（`llm-core`）は、外部ライブラリや JavaFX に依存しない純粋 Java 21 製の CPU Transformer 学習・推論・二層生物学的記憶・検証付き継続統合ライブラリです（[`Llm`](../Llm/README.md) プラグインのコアエンジンとして使用されます）。
+
+### Architecture Highlights / アーキテクチャ概要
+
+1. **Core Transformer & Clean Weight Storage (`ModelStore`) / Transformer 本体と `LMC2` 重み永続化**
+   * Pure Java 21 multi-threaded CPU matrix math (`Tensor`), RMSNorm + causal multi-head self-attention + SwiGLU FFN (`TransformerModel`, `KvCache`), `AdamW` optimizer, `ByteTokenizer` / `CharTokenizer`, and top-k / top-p / min-p / repetition-penalty `Sampler`.
+   * Writes clean version-2 binary checkpoints (`LMC2`, magic `LMC1`, `VERSION_V2`) containing `ModelConfig`, `Metadata`, tokenizer vocabulary, parameter tensors, and a `CRC32` integrity trailer. Loads legacy `LMC1`–`LMC4` formats while keeping acquired memory decoupled from binary weight files.
+2. **Biological Two-Origin Memory (`MemoryBank`) / 生物学的二起源メモリ**
+   * **`Origin.INSTINCT` (`Layer.INSTINCT`)**: Immutable innate rules, facts, procedures, and anchor corpus (`addInstinct`, `seedInstinctCorpus`, `exportInstinctPack`, `inheritInstinctPack`). Never expires, never decays, cannot be superseded or forgotten via `forget()`/`clearCognition()`, and serves as replay + holdout anchors during consolidation.
+   * **`Origin.COGNITION`**: Acquired experience across three real wall-clock layers:
+     * `Layer.WORKING` — Short-lived buffer (`workingTtlMinutes`), never trained directly into weights; repeated consistent observations matching `confirmEvidenceThreshold` auto-promote to `EPISODIC`.
+     * `Layer.EPISODIC` — Medium-term memory decaying exponentially by wall-clock half-life (`episodicHalfLifeHours`), reinforced on recall, promoted to `SEMANTIC` on `curate()`.
+     * `Layer.SEMANTIC` — Confirmed structured knowledge supporting cognitive-only non-monotonic revision (`supersededById`), `AVOIDANCE`/`CORRECTION` entries, and batch weight consolidation (`consolidated = true`).
+   * Lexical BM25/IDF retrieval over Latin tokens + CJK bigrams (`recall`) weighted by layer authority (`INSTINCT > SEMANTIC > EPISODIC > WORKING`), plus lightweight prefix continuation assist and forbidden-pattern suppression (`applyLocalAssist`) during generation.
+3. **Holdout-Verified Batch Consolidation (`LlmCore.consolidate()`) / 検証付きバッチ統合**
+   * Trains only confirmed, unconsolidated `SEMANTIC` entries mixed with `INSTINCT` anchor replay and prior consolidated `SEMANTIC` replay.
+   * Applies prompt-masked cross-entropy for positive knowledge/corrections and response-masked unlikelihood suppression for `AVOIDANCE` and rejected alternatives.
+   * Gates every consolidation against Instinct + Cognitive holdout sets (`maxInstinctRegression`, `maxCognitiveRegression`) with automatic half-LR retry and full weight/optimizer/vocabulary rollback; supports preemption (`requestLearningPreemption()`).
 
 ---
 
-## Classes / クラス一覧
+## Module, Artifact & Threading / モジュール・ビルド構成・スレッド設定
 
-* **Java Module**: `ken.mizoguch.webviewer.llm.core`
-* **Exported Package**: `ken.mizoguch.webviewer.llm.core`
+* **Maven Artifact**: `ken.mizoguch:llm-core:2026.10.11` (plain unshaded JAR, zero compile dependencies; JUnit 5 for tests)
+* **Java Module**: `ken.mizoguch.webviewer.llm.core` (`exports ken.mizoguch.webviewer.llm.core;`)
+* **JVM Threading Property (`Tensor`)**: `-Dwebviewer.llm.threads=<N>`
+  * `N <= 1`: forces single-threaded deterministic CPU execution.
+  * Default (unset): `ForkJoinPool.commonPool().getParallelism() + 1` worker threads, enabled automatically for operations exceeding `PART_VALUES = 131072` (`1 << 17`) elements.
 
-| Class / クラス | Description / 説明 |
+---
+
+## Complete Java API Reference / Java API リファレンス (All 16 Public Types)
+
+Package: `ken.mizoguch.webviewer.llm.core`
+
+### 1. `LlmCore` (`public final class LlmCore`)
+High-level orchestrator for model lifecycle, training, evaluation, generation, continual memory, and holdout-verified consolidation.
+
+* **Constants**: `MAX_EPOCHS = 100000`, `MAX_TOKENS = 4096`, State constants: `IDLE = 0`, `TRAINING = 1`, `ANSWERING = 2`, `EVALUATING = 3`, `CONTINUAL_TRAINING = 4`.
+* **Nested Types**:
+  * `TrainResult`: final fields `double loss`, `long steps`, `int epochs`, `double seconds`, `boolean stopped`.
+  * `EvalResult`: final fields `double loss`, `double perplexity`, `long tokens`, `int windows`, `double seconds`, `boolean stopped`.
+  * `TrainOptions` (`public record TrainOptions(int epochs, Double learningRate, Double minLearningRate, int warmupSteps, int gradientAccumulation)`).
+  * `AnswerResult`: final fields `String text`, `int tokens`, `double seconds`, `boolean stopped`, `boolean ended`, `double meanLogProb`, `double confidence`, `double meanMargin`, `int memoryHits`, `boolean suppressedForbidden`.
+
+| Constructor / Method | Description / 説明 |
 | :--- | :--- |
-| `LlmCore` | Thread-safe facade with lock-free live metric getters (`state()`, `isIdle()`, `steps()`, `loss()`, `texts()`, `tokens()`, `learningRate()`, `weightDecay()`, `largestGradient()`), atomic validation on `train(...)`, `TrainOptions` (linear warmup, cosine LR decay, gradient accumulation), kNN-LM memory-augmented `generate(...)`, `evaluate(...)`, `recallMemory(...)`, and inference-preempted `continual()` / `continualStep()` / `consolidate()` (`CONTINUAL_TRAINING`). Persists full cognitive state via `LMC3` and reads legacy `LMC1`/`LMC2`. Limits: `MAX_EPOCHS = 100_000`, `MAX_TOKENS = 4_096`.<br>ロックフリー状態取得・失敗時非破壊の `train()`・`TrainOptions`・KV キャッシュ＋kNN-LM 連想想起付き `generate()`・`evaluate()`・`recallMemory()` に加え、推論優先プリエンプション付き 3 層継続学習（Wake/Sleep `continualStep()` / `consolidate()`）を備えたコアクラスです（`LMC3` 保存・`LMC1`/`LMC2` 互換読込対応）。 |
-| `EpisodicMemory`, `LoraAdapter`, `ElasticConsolidation` | 3-Tier Complementary Learning Systems (CLS) pillars: **Tier-1** Ebbinghaus retention + token-state kNN-LM logit fusion / negative trace inhibition & instant unlearning (`EpisodicMemory`); **Tier-2** frozen-backbone low-rank adaptation (`LoraAdapter`); **Tier-3** Sleep logit distillation + diagonal Online EWC (`ElasticConsolidation`).<br>3 層補完学習システム（CLS）：エビングハウス忘却曲線＋kNN-LM 連想記憶＆負の抑制（即時 1-shot 記憶・即時忘却）、本体重み凍結下の低ランク LoRA 適応、および Sleep 蒸留＋Online EWC 統合。 |
-| `ContinualConfig`, `ContinualLearner` | Coordinates CLS Wake/Sleep transitions, surprise gating, masked/unlikelihood/distillation losses, stratified dual-bucket holdout (`core` + `recent`) rollback gating, adaptive LR, and dynamic `CharTokenizer` vocabulary expansion.<br>CLS の Wake/Sleep 切替、驚異度（Surprise）ゲーティング、Unlikelihood・蒸留損失、層別二重ホールドアウト検証付きロールバック、および動的 `CharTokenizer` 語彙拡張を統合管理します。 |
-| `LlmCore.TrainOptions`, `LlmCore.TrainResult`, `LlmCore.EvalResult`, `LlmCore.AnswerResult` | Immutable configuration and result types returned when training (`loss`, `steps`, `epochs`, `seconds`, `stopped`), evaluation (`loss`, `perplexity`, `tokens`, `windows`, `seconds`, `stopped`), or generation (`text`, `tokens`, `seconds`, `stopped`, `ended`, `meanLogProb`, `confidence`, `meanMargin`, `memoryHits`, `memoryLambda`) completes.<br>学習設定および学習・評価・回答生成（平均対数確率／信頼度／マージン／記憶ヒット統計含む）の結果型です。 |
-| `LlmCoreListener` | Callback interface for progress, streaming tokens, and logs: `onProgress(int epoch, int epochs, long steps, double loss, double seconds)`, `onToken(String piece)`, `onLog(String message)`.<br>学習進捗・生成トークン・ログを受け取るリスナーインターフェースです。 |
-| `ModelConfig` | Validates and stores model dimensions (`isValid()`, `isTrainable()`): `vocabType` (`VOCAB_BYTE` or `VOCAB_CHAR`), `vocabSize` (`8..20_000`), `dModel` (`16..512`, divisible by `heads`), `heads` (`1..16`), `layers` (`1..16`), `context` (`16..512`), `seed`, and `MAX_PARAMETERS` (`24_000_000`).<br>モデル構造整合性（`dModel % heads == 0` 等）およびメモリ上限を検証する設定クラスです。 |
-| `TransformerModel` | Multi-layer causal self-attention Transformer featuring zero-copy causal multi-head attention, capacity-reusable `Step`, exact log-sum-exp cross-entropy, residual-scaled initialization, gradient accumulation support, and batched `prefill(...)` / incremental `KvCache` (`newCache()`, `step(token, pos, cache)`).<br>ゼロコピー Causal Self-Attention、容量再利用可能 `Step`、精密対数和指数損失、残差スケーリング初期化、勾配蓄積対応、およびバッチ `prefill(...)`／段階的推論用 `KvCache` を備えた Transformer 実装です。 |
-| `Tokenizer`, `CharTokenizer`, `ByteTokenizer` | Converts between text strings and token IDs. `CharTokenizer` filters/validates Unicode scalar code points; `ByteTokenizer` encodes UTF-8 bytes directly (`257` tokens) without vocabulary training.<br>テキストとトークン ID を相互変換します。`CharTokenizer` は Unicode スカラー値および重複を検証し、`ByteTokenizer` は学習不要で UTF-8 バイト列（257 語彙）を直接扱います。 |
-| `Dataset` | Tokenizes training texts into integer sequences with lock-free `count()` and `tokens()` counters.<br>学習用テキストをトークン列へ変換・保持し、ロックフリーで文書数・トークン数を参照できます。 |
-| `Sampler` | Zero-boxing next-token sampler supporting greedy (`GREEDY = 0.0`), NaN/`+Infinity`-safe `largest()`, temperature scaling, top-k (`NO_TOP = 0`), top-p (`NO_TAIL = 1.0`), min-p (`NO_MIN_PROBABILITY = 0.0`), and repetition penalty (`NO_REPETITION_PENALTY = 1.0`) via `pick(logits)` and `pick(logits, recentTokens, recentLength)`.<br>ボクシングゼロの高速サンプラーです。Greedy（NaN／`+Infinity` 安全）・Temperature・Top-K・Top-P に加え Min-P と反復ペナルティに対応します。 |
-| `AdamW` | Decoupled AdamW optimizer with optional weight-decay mask, element-parallel large-leaf updates, scheduled effective LR & gradient scaling, finite-gradient protection, and global L2 clipping (`setLearningRate`, `setWeightDecay`, `setLargestGradient`, `step`).<br>1 次元バイアス／LayerNorm を除外できる分離型 Weight Decay マスク・大行列要素並列更新・スケジュール LR／勾配スケーリング・非有限勾配保護・L2 クリッピングを備えた AdamW オプティマイザです。 |
-| `Tensor` | L1-tiled / register-blocked `float[]` matrix/vector algebra (`ab`, `atb`, `abt`, `mv`, `addBias`, `softmax`, `layerNorm`, `layerNormBackward`, `gelu`, `gather`, `scatter`) with overflow-safe GELU tails and double-precision reductions.<br>L1 タイリング／レジスタブロッキングおよび倍精度集約ベースの高速行列／ベクトル演算群を提供します（オーバーフロー安全 GELU／NaN 安全 softmax 対応）。 |
-| `ModelStore` | Atomic temporary-file binary serializer saving/loading `LMC2` (training/optimizer `Metadata` + finite-weight validation + CRC32 verification) and reading legacy `LMC1` files.<br>学習／オプティマイザ状態（`Metadata`）・非有限値検査・CRC32 チェックサム付き `LMC2` のアトミック保存／読込および `LMC1` 互換読込を行います。 |
-| `LlmCoreException` | Runtime exception type reporting invalid model configurations, training inputs, or corrupted model files.<br>モデル設定・入力データ・ファイル形式のエラーを表す例外クラスです。 |
+| `public LlmCore()` | Creates an idle `LlmCore` with an empty `MemoryBank` and `ContinualLearner`. |
+| `public int state()`, `boolean isIdle()` | Returns current state (`IDLE`..`CONTINUAL_TRAINING`) or whether idle. |
+| `public ContinualLearner continual()` | Returns the attached `ContinualLearner` (exposing `MemoryBank` and `ContinualConfig`). |
+| `public ContinualLearner.StepResult consolidate()` | Consolidates pending confirmed `SEMANTIC` memories against holdouts (supports rollback and preemption). |
+| `public List<MemoryBank.SearchHit> recallMemory(String query, List<String> scopes, MemoryBank.Layer maxLayer, int limit, boolean includeAvoidances)` | Searches active memories up to `maxLayer` weighted by origin/layer authority. |
+| `public void requestLearningPreemption()`, `releaseLearningPreemption()`, `isLearningPreempted()` | Requests cooperative preemption during consolidation (useful before user inference). |
+| `public void stop()` | Signals active training, evaluation, generation, or consolidation to stop gracefully. |
+| `public void newModel(ModelConfig configuration)` | Initializes a fresh model while **preserving** the current `MemoryBank`. |
+| `public void load(Path file)` | Loads `LMC1`–`LMC4` model binary while **preserving** the current `MemoryBank`. |
+| `public void save(Path file)` | Atomically saves model weights, config, tokenizer vocab, metadata, and `CRC32` as `LMC2`. |
+| `public void unload()` | Unloads model weights while **preserving** `MemoryBank`. |
+| `public boolean hasModel()`, `Path path()`, `ModelConfig config()`, `Tokenizer tokenizer()`, `long parameters()`, `long steps()`, `double loss()`, `int texts()`, `long tokens()` | Model state and summary inspection accessors. |
+| `public int[] tokenize(String text)`, `String detokenize(int[] tokens)` | Encodes or decodes text using the loaded model's tokenizer. |
+| `public void setLearningRate(double)`, `double learningRate()` | `AdamW` learning rate, valid `(0, 0.1]` (default `0.003`). |
+| `public void setWeightDecay(double)`, `double weightDecay()` | `AdamW` decoupled weight decay, valid `[0, 0.5]` (default `0.01`). |
+| `public void setLargestGradient(double)`, `double largestGradient()` | Gradient clipping norm threshold, valid `>= 0` (default `1.0`). |
+| `public EvalResult evaluate(List<String> texts)` | Computes holdout cross-entropy loss, perplexity, token count, and window count. |
+| `public TrainResult train(List<String> texts, int epochs, Double learningRate, LlmCoreListener listener)` | Convenience overload for `TrainOptions(epochs, learningRate, null, 0, 1)`. |
+| `public TrainResult train(List<String> texts, TrainOptions options, LlmCoreListener listener)` | Trains model with optional linear warmup, cosine decay to `minLearningRate`, and gradient accumulation; auto-learns `CharTokenizer` vocab on initial training and seeds `instinctCorpus`. |
+| `public AnswerResult generate(String prompt, int maxTokens, Sampler sampler, LlmCoreListener listener)` | Generates up to `min(maxTokens, MAX_TOKENS)` tokens with `KvCache` prefill/step and optional `MemoryBank.applyLocalAssist`. |
+
+### 2. `ModelConfig` (`public final class ModelConfig`)
+* **Constants**: `VOCAB_BYTE = 0`, `VOCAB_CHAR = 1`, `VOCAB_NAME_BYTE = "byte"`, `VOCAB_NAME_CHAR = "char"`, `MAX_PARAMETERS = 24000000L`, `MIN_D_MODEL = 16`, `MAX_D_MODEL = 512`, `MIN_LAYERS = 1`, `MAX_LAYERS = 16`, `MIN_HEADS = 1`, `MAX_HEADS = 16`, `MIN_CONTEXT = 16`, `MAX_CONTEXT = 512`, `MIN_VOCAB = 8`, `MAX_VOCAB = 20000`.
+* **Defaults**: `vocabType = VOCAB_BYTE`, `vocabSize = 257`, `dModel = 128`, `heads = 4`, `layers = 4`, `context = 256`, `seed = 20261017L`.
+* **Constructors**: `ModelConfig()`, `ModelConfig(ModelConfig other)`.
+* **Methods**: `vocabType()`, `setVocabType(int)` (`boolean`), `vocabSize()`, `setVocabSize(int)` (`boolean`, rejected for `VOCAB_BYTE`), `dModel()`, `setDModel(int)`, `heads()`, `setHeads(int)` (requires `dModel % heads == 0`), `layers()`, `setLayers(int)`, `context()`, `setContext(int)`, `seed()`, `setSeed(long)`, `vocabName()`, `static int vocabTypeOf(String)` (`null`→`VOCAB_BYTE`, unknown→`-1`), `parameters()`, `isValid()`, `isTrainable()`, `equals`, `hashCode`, `toString`.
+
+### 3. `Sampler` (`public final class Sampler`)
+* **Constants**: `GREEDY = 0d`, `NO_TOP = 0`, `NO_TAIL = 1d`, `NO_MIN_PROBABILITY = 0d`, `NO_REPETITION_PENALTY = 1d`.
+* **Constructors**:
+  * `Sampler()` (`temperature=0`, `topCount=0`, `topSum=0.9`, `minProbability=0`, `repetitionPenalty=1`, `new Random()`)
+  * `Sampler(double temperature, int topCount, double topSum, Random random)`
+  * `Sampler(double temperature, int topCount, double topSum, double minProbability, double repetitionPenalty, Random random)`
+* **Methods**: `setTemperature`/`temperature`, `setTopCount`/`topCount`, `setTopSum`/`topSum`, `setMinProbability`/`minProbability`, `setRepetitionPenalty`/`repetitionPenalty`, `pick(float[] logits)`, `pick(float[] logits, int[] recentTokens, int recentLength)`, `static int largest(float[] values)`.
+
+### 4–6. `Tokenizer`, `ByteTokenizer`, `CharTokenizer`
+* **`Tokenizer`**: `int end()`, `int size()`, `int[] encode(String)`, `String decode(int[])`, `void writeVocab(DataOutputStream)`, `void readVocab(DataInputStream, int size)`.
+* **`ByteTokenizer`**: `SIZE = 257`, `END = 256`, `ByteTokenizer()` (UTF-8 bytes `0..255` + `END`).
+* **`CharTokenizer`**: `END = 0`, `UNKNOWN = 1`, `FIRST = 2`, `CharTokenizer()`, `CharTokenizer(List<Integer> characters)`, `setCharacters(List<Integer>)`, `characters()`, `learn(String)`, `identifier(int codePoint)`.
+
+### 7–11. Core Engine Classes
+* **`TransformerModel`** (nested `KvCache` with `reset()`, `length()`): `TransformerModel(ModelConfig)`, `weights()`, `gradients()`, `config()`, `vocabulary()`, `width()`, `context()`, `newCache()`, `prefill(int[], int, KvCache)`, `step(int, int, KvCache)`, `logits(int[], int)`, `loss(int[], int)`, `next(int[], int, Sampler)`.
+* **`AdamW`**: `AdamW(float[][])`, `AdamW(float[][], boolean[])`; defaults `learningRate=0.003`, `weightDecay=0.01`, `largestGradient=1.0`, `beta1=0.9`, `beta2=0.999`, `eps=1e-8`; `setLearningRate`/`learningRate`, `setWeightDecay`/`weightDecay`, `setLargestGradient`/`largestGradient`, `steps()`, `reset()`, `step(weights, gradients)`, `step(weights, gradients, effectiveLearningRate, gradientScale)`.
+* **`Tensor`** (static matrix/activation ops): `ab`, `atb`, `abt`, `mv`, `addBias`, `add`, `columnSum`, `zero`, `zeroSlice`, `copy`, `gelu`, `geluValue`, `geluDerivative`, `gather`, `scatter`, `softmax`, `layerNorm`, `layerNormBackward`, `norm`.
+* **`Dataset`**: `Dataset(Tokenizer)`, `tokenizer()`, `add`, `addAll`, `clear`, `count()`, `tokens()`, `isEmpty()`, `isShort()`, `windows(int index, int context)`, `sample(Random, int context)`, `tokens(int index)`.
+* **`ModelStore`**: nested `record Metadata(long steps, double loss, double learningRate, double weightDecay, double largestGradient)` (`Metadata.EMPTY`) and `Content` (`isLoaded`, `error`, `config`, `tokenizer`, `weights`, `metadata`, `formatVersion`); static `save(Path, ModelConfig, Tokenizer, float[][])`, `save(Path, ModelConfig, Tokenizer, float[][], Metadata)` (returns `null` on success or error message), `load(Path)`, `values(float[][])`.
+
+### 12. `MemoryBank` (`public final class MemoryBank`)
+* **Enums**: `Origin { INSTINCT, COGNITION }`, `Layer { INSTINCT, WORKING, EPISODIC, SEMANTIC }`, `Kind { FACT, RULE, PROCEDURE, CORRECTION, AVOIDANCE, EXPERIENCE }`.
+* **Records**: `Entry`, `SearchHit`, `InstinctPack`, `Snapshot`, `LocalAssist`, `ConsolidationTarget`, `ConsolidationBatch`, `CurateSummary`.
+* **Methods**: `setClock(Clock)`, `clock()`, `nowMillis()`, `addInstinct(...)`, `recordWorking(...)`, `recordEpisodic(...)`, `confirmSemantic(...)`, `promote(long, ContinualConfig)`, `setPinned(long, boolean)`, `forget(long)`, `curate(ContinualConfig)`, `recall(...)`, `applyLocalAssist(...)`, `seedInstinctCorpus(List<String>)`, `instinctCorpus()`, `prepareConsolidationBatch(ContinualConfig)`, `markConsolidated(List<Long>)`, `pendingConsolidationCount()`, `list(...)`, `get(long)`, `count(...)`, `hasUnconsolidatedSemantic()`, `exportInstinctPack()`, `inheritInstinctPack(InstinctPack, boolean)`, `clearCognition()`, `clearAll()`, `snapshot()`, `restore(Snapshot)`.
+
+### 13. `ContinualConfig` (`public final class ContinualConfig`, with `Builder`)
+Created via `ContinualConfig.defaults()`, `ContinualConfig.builder()...build()`, or `config.toBuilder()`.
+
+| Parameter | Type | Default | Range | Description / 説明 |
+| :--- | :--- | :--- | :--- | :--- |
+| `maxWorkingEntries` | `int` | `128` | `4..10000` | Max working-layer entries / 作業記憶最大件数 |
+| `workingTtlMinutes` | `long` | `30` | `1..10080` | Real-clock TTL in minutes / 作業記憶の有効期間（分） |
+| `maxEpisodicEntries` | `int` | `1024` | `16..20000` | Max episodic-layer entries / エピソード記憶最大件数 |
+| `episodicHalfLifeHours` | `double` | `72.0` | `0.01..87600` | Exponential decay half-life (hours) / 半減期（時間） |
+| `maxSemanticEntries` | `int` | `2048` | `16..50000` | Max semantic-layer entries / 意味記憶最大件数 |
+| `confirmEvidenceThreshold` | `int` | `2` | `1..100` | Observations to promote WORKING→EPISODIC→SEMANTIC / 昇格根拠閾値 |
+| `episodicPromoteStrength` | `double` | `0.70` | `0..1` | Strength threshold for promotion / 昇格強度閾値 |
+| `episodicForgetThreshold` | `double` | `0.08` | `0..0.95` | Effective strength below which episodic entries expire / 忘却閾値 |
+| `localRecallEnabled` | `boolean` | `true` | `true/false` | Enable prefix continuation & avoidance suppression during local generation / ローカル推論時の記憶補助 |
+| `localRecallBoost` | `double` | `4.0` | `0..20` | Logit assist strength for matched memory continuations / 記憶補助の強度 |
+| `consolidationBatchSize` | `int` | `16` | `1..256` | Max pending semantic entries per `consolidate()` batch / 1回あたりの統合件数 |
+| `consolidationEpochs` | `int` | `2` | `1..20` | Optimization epochs per consolidation batch / 統合エポック数 |
+| `consolidationLearningRate` | `double` | `0.0005` | `1e-7..0.05` | Consolidation learning rate (halved on holdout retry) / 統合学習率 |
+| `instinctReplayRatio` | `double` | `1.0` | `0..10` | Anchor replay ratio mixed into consolidation batches / 本能・既知アンカーリプレイ比 |
+| `holdoutSize` | `int` | `32` | `1..512` | Max examples per Instinct & Cognitive holdout set / ホールドアウト評価件数 |
+| `maxInstinctRegression` | `double` | `0.03` | `0..1` | Max allowed Instinct holdout loss regression / 本能ホールドアウト許容悪化 |
+| `maxCognitiveRegression` | `double` | `0.05` | `0..1` | Max allowed Cognitive holdout loss regression / 認知ホールドアウト許容悪化 |
+| `allowVocabularyGrowth` | `boolean` | `true` | `true/false` | Allow `CharTokenizer` vocab growth during consolidation / 統合中の文字語彙拡張許可 |
+
+### 14–16. `ContinualLearner`, `LlmCoreListener`, `LlmCoreException`
+* **`ContinualLearner`**: `StepOutcome { CONSOLIDATED, NO_PENDING, ROLLED_BACK, PREEMPTED, SKIPPED }`, `StepResult`, `Stats`, `ContinualLearner()`, `ContinualLearner(ContinualConfig)`, `memory()`, `config()`, `setConfig(ContinualConfig)`, `addInstinct`, `recordWorking`, `recordEpisodic`, `confirmSemantic`, `promote`, `forget`, `curate`, `recall`, `seedInstinctCorpus`, `hasPendingConsolidation`, `stats`, `resetCounters`, `static boolean isDegenerate(String)`.
+* **`LlmCoreListener`**: `default void onProgress(int epoch, int epochs, long steps, double loss, double seconds)`, `default void onToken(String piece)`, `default void onLog(String message)`.
+* **`LlmCoreException`**: unchecked `RuntimeException` thrown on validation/state errors (`LlmCoreException(String message)`).
 
 ---
 
-## Usage / 使い方
+## Java Usage Example / Java 使用例
 
 ```java
 import java.nio.file.Path;
 import java.util.List;
-import ken.mizoguch.webviewer.llm.core.LlmCore;
-import ken.mizoguch.webviewer.llm.core.ModelConfig;
-import ken.mizoguch.webviewer.llm.core.Sampler;
+import ken.mizoguch.webviewer.llm.core.*;
 
-LlmCore core = new LlmCore();
+ModelConfig cfg = new ModelConfig();
+cfg.setDModel(128);
+cfg.setHeads(4);
+cfg.setLayers(4);
+cfg.setContext(256);
 
-ModelConfig config = new ModelConfig();
-config.setVocabType(ModelConfig.VOCAB_BYTE);
-config.setDModel(64);
-config.setLayers(2);
-config.setHeads(4);
-config.setContext(128);
-core.newModel(config);
+LlmCore llm = new LlmCore();
+llm.newModel(cfg);
 
-core.train(List.of("a text of the page", "an other text of the page"), 40, null, listener);
+// 1. Train base model & auto-seed instinct anchor corpus
+LlmCore.TrainOptions opts = new LlmCore.TrainOptions(10, 0.003, 0.0005, 5, 1);
+LlmCore.TrainResult tr = llm.train(List.of(
+    "User: Safe torque limit?\nAssistant: 12 Nm max.\n"
+), opts, new LlmCoreListener() {});
 
-LlmCore.AnswerResult answer = core.generate("a prompt", 128, new Sampler(), listener);
-core.save(Path.of("model/llm.model"));
+// 2. Biological memory: immutable Instinct + acquired Semantic cognition + Avoidance
+llm.continual().addInstinct(
+    MemoryBank.Kind.RULE, "plc", "torque limit", "Never exceed 12 Nm.", 1.0, "spec"
+);
+llm.continual().confirmSemantic(
+    MemoryBank.Kind.FACT, "plc", "clamp pressure", "4.5 bar", null, 0.9, "operator", false
+);
+llm.continual().confirmSemantic(
+    MemoryBank.Kind.AVOIDANCE, "plc", "unsafe reset", "reset without interlock", "check interlock first", 1.0, "incident", true
+);
+
+// 3. Holdout-verified batch consolidation into weights
+ContinualLearner.StepResult step = llm.consolidate();
+System.out.println("Consolidation: " + step.outcome() + " -> " + step.message());
+
+// 4. Generate answer (with memory assist & greedy/sampled decoding)
+Sampler sampler = new Sampler(0.2, 40, 0.9, 0.0, 1.1, new java.util.Random(42));
+LlmCore.AnswerResult ans = llm.generate("User: clamp pressure?\nAssistant: ", 64, sampler, null);
+System.out.println(ans.text);
+
+// 5. Persist clean LMC2 weights (memory is stored separately via MemoryBank.snapshot())
+llm.save(Path.of("model.lmc"));
 ```
 
 ---
 
-## Build & Test / ビルドとテスト
+## Requirements & Build / 動作要件とビルド・テスト
+
+* **Requirements**: JDK 21 or later, Apache Maven 3.8 or later (zero runtime dependencies).
+  * **要件**: JDK 21 以上、Apache Maven 3.8 以上（実行時依存ゼロ）。
 
 ```bash
-# Build plain library JAR (LlmCore/target/llm-core-<version>.jar)
-mvn -B -pl LlmCore package
-
-# Run unit tests
 mvn -B -pl LlmCore test
+mvn -B -pl LlmCore package
 ```
 
-* `LlmCore` is a plain library JAR; do **not** place it in `web/plugins/` (it is shaded into `Llm/target/Llm.jar`).
-  * `LlmCore` は通常のライブラリ JAR であり、`web/plugins/` には配置しません（`Llm.jar` に shade されます）。
+* Output artifact: `LlmCore/target/llm-core-<version>.jar`.
 
 ---
 
 ## Licenses / ライセンス
 
-* Contains no third-party libraries or native code.
-  * 外部プロジェクトのライブラリやネイティブコードを一切含みません。
+* This module contains no third-party libraries.
+  * このモジュールは外部プロジェクトのライブラリを内包しません。

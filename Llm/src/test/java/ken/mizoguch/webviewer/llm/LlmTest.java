@@ -533,8 +533,8 @@ class LlmTest {
         assertNull(plugin_.lastError());
 
         Class<?>[] exposedClasses = {
-                Llm.class, LocalApi.class, RemoteApi.class,
-                SessionApi.class, RagApi.class, TaskApi.class
+                Llm.class, LocalApi.class, ContinualApi.class, MemoryApi.class,
+                RemoteApi.class, SessionApi.class, RagApi.class, TaskApi.class
         };
         for (Class<?> cls : exposedClasses) {
             Set<String> signatures = new HashSet<>();
@@ -1010,8 +1010,159 @@ class LlmTest {
     }
 
     @Test
-    @DisplayName("runs 3-tier CLS continual updates, 1-shot episodic recall, pin/forget, consolidation, and LMC3 persistence")
-    void continualLearningBackgroundUpdatePreemptionFeedbackAndAutoSave() throws Exception {
+    @DisplayName("manages biological Instinct and Cognition layers via llm.memory() with JSON persistence, model-swap survival, and inheritance")
+    void biologicalMemoryApiPersistenceInheritanceAndModelSwapSurvival() throws Exception {
+        String instJson = plugin_.memory().addInstinct(
+                "{\"kind\":\"RULE\",\"scope\":\"global\",\"subject\":\"Policy\","
+                        + "\"content\":\"Never expose secrets\",\"importance\":1.0}");
+        assertNotNull(instJson);
+        long instId = JsonParser.parseString(instJson).getAsJsonObject().get("id").getAsLong();
+
+        String workJson = plugin_.memory().observe(
+                "{\"layer\":\"WORKING\",\"scope\":\"chat\",\"subject\":\"Temp\","
+                        + "\"content\":\"transient draft note\"}");
+        assertNotNull(workJson);
+        long workId = JsonParser.parseString(workJson).getAsJsonObject().get("id").getAsLong();
+
+        String epJson = plugin_.memory().observe(
+                "{\"layer\":\"EPISODIC\",\"scope\":\"project:app\",\"subject\":\"Port\","
+                        + "\"content\":\"3000\",\"confidence\":0.85}");
+        assertNotNull(epJson);
+
+        String v1Json = plugin_.memory().learn(
+                "{\"scope\":\"project:app\",\"subject\":\"Backend URL\","
+                        + "\"content\":\"http://localhost:3000\"}");
+        assertNotNull(v1Json);
+        long v1Id = JsonParser.parseString(v1Json).getAsJsonObject().get("id").getAsLong();
+
+        String corrJson = plugin_.memory().correct(
+                "{\"scope\":\"project:app\",\"subject\":\"Backend URL\","
+                        + "\"content\":\"http://127.0.0.1:8080\"}");
+        assertNotNull(corrJson);
+        JsonObject v1After = JsonParser.parseString(plugin_.memory().get(v1Id)).getAsJsonObject();
+        assertTrue(v1After.get("supersededById").getAsLong() > 0L);
+
+        assertNotNull(plugin_.memory().avoid(
+                "{\"scope\":\"project:app\",\"subject\":\"Danger\",\"content\":\"rm -rf /\"}"));
+
+        // Instinct is immutable; working entry can be forgotten
+        assertFalse(plugin_.memory().forget(instId).booleanValue());
+        assertNotNull(plugin_.lastError());
+        assertTrue(plugin_.memory().forget(workId).booleanValue());
+
+        String recallRes = plugin_.memory().recall(
+                "Backend URL secrets rm", "{\"scope\":\"project:app\",\"limit\":6}");
+        assertNotNull(recallRes);
+        assertTrue(recallRes.contains("http://127.0.0.1:8080"));
+        assertTrue(recallRes.contains("Never expose secrets"));
+        assertTrue(recallRes.contains("rm -rf /"));
+
+        // Sandboxed JSON persistence survives local model swap/reload
+        assertTrue(plugin_.memory().save("memory_store.json").booleanValue());
+        Path savedJsonPath = page_.resolve("memory_store.json");
+        assertTrue(Files.isRegularFile(savedJsonPath));
+        assertTrue(Files.readString(savedJsonPath, StandardCharsets.UTF_8)
+                .contains("llm-biological-memory-v1"));
+
+        String modelCfg = "{\"vocab\":\"char\",\"dModel\":32,\"heads\":4,\"layers\":2,\"context\":32,\"seed\":7}";
+        assertNotNull(plugin_.local().create(modelCfg));
+        String tTask = plugin_.local().train("[\"abcdefgh\",\"efghabcd\"]", "{\"epochs\":4}");
+        assertNotNull(tTask);
+        assertTrue(waitTaskDone(tTask));
+        assertTrue(plugin_.local().save("swap_base.lmc").booleanValue());
+        assertNotNull(plugin_.local().create(modelCfg));
+        assertNotNull(plugin_.local().load("swap_base.lmc"));
+
+        JsonObject memStatus = JsonParser.parseString(plugin_.memory().status()).getAsJsonObject();
+        assertEquals(1L, memStatus.get("instinctCount").getAsLong());
+        assertTrue(memStatus.get("semanticCount").getAsLong() >= 2L);
+        assertTrue(memStatus.get("instinctCorpusCount").getAsLong() >= 2L);
+
+        // Export parent instinct pack and inherit into child without losing child cognition
+        assertTrue(plugin_.memory().exportInstinct("parent_instinct.json").booleanValue());
+        Llm child = new Llm();
+        try {
+            child.initialize(recorder_);
+            assertNotNull(child.memory().learn(
+                    "{\"scope\":\"child\",\"subject\":\"Own\",\"content\":\"child knowledge\"}"));
+            Integer inherited = child.memory().inheritInstinct("parent_instinct.json", false);
+            assertNotNull(inherited);
+            assertEquals(1, inherited.intValue());
+            JsonObject childStatus = JsonParser.parseString(child.memory().status())
+                    .getAsJsonObject();
+            assertEquals(1L, childStatus.get("instinctCount").getAsLong());
+            assertEquals(1L, childStatus.get("semanticCount").getAsLong());
+            assertTrue(childStatus.get("instinctCorpusCount").getAsLong() >= 2L);
+
+            assertTrue(child.memory().clearCognition().intValue() >= 1);
+            JsonObject cleared = JsonParser.parseString(child.memory().status()).getAsJsonObject();
+            assertEquals(1L, cleared.get("instinctCount").getAsLong());
+            assertEquals(0L, cleared.get("semanticCount").getAsLong());
+        } finally {
+            child.close();
+        }
+    }
+
+    @Test
+    @DisplayName("injects biological [MEMORY] grounding into OpenAI and Anthropic sessions without polluting history")
+    void remoteSessionMemoryGroundingInjectsWithoutPollutingHistory() {
+        assertNotNull(plugin_.memory().addInstinct(
+                "{\"kind\":\"RULE\",\"scope\":\"global\",\"subject\":\"Policy\","
+                        + "\"content\":\"Answer concisely in Japanese\"}"));
+        assertNotNull(plugin_.memory().learn(
+                "{\"scope\":\"ops\",\"subject\":\"サーバーポート\",\"content\":\"8080番です\"}"));
+        assertNotNull(plugin_.memory().avoid(
+                "{\"scope\":\"ops\",\"subject\":\"禁止\",\"content\":\"旧3000番を案内しない\"}"));
+
+        assertNotNull(plugin_.remote().setProfile("oai-mem",
+                "{\"baseUrl\":\"" + remote_.baseUrl() + "\",\"model\":\"gpt-test\"}"));
+        assertNotNull(plugin_.remote().setProfile("claude-mem",
+                "{\"provider\":\"anthropic\",\"baseUrl\":\"" + remote_.baseUrl()
+                        + "\",\"apiKey\":\"ak\",\"model\":\"claude-test\"}"));
+        remote_.echoMessages(true);
+
+        assertNotNull(plugin_.sessions().create(
+                "{\"id\":\"mem-oai\",\"systemPrompt\":\"Assistant\",\"profile\":\"oai-mem\"}"));
+        String oaiTask = plugin_.sessions().send("mem-oai", "サーバーポートは？",
+                "{\"memory\":{\"scope\":\"ops\",\"limit\":6}}");
+        assertNotNull(oaiTask);
+        assertTrue(waitTaskDone(oaiTask));
+
+        String req0Raw = remote_.requests().get(0);
+        JsonObject req0Obj = JsonParser.parseString(req0Raw.substring(req0Raw.indexOf('{')))
+                .getAsJsonObject();
+        String sysContent = req0Obj.getAsJsonArray("messages").get(0).getAsJsonObject()
+                .get("content").getAsString();
+        assertTrue(sysContent.contains("[MEMORY]"));
+        assertTrue(sysContent.contains("INSTINCT|INSTINCT|RULE"));
+        assertTrue(sysContent.contains("COGNITION|SEMANTIC|FACT"));
+        assertTrue(sysContent.contains("[AVOID|scope=ops]"));
+
+        JsonObject oaiRes = JsonParser.parseString(plugin_.tasks().result(oaiTask)).getAsJsonObject();
+        assertTrue(oaiRes.has("memoryHits"));
+        assertFalse(oaiRes.getAsJsonArray("memoryHits").isEmpty());
+
+        JsonArray history = JsonParser.parseString(plugin_.sessions().messages("mem-oai"))
+                .getAsJsonArray();
+        assertEquals(2, history.size());
+        assertFalse(history.toString().contains("[MEMORY]"));
+
+        remote_.settle();
+        remote_.echoMessages(true);
+        assertNotNull(plugin_.sessions().create("{\"id\":\"mem-anth\",\"profile\":\"claude-mem\"}"));
+        String anthTask = plugin_.sessions().send("mem-anth", "サーバーポートは？",
+                "{\"memory\":true}");
+        assertNotNull(anthTask);
+        assertTrue(waitTaskDone(anthTask));
+        String anthRaw = remote_.requests().get(0);
+        JsonObject anthReq = JsonParser.parseString(anthRaw.substring(anthRaw.indexOf('{')))
+                .getAsJsonObject();
+        assertTrue(anthReq.get("system").getAsString().contains("[MEMORY]"));
+    }
+
+    @Test
+    @DisplayName("runs periodic holdout-verified batch consolidation, background auto-save, feedback, and observeLadder")
+    void localContinualBatchConsolidationBackgroundAutoSaveAndObserveLadder() throws Exception {
         String byteCfg = "{\"vocab\":\"byte\",\"dModel\":32,\"heads\":4,\"layers\":2,\"context\":32,\"seed\":7}";
         assertNotNull(plugin_.local().create(byteCfg));
         String trainTask = plugin_.local().train(
@@ -1020,135 +1171,66 @@ class LlmTest {
         assertNotNull(trainTask);
         assertTrue(waitTaskDone(trainTask));
 
-        // Reject out-of-sandbox autoSavePath
+        // Reject out-of-sandbox auto-save paths cleanly
         assertNull(plugin_.local().continual().configure("{\"autoSavePath\":\"../bad.lmc\"}"));
+        assertNotNull(plugin_.lastError());
+        assertNull(plugin_.local().continual().configure("{\"autoMemorySavePath\":\"../bad.json\"}"));
         assertNotNull(plugin_.lastError());
 
         String cfgRes = plugin_.local().continual().configure(
-                "{\"autoLearn\":true,\"idleDelayMs\":30,\"batchSize\":2,\"maxRegression\":0.2,"
-                        + "\"autoSavePath\":\"auto_continual.lmc\",\"autoSaveEvery\":1,"
-                        + "\"loraRank\":2,\"loraAlpha\":6.0,\"surpriseThreshold\":0.0,"
-                        + "\"memoryRecallEnabled\":true,\"memoryMaxLambda\":0.85,"
-                        + "\"learnFromSelfInference\":true,\"selfConfidenceThreshold\":0.1}");
+                "{\"enabled\":true,\"idleDelayMs\":100,\"consolidationIntervalMs\":1000,"
+                        + "\"consolidationEpochs\":2,\"consolidationLearningRate\":0.002,"
+                        + "\"maxInstinctRegression\":0.25,\"autoSavePath\":\"auto_model.lmc\","
+                        + "\"autoMemorySavePath\":\"auto_memory.json\"}");
         assertNotNull(cfgRes);
 
-        String obsPair = plugin_.local().continual().observePair(
-                "z1:", "99!", "{\"weight\":2.0,\"pinned\":true}");
-        assertNotNull(obsPair);
-        long epId = JsonParser.parseString(obsPair).getAsJsonObject().get("episodeId").getAsLong();
-        assertTrue(epId > 0L);
+        assertNotNull(plugin_.local().continual().addSample("ab", "ef!", null));
 
         long deadline = System.currentTimeMillis() + 10_000L;
         long accepted = 0L;
         while (System.currentTimeMillis() < deadline) {
             JsonObject st = JsonParser.parseString(plugin_.local().continual().status())
                     .getAsJsonObject();
-            accepted = st.get("wakeAccepted").getAsLong();
-            if ((accepted >= 1L) && Files.isRegularFile(page_.resolve("auto_continual.lmc"))) {
+            accepted = st.getAsJsonObject("stats").get("consolidationsAccepted").getAsLong();
+            if ((accepted >= 1L)
+                    && Files.isRegularFile(page_.resolve("auto_model.lmc"))
+                    && Files.isRegularFile(page_.resolve("auto_memory.json"))) {
                 break;
             }
-            Thread.sleep(20L);
+            Thread.sleep(25L);
         }
         assertTrue(accepted >= 1L);
-        assertTrue(Files.isRegularFile(page_.resolve("auto_continual.lmc")));
+        assertTrue(Files.isRegularFile(page_.resolve("auto_model.lmc")));
+        assertTrue(Files.isRegularFile(page_.resolve("auto_memory.json")));
         assertTrue(events_.events().stream()
                 .anyMatch(ev -> "continual".equals(ev.get("event").getAsString())));
 
-        // 1-shot recall search & memory listing / pin / generate integration
-        String recalled = plugin_.local().continual().recall("z1:", 3);
-        assertNotNull(recalled);
-        assertTrue(recalled.contains("99!"));
-        String memories = plugin_.local().continual().memories(10);
-        assertTrue(memories.contains("\"pinned\":true"));
-
-        // Preemption + confidence/margin/memory stats in generate()
-        assertNotNull(plugin_.local().continual().observe("[\"abcdwxyz\",\"efghwxyz\"]", null));
-        String genTask = plugin_.local().generate("z1:",
-                "{\"maxTokens\":8,\"minP\":0.05,\"repetitionPenalty\":1.1}");
+        // Inference -> feedback/correction -> observe -> observeLadder -> synchronous consolidateNow
+        String genTask = plugin_.local().generate("ab", "{\"maxTokens\":6}");
         assertNotNull(genTask);
         assertTrue(waitTaskDone(genTask));
-        JsonObject genRes = JsonParser.parseString(plugin_.tasks().result(genTask))
-                .getAsJsonObject();
+        JsonObject genRes = JsonParser.parseString(plugin_.tasks().result(genTask)).getAsJsonObject();
         assertTrue(genRes.has("inferenceId"));
-        assertTrue(genRes.has("confidence") && (genRes.get("confidence").getAsDouble() > 0d));
-        assertTrue(genRes.has("meanMargin"));
-        assertTrue(genRes.get("memoryHits").getAsInt() > 0);
-        assertTrue(genRes.get("text").getAsString().startsWith("99"));
-
-        assertTrue(plugin_.local().continual().stop().booleanValue());
-        // Explicit Sleep consolidation merges LoRA into backbone and activates Online EWC
-        String consRes = plugin_.local().continual().consolidate();
-        assertNotNull(consRes);
-        JsonObject consObj = JsonParser.parseString(consRes).getAsJsonObject();
-        assertEquals("sleep", consObj.get("phase").getAsString());
-        assertEquals("accepted", consObj.get("outcome").getAsString());
-
-        assertTrue(JsonParser.parseString(plugin_.local().continual().status()).getAsJsonObject()
-                .get("ewcActive").getAsBoolean());
-
-        // Instant forget removes episodic recall
-        assertTrue(plugin_.local().continual().forget(epId).booleanValue());
-
         String infId = genRes.get("inferenceId").getAsString();
-        String fbRes = plugin_.local().continual().feedback(
-                "{\"inferenceId\":\"" + infId + "\",\"accepted\":false,"
-                        + "\"correction\":\"dexyz\"}");
-        assertNotNull(fbRes);
-        assertTrue(JsonParser.parseString(fbRes).getAsJsonObject().get("recorded").getAsBoolean());
-    }
 
-    @Test
-    @DisplayName("ingests DecoTofu ladder snapshots, structure, causal error trace events, and feedback via observeLadder")
-    void continualObserveLadderIngestsSnapshotTraceAndFeedback() {
-        String byteCfg = "{\"vocab\":\"byte\",\"dModel\":32,\"heads\":4,\"layers\":2,\"context\":32,\"seed\":11}";
-        assertNotNull(plugin_.local().create(byteCfg));
-        String t = plugin_.local().train(
-                "[\"[LADDER cycle=1 transition] X0=0->1 Y0=0->1\","
-                        + "\"[LADDER cycle=2 transition] X0=1->0 Y0=1->0\","
-                        + "\"[LADDER SNAPSHOT cycle=3] X0=1 Y0=1\","
-                        + "\"[LADDER SNAPSHOT cycle=4] X0=0 Y0=0\","
-                        + "\"[LADDER STRUCTURE] tab=Main LD:X0 OUT:Y0\"]",
-                "{\"epochs\":12,\"learningRate\":0.02}");
-        assertNotNull(t);
-        assertTrue(waitTaskDone(t));
-        assertNotNull(plugin_.local().continual().configure(
-                "{\"autoLearn\":false,\"surpriseThreshold\":0.0,\"maxRegression\":0.25,\"batchSize\":4}"));
+        assertNotNull(plugin_.local().continual().feedback(
+                "{\"inferenceId\":\"" + infId + "\",\"verdict\":\"correct\",\"correction\":\"ef!!\"}"));
+        assertTrue(plugin_.local().continual().observe("gh!?", null).booleanValue());
+        Integer ladderAdded = plugin_.local().continual().observeLadder(
+                "build",
+                "[{\"summary\":\"cycle=5 passed=true\",\"command\":\"TEST\"}]",
+                "{\"confirm\":true}");
+        assertNotNull(ladderAdded);
+        assertEquals(1, ladderAdded.intValue());
 
-        // Register a mock inference whose causedByInferenceId triggers negative feedback on PLC error
-        plugin_.local().continual().configure("{\"learnFromSelfInference\":true}");
-        String gen = plugin_.local().generate("[LADDER SNAPSHOT cycle=5]", "{\"maxTokens\":6}");
-        assertNotNull(gen);
-        assertTrue(waitTaskDone(gen));
-        String badId = JsonParser.parseString(plugin_.tasks().result(gen)).getAsJsonObject()
-                .get("inferenceId").getAsString();
-
-        String snapshot = "{\"running\":true,\"cycleCount\":5,\"io\":[{\"address\":\"X0\","
-                + "\"comment\":\"Start\",\"value\":1.0,\"ld\":true}]}";
-        String rSnap = plugin_.local().continual().observeLadder(snapshot, null);
-        assertEquals(1, JsonParser.parseString(rSnap).getAsJsonObject().get("observed").getAsInt());
-
-        String structure = "{\"tabs\":1,\"ladders\":[{\"name\":\"Main\",\"blocks\":["
-                + "{\"command\":\"LD\",\"address\":\"X0\"},{\"command\":\"OUT\",\"address\":\"Y0\"}]}]}";
-        String rStruct = plugin_.local().continual().observeLadder(structure, null);
-        assertEquals(1,
-                JsonParser.parseString(rStruct).getAsJsonObject().get("observed").getAsInt());
-
-        String trace = "["
-                + "{\"seq\":1,\"cycle\":6,\"kind\":\"transition\",\"changes\":{\"Y0\":"
-                + "{\"previous\":0,\"value\":1,\"comment\":\"Motor\"}}},"
-                + "{\"seq\":2,\"cycle\":7,\"kind\":\"error\",\"causedByInferenceId\":\"" + badId
-                + "\",\"note\":\"Overcurrent fault\"},"
-                + "{\"seq\":3,\"cycle\":8,\"kind\":\"feedback\",\"reward\":1.0,"
-                + "\"prompt\":\"[LADDER cycle=8]\",\"note\":\" OK\"}"
-                + "]";
-        String rTrace = plugin_.local().continual().observeLadder(trace, null);
-        JsonObject traceOut = JsonParser.parseString(rTrace).getAsJsonObject();
-        assertTrue(traceOut.get("observed").getAsInt() >= 1);
-        assertEquals(2, traceOut.get("feedbacks").getAsInt());
-
-        String stepOut = plugin_.local().continual().stepNow();
+        assertTrue(plugin_.local().continual().disable().booleanValue());
+        String stepOut = plugin_.local().continual().consolidateNow();
         assertNotNull(stepOut);
-        assertEquals("accepted",
-                JsonParser.parseString(stepOut).getAsJsonObject().get("outcome").getAsString());
+        JsonObject stepObj = JsonParser.parseString(stepOut).getAsJsonObject();
+        assertEquals("CONSOLIDATED", stepObj.get("outcome").getAsString());
+        assertTrue(stepObj.get("consolidatedEntries").getAsInt() >= 1);
+
+        JsonObject pluginStatus = JsonParser.parseString(plugin_.status()).getAsJsonObject();
+        assertTrue(pluginStatus.has("memory"));
     }
 }

@@ -357,8 +357,8 @@ final class LocalModelService {
         String inferenceId = null;
         ContinualController cc = continualController_;
         if ((cc != null) && !answered.stopped && !answered.text.isEmpty()) {
-            inferenceId = cc.onInferenceCompleted(prompt, answered.text, answered.confidence,
-                    answered.meanLogProb, answered.meanMargin);
+            inferenceId = cc.onInferenceCompleted(prompt, answered.text,
+                    answered.confidence, answered.meanLogProb, answered.meanMargin);
         }
         JsonObject end = new JsonObject();
         end.addProperty("kind", "generate");
@@ -371,7 +371,7 @@ final class LocalModelService {
         end.add("meanLogProb", JsonUtil.finiteNumber(answered.meanLogProb));
         end.add("meanMargin", JsonUtil.finiteNumber(answered.meanMargin));
         end.addProperty("memoryHits", answered.memoryHits);
-        end.add("memoryLambda", JsonUtil.finiteNumber(answered.memoryLambda));
+        end.addProperty("suppressedForbidden", answered.suppressedForbidden);
         if (inferenceId != null) {
             end.addProperty("inferenceId", inferenceId);
         }

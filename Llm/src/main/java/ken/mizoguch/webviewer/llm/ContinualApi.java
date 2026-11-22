@@ -1,11 +1,9 @@
 package ken.mizoguch.webviewer.llm;
 
-import ken.mizoguch.webviewer.llm.core.LlmCoreException;
-
 /**
- * Public JavaScript sub-facade ({@code llm.local().continual()}) managing continuous background
- * self-updating training, experience replay, confidence-gated self-inference capture, feedback,
- * and ladder telemetry observation with strict user-inference priority preemption.
+ * Public JavaScript sub-facade ({@code llm.local().continual()}) managing periodic holdout-verified
+ * batch weight consolidation from confirmed cognitive {@link ken.mizoguch.webviewer.llm.core.MemoryBank}
+ * entries mixed with innate {@code INSTINCT} replay anchors.
  *
  * @author mizoguch-ken
  */
@@ -20,152 +18,164 @@ public final class ContinualApi {
     }
 
     /**
-     * Updates continual learning parameters and controller settings via JSON object.
+     * Updates consolidation scheduling, biological lifetime parameters, auto-save paths
+     * ({@code autoSavePath}, {@code autoMemorySavePath}), and inference working-memory capture.
      */
     public String configure(String optionsJson) {
         try {
             return controller_.configure(optionsJson);
-        } catch (IllegalArgumentException | LlmCoreException ex) {
+        } catch (RuntimeException ex) {
             owner_.logException(ex);
             return null;
         }
     }
 
     /**
-     * Enables background continual learning while the local model is idle.
+     * Enables idle background periodic batch consolidation into local weights.
      */
-    public Boolean start() {
-        return controller_.start();
+    public Boolean enable() {
+        controller_.enable();
+        return true;
     }
 
     /**
-     * Pauses background continual learning without discarding buffered samples.
+     * Pauses idle background consolidation without deleting memory entries.
      */
-    public Boolean stop() {
-        return controller_.stop();
+    public Boolean disable() {
+        controller_.disable();
+        return true;
     }
 
     /**
-     * Returns current continual learning status, replay/holdout counts, validation loss metrics,
-     * and active configuration as JSON.
+     * Returns current consolidation status, biological layer counts, and active configuration JSON.
      */
     public String status() {
-        return controller_.statusJson();
+        return controller_.status();
     }
 
     /**
-     * Enqueues one observation string or JSON array of strings into the grounded pending queue.
+     * Records a structured {@code (prompt, response)} pair (defaulting to confirmed {@code SEMANTIC}
+     * cognition eligible for next batch consolidation) and returns the created entry JSON.
      */
-    public String observe(String text, String optionsJson) {
+    public String addSample(String prompt, String response, String optionsJson) {
         try {
-            return controller_.observe(text, optionsJson);
-        } catch (IllegalArgumentException | LlmCoreException ex) {
+            return controller_.addSample(prompt, response, optionsJson);
+        } catch (IllegalArgumentException ex) {
             owner_.logException(ex);
             return null;
         }
     }
 
     /**
-     * Enqueues a structured (prompt, response) pair into Tier-1 episodic memory and Wake queue.
+     * Records a confirmed {@code CORRECTION} replacing erroneous inference output and schedules
+     * periodic weight consolidation when enabled.
      */
-    public String observePair(String prompt, String response, String optionsJson) {
+    public String correct(String inferenceId, String prompt, String correction, String optionsJson) {
         try {
-            return controller_.observePair(prompt, response, optionsJson);
-        } catch (IllegalArgumentException | LlmCoreException ex) {
+            return controller_.correct(inferenceId, prompt, correction, optionsJson);
+        } catch (IllegalArgumentException ex) {
             owner_.logException(ex);
             return null;
         }
     }
 
     /**
-     * Records acceptance, rejection, reward, or ground-truth correction for a prior inference or
-     * prompt/response pair.
+     * Records explicit {@code "accept"}, {@code "reject"}, or {@code "correct"} user feedback for a
+     * local inference via JSON object.
      */
     public String feedback(String feedbackJson) {
         try {
             return controller_.feedback(feedbackJson);
-        } catch (IllegalArgumentException | LlmCoreException ex) {
+        } catch (IllegalArgumentException ex) {
             owner_.logException(ex);
             return null;
         }
     }
 
     /**
-     * Ingests JSON payloads exported by {@code ladders.snapshot()}, {@code ladders.structure()},
-     * {@code ladders.drainTrace()}, or {@code ladders.drainObservations()} as continual training
-     * observations and feedback signals.
+     * Records a raw observation text (defaulting to {@code WORKING} TTL cognition) and returns
+     * whether it was accepted.
      */
-    public String observeLadder(String ladderJson, String optionsJson) {
+    public Boolean observe(String text, String optionsJson) {
         try {
-            return controller_.observeLadder(ladderJson, optionsJson);
-        } catch (IllegalArgumentException | LlmCoreException ex) {
+            return controller_.observe(text, optionsJson);
+        } catch (IllegalArgumentException ex) {
             owner_.logException(ex);
-            return null;
+            return false;
         }
     }
 
     /**
-     * Synchronously runs a single holdout-verified continual update tick when idle.
+     * Ingests serialized ladder JSON payloads ({@code "build"}, {@code "trace"},
+     * {@code "observations"}) into cognitive memory.
+     */
+    public Integer observeLadder(String sourceKind, String payloadJson, String optionsJson) {
+        try {
+            return controller_.observeLadder(sourceKind, payloadJson, optionsJson);
+        } catch (RuntimeException ex) {
+            owner_.logException(ex);
+            return 0;
+        }
+    }
+
+    /**
+     * Synchronously curates cognitive memory and runs one holdout-verified batch consolidation into
+     * local weights when the model is idle.
+     */
+    public String consolidateNow() {
+        return controller_.consolidateNow();
+    }
+
+    /**
+     * Alias for {@link #consolidateNow()} running one holdout-verified consolidation batch now.
      */
     public String stepNow() {
+        return controller_.consolidateNow();
+    }
+
+    /**
+     * Searches biological memory via hybrid lexical + origin/layer authority ranking.
+     */
+    public String searchMemory(String query, String optionsJson) {
         try {
-            return controller_.stepNow();
-        } catch (IllegalArgumentException | LlmCoreException ex) {
+            return controller_.searchMemory(query, optionsJson);
+        } catch (IllegalArgumentException ex) {
             owner_.logException(ex);
             return null;
         }
     }
 
     /**
-     * Synchronously triggers Sleep consolidation (LoRA merge, distillation, and Online EWC update).
+     * Lists active biological memory entries filtered by origin, layer, or scope.
      */
-    public String consolidate() {
+    public String listMemory(String optionsJson) {
         try {
-            return controller_.consolidateNow();
-        } catch (IllegalArgumentException | LlmCoreException ex) {
+            return controller_.listMemory(optionsJson);
+        } catch (IllegalArgumentException ex) {
             owner_.logException(ex);
             return null;
         }
     }
 
     /**
-     * Searches Tier-1 episodic memory via hybrid neural + lexical similarity.
+     * Pins or unpins a cognitive memory entry to shield it from forgetting or eviction.
      */
-    public String recall(String query, Integer topK) {
-        try {
-            return controller_.recall(query, (topK == null) ? 5 : topK.intValue());
-        } catch (IllegalArgumentException | LlmCoreException ex) {
-            owner_.logException(ex);
-            return null;
-        }
+    public String pinMemory(long id, boolean pinned) {
+        return controller_.pinMemory(id, pinned);
     }
 
     /**
-     * Lists stored episodic memories ordered by most recent access.
+     * Deletes a cognitive memory entry by ID. Immutable {@code INSTINCT} entries are protected.
      */
-    public String memories(Integer limit) {
-        return controller_.memories((limit == null) ? 50 : limit.intValue());
+    public Boolean forgetMemory(long id) {
+        return controller_.forgetMemory(id);
     }
 
     /**
-     * Pins or unpins an episodic memory to protect it from capacity eviction.
+     * Clears acquired {@code COGNITION} entries while preserving immutable {@code INSTINCT} rules
+     * and parent anchors.
      */
-    public Boolean pin(long episodeId, boolean pinned) {
-        return controller_.pin(episodeId, pinned);
-    }
-
-    /**
-     * Immediately erases an episodic memory and its positive/negative neural recall traces.
-     */
-    public Boolean forget(long episodeId) {
-        return controller_.forget(episodeId);
-    }
-
-    /**
-     * Clears pending, replay, holdout, and recent-inference continual buffers.
-     */
-    public Boolean clearMemory() {
-        controller_.clearMemory();
-        return true;
+    public Integer clearMemory() {
+        return controller_.clearCognitionMemory();
     }
 }
