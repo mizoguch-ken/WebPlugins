@@ -56,15 +56,15 @@ public final class LlmCore {
 
     private final Object lock_ = new Object();
 
-    private TransformerModel model_;
-    private Tokenizer tokenizer_;
-    private AdamW optimizer_;
-    private Dataset dataset_;
-    private Path path_;
+    private volatile TransformerModel model_;
+    private volatile Tokenizer tokenizer_;
+    private volatile AdamW optimizer_;
+    private volatile Dataset dataset_;
+    private volatile Path path_;
 
-    private long steps_;
-    private boolean loaded_;
-    private double loss_ = Double.NaN;
+    private volatile long steps_;
+    private volatile boolean loaded_;
+    private volatile double loss_ = Double.NaN;
     private volatile int running_;
     private volatile boolean stop_;
 
@@ -111,21 +111,31 @@ public final class LlmCore {
             ModelConfig config = (configuration == null) ? new ModelConfig()
                     : new ModelConfig(configuration);
 
+            if (!config.isValid()) {
+                throw new LlmCoreException("Invalid model configuration");
+            }
             if (!config.isTrainable()) {
                 throw new LlmCoreException("A model of " + config.parameters()
                         + " weights is too large : the plug-in accepts "
                         + ModelConfig.MAX_PARAMETERS + " weights");
             }
-            tokenizer_ = (config.vocabType() == ModelConfig.VOCAB_CHAR)
+            Tokenizer nextTokenizer = (config.vocabType() == ModelConfig.VOCAB_CHAR)
                     ? new CharTokenizer() : new ByteTokenizer();
-            config.setVocabSize(vocabularyOf(config, tokenizer_));
-            model_ = new TransformerModel(config);
-            optimizer_ = new AdamW(model_.weights());
-            dataset_ = new Dataset(tokenizer_);
+            config.setVocabSize(vocabularyOf(config, nextTokenizer));
+            if (!config.isTrainable()) {
+                throw new LlmCoreException("Invalid or oversized model configuration");
+            }
+            TransformerModel nextModel = new TransformerModel(config);
+
+            model_ = nextModel;
+            tokenizer_ = nextTokenizer;
+            optimizer_ = new AdamW(nextModel.weights(), nextModel.weightDecayMask());
+            dataset_ = new Dataset(nextTokenizer);
             path_ = null;
             steps_ = 0L;
             loaded_ = false;
             loss_ = Double.NaN;
+            stop_ = false;
         }
     }
 
@@ -181,14 +191,27 @@ public final class LlmCore {
                 }
                 System.arraycopy(weights[index], 0, read.weights()[index], 0, weights[index].length);
             }
+            AdamW opt = new AdamW(read.weights(), read.weightDecayMask());
+            ModelStore.Metadata meta = content.metadata();
+
+            if (Double.isFinite(meta.learningRate())) {
+                opt.setLearningRate(meta.learningRate());
+            }
+            if (Double.isFinite(meta.weightDecay())) {
+                opt.setWeightDecay(meta.weightDecay());
+            }
+            if (Double.isFinite(meta.largestGradient())) {
+                opt.setLargestGradient(meta.largestGradient());
+            }
             model_ = read;
             tokenizer_ = content.tokenizer();
-            optimizer_ = new AdamW(model_.weights());
+            optimizer_ = opt;
             dataset_ = new Dataset(tokenizer_);
             path_ = file;
-            steps_ = 0L;
+            steps_ = meta.steps();
             loaded_ = true;
-            loss_ = Double.NaN;
+            loss_ = meta.loss();
+            stop_ = false;
         }
     }
 
@@ -203,7 +226,13 @@ public final class LlmCore {
             ready();
             busy();
 
-            String failure = ModelStore.save(file, model_.config(), tokenizer_, model_.weights());
+            AdamW opt = optimizer_;
+            ModelStore.Metadata meta = (opt == null)
+                    ? ModelStore.Metadata.EMPTY
+                    : new ModelStore.Metadata(steps_, loss_, opt.learningRate(),
+                            opt.weightDecay(), opt.largestGradient());
+            String failure = ModelStore.save(file, model_.config(), tokenizer_,
+                    model_.weights(), meta);
 
             if (failure != null) {
                 throw new LlmCoreException(failure);
@@ -226,6 +255,7 @@ public final class LlmCore {
             steps_ = 0L;
             loaded_ = false;
             loss_ = Double.NaN;
+            stop_ = false;
         }
     }
 
@@ -248,7 +278,8 @@ public final class LlmCore {
      * @return the sizes, null when the core holds no model
      */
     public ModelConfig config() {
-        return (model_ == null) ? null : model_.config();
+        TransformerModel m = model_;
+        return (m == null) ? null : m.config();
     }
 
     /**
@@ -266,7 +297,8 @@ public final class LlmCore {
      * @return the number of the weights, zero when the core holds no model
      */
     public long parameters() {
-        return (model_ == null) ? 0L : model_.config().parameters();
+        TransformerModel m = model_;
+        return (m == null) ? 0L : m.config().parameters();
     }
 
     /**
@@ -293,7 +325,8 @@ public final class LlmCore {
      * @return the number of the texts
      */
     public int texts() {
-        return dataset_.count();
+        Dataset d = dataset_;
+        return (d == null) ? 0 : d.count();
     }
 
     /**
@@ -302,7 +335,8 @@ public final class LlmCore {
      * @return the number of the tokens
      */
     public long tokens() {
-        return dataset_.tokens();
+        Dataset d = dataset_;
+        return (d == null) ? 0L : d.tokens();
     }
 
     /**
@@ -360,9 +394,8 @@ public final class LlmCore {
      * @return active optimizer learning rate, or NaN if no model is loaded
      */
     public double learningRate() {
-        synchronized (lock_) {
-            return (optimizer_ == null) ? Double.NaN : optimizer_.learningRate();
-        }
+        AdamW opt = optimizer_;
+        return (opt == null) ? Double.NaN : opt.learningRate();
     }
 
     /**
@@ -386,9 +419,8 @@ public final class LlmCore {
      * @return active optimizer weight decay, or NaN if no model is loaded
      */
     public double weightDecay() {
-        synchronized (lock_) {
-            return (optimizer_ == null) ? Double.NaN : optimizer_.weightDecay();
-        }
+        AdamW opt = optimizer_;
+        return (opt == null) ? Double.NaN : opt.weightDecay();
     }
 
     /**
@@ -412,9 +444,8 @@ public final class LlmCore {
      * @return active gradient clipping threshold, or NaN if no model is loaded
      */
     public double largestGradient() {
-        synchronized (lock_) {
-            return (optimizer_ == null) ? Double.NaN : optimizer_.largestGradient();
-        }
+        AdamW opt = optimizer_;
+        return (opt == null) ? Double.NaN : opt.largestGradient();
     }
 
     /**
@@ -505,14 +536,39 @@ public final class LlmCore {
          */
         public final double seconds;
 
+        /**
+         * true when evaluation exited early because {@link #stop()} was requested
+         */
+        public final boolean stopped;
+
         private EvalResult(double loss, double perplexity, long tokens, int windows,
-                double seconds) {
+                double seconds, boolean stopped) {
             this.loss = loss;
             this.perplexity = perplexity;
             this.tokens = tokens;
             this.windows = windows;
             this.seconds = seconds;
+            this.stopped = stopped;
         }
+    }
+
+    /**
+     * Training schedule and gradient accumulation parameters.
+     *
+     * @param epochs number of passes over training windows in {@code [1, MAX_EPOCHS]}
+     * @param learningRate peak learning rate in {@code (0, 0.1]}, or null to keep optimizer value
+     * @param minLearningRate optional cosine decay floor in {@code [0, peakLearningRate]}, or
+     * null for constant learning rate
+     * @param warmupSteps number of linear warmup optimizer steps ({@code >= 0})
+     * @param gradientAccumulation number of micro-batches accumulated per optimizer step
+     * ({@code >= 1})
+     */
+    public record TrainOptions(
+            int epochs,
+            Double learningRate,
+            Double minLearningRate,
+            int warmupSteps,
+            int gradientAccumulation) {
     }
 
     /**
@@ -533,6 +589,7 @@ public final class LlmCore {
             double totalLoss = 0d;
             long totalTokens = 0L;
             int windows = 0;
+            boolean stopped = false;
 
             running_ = EVALUATING;
             double began = System.nanoTime();
@@ -540,6 +597,7 @@ public final class LlmCore {
                 if (texts != null) {
                     for (String text : texts) {
                         if (stop_) {
+                            stopped = true;
                             break;
                         }
                         if ((text == null) || text.isEmpty()) {
@@ -552,7 +610,11 @@ public final class LlmCore {
                         int[] seq = Arrays.copyOf(encoded, encoded.length + 1);
                         seq[encoded.length] = tokenizer_.end();
                         int offset = 0;
-                        while ((offset < (seq.length - 1)) && !stop_) {
+                        while (offset < (seq.length - 1)) {
+                            if (stop_) {
+                                stopped = true;
+                                break;
+                            }
                             int len = Math.min(context, seq.length - offset);
                             System.arraycopy(seq, offset, window, 0, len);
                             double wLoss = model_.loss(window, len);
@@ -565,14 +627,21 @@ public final class LlmCore {
                             windows++;
                             offset += stepTokens;
                         }
+                        if (stopped) {
+                            break;
+                        }
                     }
                 }
                 if (totalTokens == 0L) {
+                    if (stopped) {
+                        return new EvalResult(Double.NaN, Double.NaN, 0L, 0, seconds(began), true);
+                    }
                     throw new LlmCoreException("The texts hold nothing to evaluate");
                 }
                 double mean = totalLoss / totalTokens;
                 double perplexity = Math.exp(mean);
-                return new EvalResult(mean, perplexity, totalTokens, windows, seconds(began));
+                return new EvalResult(mean, perplexity, totalTokens, windows, seconds(began),
+                        stopped);
             } catch (OutOfMemoryError memory) {
                 throw new LlmCoreException("Not enough memory to evaluate : ask a shorter text");
             } finally {
@@ -601,34 +670,138 @@ public final class LlmCore {
      */
     public TrainResult train(List<String> texts, int epochs, Double learningRate,
             LlmCoreListener listener) {
+        return train(texts, new TrainOptions(epochs, learningRate, null, 0, 1), listener);
+    }
+
+    /**
+     * trains the model over {@code texts} with configurable learning-rate warmup/cosine decay and
+     * gradient accumulation
+     *
+     * @param texts texts of the training
+     * @param options training schedule and accumulation options
+     * @param listener training callback listener, or null
+     * @return training result summary
+     * @throws LlmCoreException when no model is held, options/texts are invalid, or memory is
+     * insufficient
+     */
+    public TrainResult train(List<String> texts, TrainOptions options, LlmCoreListener listener) {
         synchronized (lock_) {
             ready();
             busy();
+            if (options == null) {
+                throw new LlmCoreException("Training options are required");
+            }
+            int epochs = options.epochs();
+
             if ((epochs < 1) || (epochs > MAX_EPOCHS)) {
                 throw new LlmCoreException("A training of " + epochs
                         + " epochs is refused : use 1 to " + MAX_EPOCHS + " epochs");
             }
+            Double learningRate = options.learningRate();
+
+            if (learningRate != null) {
+                double lr = learningRate.doubleValue();
+
+                if (!Double.isFinite(lr) || (lr <= 0d) || (lr > 0.1d)) {
+                    throw new LlmCoreException("A learning rate of " + learningRate
+                            + " is refused : use a rate between 0 and 0.1");
+                }
+            }
+            double peakLr = (learningRate != null) ? learningRate.doubleValue()
+                    : optimizer_.learningRate();
+
+            if (options.minLearningRate() != null) {
+                double minLr = options.minLearningRate().doubleValue();
+
+                if (!Double.isFinite(minLr) || (minLr < 0d) || (minLr > peakLr)) {
+                    throw new LlmCoreException("A minimum learning rate of " + minLr
+                            + " is refused : use a rate between 0 and " + peakLr);
+                }
+            }
+            if (options.warmupSteps() < 0) {
+                throw new LlmCoreException("Warmup steps must be non-negative: "
+                        + options.warmupSteps());
+            }
+            if (options.gradientAccumulation() < 1) {
+                throw new LlmCoreException("Gradient accumulation steps must be at least 1: "
+                        + options.gradientAccumulation());
+            }
             LlmCoreListener told = (listener == null) ? NONE : listener;
+            double began = System.nanoTime();
+
+            Tokenizer candidateTokenizer = tokenizer_;
+            TransformerModel candidateModel = model_;
+            AdamW candidateOptimizer = optimizer_;
+            final Dataset candidateDataset;
+            boolean expanded = false;
+
+            if (candidateTokenizer instanceof CharTokenizer currentChar) {
+                if ((steps_ > 0L) || loaded_) {
+                    if (currentChar.hasUnseen(texts)) {
+                        throw new LlmCoreException("The model vocabulary is locked after "
+                                + "training or loading : build a new model to learn unseen "
+                                + "characters");
+                    }
+                    candidateDataset = new Dataset(currentChar);
+                    candidateDataset.addAll(texts, false);
+                    if (candidateDataset.isShort()) {
+                        throw new LlmCoreException("The texts hold nothing to learn");
+                    }
+                } else {
+                    CharTokenizer tempChar = currentChar.copy();
+
+                    candidateDataset = new Dataset(tempChar);
+                    candidateDataset.addAll(texts, true);
+                    if (candidateDataset.isShort()) {
+                        throw new LlmCoreException("The texts hold nothing to learn");
+                    }
+                    int targetVocab = Math.max(ModelConfig.MIN_VOCAB, tempChar.size());
+
+                    if (targetVocab != candidateModel.vocabulary()) {
+                        ModelConfig rebuiltConfig = new ModelConfig(candidateModel.config());
+
+                        if (!rebuiltConfig.setVocabSize(targetVocab)
+                                || !rebuiltConfig.isTrainable()) {
+                            throw new LlmCoreException("A vocabulary of " + targetVocab
+                                    + " tokens exceeds the limits of the model");
+                        }
+                        candidateModel = new TransformerModel(rebuiltConfig);
+                        candidateOptimizer = new AdamW(candidateModel.weights(),
+                                candidateModel.weightDecayMask());
+                        candidateOptimizer.setLearningRate(optimizer_.learningRate());
+                        candidateOptimizer.setWeightDecay(optimizer_.weightDecay());
+                        candidateOptimizer.setLargestGradient(optimizer_.largestGradient());
+                        expanded = true;
+                    }
+                    candidateTokenizer = tempChar;
+                }
+            } else {
+                candidateDataset = new Dataset(candidateTokenizer);
+                candidateDataset.addAll(texts, false);
+                if (candidateDataset.isShort()) {
+                    throw new LlmCoreException("The texts hold nothing to learn");
+                }
+            }
+
+            // Commit validated model/tokenizer/dataset atomically before entering the loop.
+            tokenizer_ = candidateTokenizer;
+            model_ = candidateModel;
+            optimizer_ = candidateOptimizer;
+            dataset_ = candidateDataset;
+            if (learningRate != null) {
+                optimizer_.setLearningRate(learningRate.doubleValue());
+            }
+            if (expanded) {
+                told.onLog("the model learned a vocabulary of " + candidateTokenizer.size()
+                        + " tokens");
+            }
 
             running_ = TRAINING;
             /* no stop_ of its own : a stop the page asked while this training was still waiting for
             its turn is kept, so the training of that page stops at its first step */
 
-            double began = System.nanoTime();
             try {
-                dataset_ = new Dataset(tokenizer_);
-                dataset_.addAll(texts);
-                if (dataset_.isShort()) {
-                    throw new LlmCoreException("The texts hold nothing to learn");
-                }
-                fitVocabulary(told);
-                if (learningRate != null) {
-                    if (!optimizer_.setLearningRate(learningRate.doubleValue())) {
-                        throw new LlmCoreException("A learning rate of " + learningRate
-                                + " is refused : use a rate between 0 and 0.1");
-                    }
-                }
-                return read(epochs, began, told);
+                return read(options, began, told);
             } catch (OutOfMemoryError memory) {
                 throw new LlmCoreException("Not enough memory for this model : make the model or"
                         + " the texts smaller and train again");
@@ -640,106 +813,147 @@ public final class LlmCore {
     }
 
     /**
-     * the model built again when the vocabulary of the tokens it reads changed
+     * the epochs of a training : shuffles all training windows each epoch, supports linear warmup,
+     * cosine learning-rate decay, and gradient accumulation
      *
-     * @param listener the reason told to the page
-     */
-    private void fitVocabulary(LlmCoreListener listener) {
-        int found = tokenizer_.size();
-
-        if (found == model_.vocabulary()) {
-            return;
-        }
-        if ((steps_ > 0L) || loaded_) {
-            throw new LlmCoreException("The texts hold " + found + " tokens, the model learned "
-                    + model_.vocabulary() + " : build a new model to learn these texts");
-        }
-        ModelConfig config = new ModelConfig(model_.config());
-
-        if (!config.setVocabSize(found) || !config.isTrainable()) {
-            throw new LlmCoreException("A vocabulary of " + found + " tokens exceeds the limits of the model");
-        }
-        AdamW previous = optimizer_;
-        model_ = new TransformerModel(config);
-        AdamW rebuilt = new AdamW(model_.weights());
-        if (previous != null) {
-            rebuilt.setLearningRate(previous.learningRate());
-            rebuilt.setWeightDecay(previous.weightDecay());
-            rebuilt.setLargestGradient(previous.largestGradient());
-        }
-        optimizer_ = rebuilt;
-        listener.onLog("the model learned a vocabulary of " + found + " tokens");
-    }
-
-    /**
-     * the epochs of a training : the texts are drawn in a random order, so the model does not answer
-     * the last text it read
-     *
-     * @param epochs epochs to read
+     * @param options validated training options
      * @param began the nanoseconds the training started at
      * @param listener the steps of the training told to the page
      * @return the end of the training
      */
-    private TrainResult read(int epochs, double began, LlmCoreListener listener) {
+    private TrainResult read(TrainOptions options, double began, LlmCoreListener listener) {
+        int epochs = options.epochs();
+        int accum = options.gradientAccumulation();
         int context = model_.context();
-        List<Integer> order = new ArrayList<>(dataset_.count());
-        List<List<int[]>> allWindows = new ArrayList<>(dataset_.count());
-        int planned = 0;
+        List<int[]> allWindows = new ArrayList<>();
 
         for (int index = 0; index < dataset_.count(); index++) {
-            order.add(index);
-            List<int[]> windows = dataset_.windows(index, context);
-            allWindows.add(windows);
-            planned += windows.size();
+            allWindows.addAll(dataset_.windows(index, context));
         }
+        long planned = allWindows.size();
         long report = Math.max(1L, planned / 10L);
+        long stepsPerEpoch = (planned + accum - 1L) / accum;
+        long totalPlannedSteps = (long) epochs * stepsPerEpoch;
+        double peakLr = optimizer_.learningRate();
+        double minLr = (options.minLearningRate() != null)
+                ? options.minLearningRate().doubleValue() : peakLr;
+        int warmup = options.warmupSteps();
+        boolean useSchedule = (warmup > 0) || (options.minLearningRate() != null);
         Random random = new Random(model_.config().seed() + steps_);
 
-        long read = 0L;
+        long optStepCount = 0L;
+        long callSteps = 0L;
         int done = 0;
-        double mean = Double.NaN;
+        double mean = loss_;
         boolean stopped = false;
 
         epochs:
         for (int epoch = 1; epoch <= epochs; epoch++) {
-            Collections.shuffle(order, random);
+            Collections.shuffle(allWindows, random);
 
-            double sum = 0d;
-            long each = 0L;
+            double epochLossSum = 0d;
+            long epochWindows = 0L;
+            double accumLossSum = 0d;
+            int microCount = 0;
+            long wIdx = 0L;
 
-            for (int index : order) {
-                for (int[] window : allWindows.get(index)) {
-                    TransformerModel.Step step = model_.newStep(window.length, true);
+            for (int[] window : allWindows) {
+                if (stop_) {
+                    if (microCount > 0) {
+                        optStepCount++;
+                        double lr = useSchedule
+                                ? scheduledLearningRate(peakLr, minLr, warmup, optStepCount,
+                                        totalPlannedSteps)
+                                : peakLr;
+                        double norm = optimizer_.step(model_.weights(), model_.gradients(), lr,
+                                1d / microCount);
+                        if (Double.isFinite(norm)) {
+                            steps_++;
+                            callSteps++;
+                            epochLossSum += accumLossSum;
+                            epochWindows += microCount;
+                        } else {
+                            listener.onLog("the gradients of a step are not a number : lower the"
+                                    + " learning rate and train again");
+                        }
+                    }
+                    if (epochWindows > 0L) {
+                        mean = epochLossSum / epochWindows;
+                        loss_ = mean;
+                    }
+                    stopped = true;
+                    break epochs;
+                }
+                TransformerModel.Step step = model_.newStep(window.length, true);
 
-                    model_.forward(window, window.length, step);
+                model_.forward(window, window.length, step);
 
-                    double error = model_.backward(window, window.length, step);
-                    double norm = optimizer_.step(model_.weights(), model_.gradients());
+                double error = model_.backward(window, window.length, step, microCount > 0);
+                wIdx++;
 
-                    read++;
-                    steps_++;
-                    each++;
-                    sum += error;
+                if (!Double.isFinite(error)) {
+                    for (float[] gradient : model_.gradients()) {
+                        Tensor.zero(gradient);
+                    }
+                    microCount = 0;
+                    accumLossSum = 0d;
+                    listener.onLog("the gradients of a step are not a number : lower the"
+                            + " learning rate and train again");
+                    continue;
+                }
+                microCount++;
+                accumLossSum += error;
+                double reportedLoss = error;
 
-                    if (!Double.isFinite(norm)) {
+                if ((microCount == accum) || (wIdx == planned)) {
+                    optStepCount++;
+                    double lr = useSchedule
+                            ? scheduledLearningRate(peakLr, minLr, warmup, optStepCount,
+                                    totalPlannedSteps)
+                            : peakLr;
+                    double norm = optimizer_.step(model_.weights(), model_.gradients(), lr,
+                            1d / microCount);
+                    if (Double.isFinite(norm)) {
+                        steps_++;
+                        callSteps++;
+                        epochLossSum += accumLossSum;
+                        epochWindows += microCount;
+                        reportedLoss = accumLossSum / microCount;
+                    } else {
                         listener.onLog("the gradients of a step are not a number : lower the"
                                 + " learning rate and train again");
                     }
-                    if ((read % report) == 0L) {
-                        listener.onProgress(epoch, epochs, steps_, error, seconds(began));
-                    }
-                    if (stop_) {
-                        stopped = true;
-                        break epochs;
-                    }
+                    microCount = 0;
+                    accumLossSum = 0d;
+                }
+                if ((wIdx < planned) && ((wIdx % report) == 0L)) {
+                    listener.onProgress(epoch, epochs, steps_, reportedLoss, seconds(began));
                 }
             }
             done = epoch;
-            mean = (each == 0L) ? Double.NaN : (sum / each);
+            mean = (epochWindows == 0L) ? Double.NaN : (epochLossSum / epochWindows);
             loss_ = mean;
             listener.onProgress(epoch, epochs, steps_, mean, seconds(began));
         }
-        return new TrainResult(mean, read, done, seconds(began), stopped);
+        return new TrainResult(mean, callSteps, done, seconds(began), stopped);
+    }
+
+    private static double scheduledLearningRate(double peakLr, double minLr, int warmup,
+            long optStep, long totalPlannedSteps) {
+        if ((warmup > 0) && (optStep <= warmup)) {
+            return peakLr * ((double) optStep / warmup);
+        }
+        if (minLr == peakLr) {
+            return peakLr;
+        }
+        long decayTotal = totalPlannedSteps - warmup;
+        if (decayTotal <= 1L) {
+            return peakLr;
+        }
+        double progress = Math.clamp((double) (optStep - warmup - 1L) / (decayTotal - 1L),
+                0d, 1d);
+        double cosine = 0.5d * (1d + Math.cos(Math.PI * progress));
+        return minLr + ((peakLr - minLr) * cosine);
     }
 
     /**
@@ -838,10 +1052,26 @@ public final class LlmCore {
             LlmCoreListener listener, double began) {
         int context = model_.context();
         int[] asked = tokenizer_.encode(prompt);
-        int length = Math.min(asked.length, context - 1);
+        int length = Math.min(asked.length, context);
         int[] window = new int[context];
 
         System.arraycopy(asked, asked.length - length, window, 0, length);
+        if (length == 0) {
+            window[length++] = tokenizer_.end();
+        }
+        if (stop_) {
+            return new AnswerResult("", 0, seconds(began), true, false);
+        }
+        TransformerModel.KvCache cache = (length < context) ? model_.newCache() : null;
+        float[] logits;
+
+        if (cache == null) {
+            logits = model_.logits(window, context);
+        } else if (length == 1) {
+            logits = model_.step(window[0], 0, cache, true);
+        } else {
+            logits = model_.prefillInternal(window, length, cache);
+        }
 
         Stream stream = new Stream(tokenizer_);
         int made = 0;
@@ -849,10 +1079,11 @@ public final class LlmCore {
         boolean stopped = false;
 
         for (int index = 0; index < limit; index++) {
-            if (length == 0) {
-                window[length++] = tokenizer_.end();
+            if (stop_) {
+                stopped = true;
+                break;
             }
-            int token = sampler.pick(model_.logits(window, length));
+            int token = sampler.pick(logits, window, length);
 
             if (token < 0) {
                 break;
@@ -861,17 +1092,27 @@ public final class LlmCore {
                 ended = true;
                 break;
             }
-            if (length == context) {
-                System.arraycopy(window, 1, window, 0, context - 1);
-                length = context - 1;
-            }
-            window[length++] = token;
-            made++;
-            listener.onToken(stream.add(token));
+            String piece = stream.add(token);
 
+            made++;
+            if (!piece.isEmpty()) {
+                listener.onToken(piece);
+            }
+            if ((index + 1) >= limit) {
+                break;
+            }
             if (stop_) {
                 stopped = true;
                 break;
+            }
+            if (length < context) {
+                window[length] = token;
+                logits = model_.step(token, length, cache, true);
+                length++;
+            } else {
+                System.arraycopy(window, 1, window, 0, context - 1);
+                window[context - 1] = token;
+                logits = model_.logits(window, context);
             }
         }
         String tail = stream.flush();
@@ -891,8 +1132,11 @@ public final class LlmCore {
         private final Tokenizer tokenizer_;
         private final CharsetDecoder decoder_;
         private final StringBuilder text_;
+        private final CharBuffer charOut_;
+        private final int[] singleToken_;
 
         private byte[] pending_;
+        private int pendingLength_;
 
         private Stream(Tokenizer tokenizer) {
             tokenizer_ = tokenizer;
@@ -900,7 +1144,9 @@ public final class LlmCore {
                     .onMalformedInput(CodingErrorAction.REPLACE)
                     .onUnmappableCharacter(CodingErrorAction.REPLACE);
             text_ = new StringBuilder();
-            pending_ = new byte[0];
+            charOut_ = CharBuffer.allocate(16);
+            singleToken_ = new int[1];
+            pending_ = new byte[8];
         }
 
         /**
@@ -911,28 +1157,30 @@ public final class LlmCore {
          * token is not complete yet
          */
         private String add(int token) {
-            String piece;
-
             if (!(tokenizer_ instanceof ByteTokenizer)) {
-                piece = tokenizer_.decode(new int[] { token });
+                singleToken_[0] = token;
+                String piece = tokenizer_.decode(singleToken_);
                 text_.append(piece);
                 return piece;
             }
-            byte[] merged = Arrays.copyOf(pending_, pending_.length + 1);
+            if (pendingLength_ == pending_.length) {
+                pending_ = Arrays.copyOf(pending_, pending_.length * 2);
+            }
+            pending_[pendingLength_++] = (byte) token;
 
-            merged[pending_.length] = (byte) token;
-
-            ByteBuffer source = ByteBuffer.wrap(merged);
-            CharBuffer written = CharBuffer.allocate(merged.length + 4);
-
+            ByteBuffer source = ByteBuffer.wrap(pending_, 0, pendingLength_);
+            charOut_.clear();
             decoder_.reset();
-            decoder_.decode(source, written, false);
-            written.flip();
+            decoder_.decode(source, charOut_, false);
+            charOut_.flip();
 
-            piece = written.toString();
-            pending_ = new byte[source.remaining()];
-            source.get(pending_);
+            String piece = charOut_.toString();
+            int remaining = source.remaining();
 
+            if ((remaining > 0) && (source.position() > 0)) {
+                System.arraycopy(pending_, source.position(), pending_, 0, remaining);
+            }
+            pendingLength_ = remaining;
             text_.append(piece);
             return piece;
         }
@@ -943,19 +1191,19 @@ public final class LlmCore {
          * @return replacement text for incomplete trailing bytes, or empty string
          */
         private String flush() {
-            if (!(tokenizer_ instanceof ByteTokenizer) || (pending_.length == 0)) {
+            if (!(tokenizer_ instanceof ByteTokenizer) || (pendingLength_ == 0)) {
                 return "";
             }
-            ByteBuffer source = ByteBuffer.wrap(pending_);
-            CharBuffer written = CharBuffer.allocate(pending_.length + 4);
+            ByteBuffer source = ByteBuffer.wrap(pending_, 0, pendingLength_);
 
+            charOut_.clear();
             decoder_.reset();
-            decoder_.decode(source, written, true);
-            decoder_.flush(written);
-            written.flip();
+            decoder_.decode(source, charOut_, true);
+            decoder_.flush(charOut_);
+            charOut_.flip();
 
-            String piece = written.toString();
-            pending_ = new byte[0];
+            String piece = charOut_.toString();
+            pendingLength_ = 0;
             text_.append(piece);
             return piece;
         }

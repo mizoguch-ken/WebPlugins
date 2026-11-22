@@ -11,24 +11,46 @@ public final class AdamW {
 
     private final float[][] first_;
     private final float[][] second_;
+    private final boolean[] decayMask_;
 
-    private int steps_;
-    private double learningRate_;
-    private double weightDecay_;
-    private double largestGradient_;
+    private volatile int steps_;
+    private volatile double learningRate_;
+    private volatile double weightDecay_;
+    private volatile double largestGradient_;
 
     /**
-     * an optimizer of the weights given
+     * an optimizer of the weights given (applies weight decay to all leaves)
      *
      * @param weights the weights of the model, one array for every matrix and vector
      */
     public AdamW(float[][] weights) {
+        this(weights, null);
+    }
+
+    /**
+     * an optimizer of the weights given with an optional per-tensor weight-decay mask
+     *
+     * @param weights the weights of the model, one array for every matrix and vector
+     * @param decayMask per-leaf flags selecting tensors subject to weight decay, or null for all
+     */
+    public AdamW(float[][] weights, boolean[] decayMask) {
+        if (weights == null) {
+            throw new LlmCoreException("Model weights are required");
+        }
+        if ((decayMask != null) && (decayMask.length != weights.length)) {
+            throw new LlmCoreException("Decay mask length (" + decayMask.length
+                    + ") does not match weights length (" + weights.length + ")");
+        }
         first_ = new float[weights.length][];
         second_ = new float[weights.length][];
         for (int index = 0; index < weights.length; index++) {
+            if (weights[index] == null) {
+                throw new LlmCoreException("Missing weight array at index " + index);
+            }
             first_[index] = new float[weights[index].length];
             second_[index] = new float[weights[index].length];
         }
+        decayMask_ = (decayMask == null) ? null : decayMask.clone();
         learningRate_ = 0.003d;
         weightDecay_ = 0.01d;
         largestGradient_ = 1d;
@@ -122,7 +144,40 @@ public final class AdamW {
      * @return the norm of the gradients before the cut of the step
      */
     public double step(float[][] weights, float[][] gradients) {
-        double norm = Tensor.norm(gradients);
+        return step(weights, gradients, learningRate_, 1d);
+    }
+
+    /**
+     * move the weights using an explicit learning rate (e.g. from a scheduler) and pre-clip
+     * gradient multiplier (e.g. {@code 1.0 / accumulationSteps}), then clear gradients
+     *
+     * @param weights model weights to update
+     * @param gradients parameter gradients to apply and zero
+     * @param effectiveLearningRate learning rate for this optimizer step ({@code >= 0})
+     * @param gradientScale multiplier applied to raw gradients before global norm clipping
+     * @return global L2 norm of the scaled gradients before clipping
+     */
+    public double step(float[][] weights, float[][] gradients, double effectiveLearningRate,
+            double gradientScale) {
+        if ((weights == null) || (gradients == null) || (weights.length != first_.length)
+                || (gradients.length != first_.length)) {
+            throw new LlmCoreException("Weight or gradient array count does not match optimizer");
+        }
+        if (!Double.isFinite(effectiveLearningRate) || (effectiveLearningRate < 0d)) {
+            throw new LlmCoreException("Invalid effective learning rate: " + effectiveLearningRate);
+        }
+        if (!Double.isFinite(gradientScale) || (gradientScale <= 0d)) {
+            throw new LlmCoreException("Invalid gradient scale: " + gradientScale);
+        }
+        for (int leaf = 0; leaf < first_.length; leaf++) {
+            if ((weights[leaf] == null) || (gradients[leaf] == null)
+                    || (weights[leaf].length != first_[leaf].length)
+                    || (gradients[leaf].length != first_[leaf].length)) {
+                throw new LlmCoreException("Mismatched weight or gradient array at index " + leaf);
+            }
+        }
+        double rawNorm = Tensor.norm(gradients);
+        double norm = rawNorm * gradientScale;
 
         if (!Double.isFinite(norm)) {
             for (float[] gradient : gradients) {
@@ -130,40 +185,88 @@ public final class AdamW {
             }
             return norm;
         }
-        double scale = ((largestGradient_ > 0d) && (norm > largestGradient_))
-                ? (largestGradient_ / norm) : 1d;
+        double clip = largestGradient_;
+        double totalScale = ((clip > 0d) && (norm > clip)) ? (clip / rawNorm) : gradientScale;
+        double wd = weightDecay_;
+        boolean[] mask = decayMask_;
 
-        steps_++;
+        int stepCount = steps_ + 1;
+        steps_ = stepCount;
 
-        double firstPower = 1d - Math.pow(0.9d, steps_);
-        double secondPower = 1d - Math.pow(0.999d, steps_);
-        long values = 0L;
+        double stepSize = effectiveLearningRate / (1d - Math.pow(0.9d, stepCount));
+        double invSecondPower = 1d / (1d - Math.pow(0.999d, stepCount));
+        double baseDecay = (wd > 0d) ? (effectiveLearningRate * wd) : 0d;
 
-        for (float[] weight : weights) {
-            values += weight.length;
-        }
-        Tensor.blocks(weights.length, values, (from, to) -> {
-            for (int leaf = from; leaf < to; leaf++) {
-                float[] weight = weights[leaf];
+        int[] smallLeaves = new int[weights.length];
+        int smallCount = 0;
+        long smallValues = 0L;
+
+        for (int leaf = 0; leaf < weights.length; leaf++) {
+            float[] weight = weights[leaf];
+
+            if (weight.length >= Tensor.PART_VALUES) {
                 float[] gradient = gradients[leaf];
                 float[] first = first_[leaf];
                 float[] second = second_[leaf];
+                double leafDecay = ((mask == null) || mask[leaf]) ? baseDecay : 0d;
 
-                for (int index = 0; index < weight.length; index++) {
-                    double value = gradient[index] * scale;
-
-                    first[index] = (float) ((0.9d * first[index]) + (0.1d * value));
-                    second[index] = (float) ((0.999d * second[index]) + (0.001d * value * value));
-
-                    double moved = (first[index] / firstPower)
-                            / ((Math.sqrt(second[index] / secondPower)) + 1e-8d);
-
-                    weight[index] -= (float) (learningRate_ * moved);
-                    weight[index] -= (float) (learningRate_ * weightDecay_ * weight[index]);
-                    gradient[index] = 0f;
-                }
+                Tensor.blocks(weight.length, weight.length,
+                        (from, to) -> updateSlice(weight, gradient, first, second, from, to,
+                                totalScale, stepSize, invSecondPower, leafDecay));
+            } else {
+                smallLeaves[smallCount++] = leaf;
+                smallValues += weight.length;
             }
-        });
+        }
+        if (smallCount > 0) {
+            final int totalSmall = smallCount;
+            Tensor.blocks(totalSmall, smallValues, (from, to) -> {
+                for (int idx = from; idx < to; idx++) {
+                    int leaf = smallLeaves[idx];
+                    float[] weight = weights[leaf];
+                    double leafDecay = ((mask == null) || mask[leaf]) ? baseDecay : 0d;
+
+                    updateSlice(weight, gradients[leaf], first_[leaf], second_[leaf], 0,
+                            weight.length, totalScale, stepSize, invSecondPower, leafDecay);
+                }
+            });
+        }
         return norm;
+    }
+
+    private static void updateSlice(float[] weight, float[] gradient, float[] first, float[] second,
+            int from, int to, double totalScale, double stepSize, double invSecondPower,
+            double decayRate) {
+        if (decayRate > 0d) {
+            for (int index = from; index < to; index++) {
+                double value = gradient[index] * totalScale;
+                double m = (0.9d * first[index]) + (0.1d * value);
+                double v = (0.999d * second[index]) + (0.001d * value * value);
+
+                first[index] = (float) m;
+                second[index] = (float) v;
+
+                double moved = (m * stepSize) / (Math.sqrt(v * invSecondPower) + 1e-8d);
+                double w = weight[index];
+
+                w -= (decayRate * w) + moved;
+                weight[index] = (float) w;
+                gradient[index] = 0f;
+            }
+        } else {
+            for (int index = from; index < to; index++) {
+                double value = gradient[index] * totalScale;
+                double m = (0.9d * first[index]) + (0.1d * value);
+                double v = (0.999d * second[index]) + (0.001d * value * value);
+
+                first[index] = (float) m;
+                second[index] = (float) v;
+
+                double moved = (m * stepSize) / (Math.sqrt(v * invSecondPower) + 1e-8d);
+
+                weight[index] = (float) (weight[index] - moved);
+                gradient[index] = 0f;
+            }
+        }
     }
 }

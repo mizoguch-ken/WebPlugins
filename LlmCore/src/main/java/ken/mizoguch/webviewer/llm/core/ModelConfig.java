@@ -79,6 +79,9 @@ public final class ModelConfig {
      */
     public ModelConfig(ModelConfig other) {
         this();
+        if (other == null) {
+            return;
+        }
         vocabType_ = other.vocabType_;
         vocabSize_ = other.vocabSize_;
         dModel_ = other.dModel_;
@@ -241,12 +244,83 @@ public final class ModelConfig {
     }
 
     /**
+     * checks every architectural invariant (valid vocabulary type/size, bounded dimensions, and
+     * {@code dModel} divisible by {@code heads})
+     *
+     * @return true when every configuration field is internally consistent
+     */
+    public boolean isValid() {
+        if (vocabType_ == VOCAB_BYTE) {
+            if (vocabSize_ != ByteTokenizer.SIZE) {
+                return false;
+            }
+        } else if (vocabType_ == VOCAB_CHAR) {
+            if ((vocabSize_ < 0) || (vocabSize_ > MAX_VOCAB)) {
+                return false;
+            }
+        } else {
+            return false;
+        }
+        if ((dModel_ < MIN_D_MODEL) || (dModel_ > MAX_D_MODEL)) {
+            return false;
+        }
+        if ((heads_ < MIN_HEADS) || (heads_ > MAX_HEADS) || ((dModel_ % heads_) != 0)) {
+            return false;
+        }
+        if ((layers_ < MIN_LAYERS) || (layers_ > MAX_LAYERS)) {
+            return false;
+        }
+        return (context_ >= MIN_CONTEXT) && (context_ <= MAX_CONTEXT);
+    }
+
+    /**
      * the configuration of a model the memory of the computer can hold : the sizes given by a page
      * are not trusted, because a model of a hundred million weights would stop the WebViewer
      *
-     * @return false when the model is too large to be trained
+     * @return false when the model is invalid or too large to be trained
      */
     public boolean isTrainable() {
-        return parameters() <= MAX_PARAMETERS;
+        return isValid() && (parameters() <= MAX_PARAMETERS);
+    }
+
+    @Override
+    public boolean equals(Object object) {
+        if (this == object) {
+            return true;
+        }
+        if (!(object instanceof ModelConfig other)) {
+            return false;
+        }
+        return (vocabType_ == other.vocabType_)
+                && (vocabSize_ == other.vocabSize_)
+                && (dModel_ == other.dModel_)
+                && (heads_ == other.heads_)
+                && (layers_ == other.layers_)
+                && (context_ == other.context_)
+                && (seed_ == other.seed_);
+    }
+
+    @Override
+    public int hashCode() {
+        int result = Integer.hashCode(vocabType_);
+        result = (31 * result) + Integer.hashCode(vocabSize_);
+        result = (31 * result) + Integer.hashCode(dModel_);
+        result = (31 * result) + Integer.hashCode(heads_);
+        result = (31 * result) + Integer.hashCode(layers_);
+        result = (31 * result) + Integer.hashCode(context_);
+        result = (31 * result) + Long.hashCode(seed_);
+        return result;
+    }
+
+    @Override
+    public String toString() {
+        return "ModelConfig[vocabType=" + vocabName()
+                + ", vocabSize=" + vocabSize_
+                + ", dModel=" + dModel_
+                + ", heads=" + heads_
+                + ", layers=" + layers_
+                + ", context=" + context_
+                + ", seed=" + seed_
+                + "]";
     }
 }

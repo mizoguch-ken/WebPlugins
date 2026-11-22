@@ -1,5 +1,6 @@
 package ken.mizoguch.webviewer.llm.core;
 
+import java.util.Arrays;
 import java.util.Random;
 
 /**
@@ -64,6 +65,7 @@ public final class TransformerModel {
 
     private final float[][] weights_;
     private final float[][] gradients_;
+    private final Object forwardLock_ = new Object();
 
     private Step forwardStep_;
     private Step backwardStep_;
@@ -75,7 +77,13 @@ public final class TransformerModel {
      */
     public TransformerModel(ModelConfig configuration) {
         config_ = new ModelConfig(configuration);
+        if (!config_.isValid()) {
+            throw new LlmCoreException("Invalid model configuration");
+        }
         vocabulary_ = Math.max(config_.vocabSize(), ModelConfig.MIN_VOCAB);
+        if (config_.vocabType() == ModelConfig.VOCAB_CHAR) {
+            config_.setVocabSize(vocabulary_);
+        }
         width_ = config_.dModel();
         heads_ = config_.heads();
         headSize_ = width_ / heads_;
@@ -136,6 +144,33 @@ public final class TransformerModel {
         return W_LAYERS + (layer * F_LAYER_COUNT) + field;
     }
 
+    boolean[] weightDecayMask() {
+        boolean[] mask = new boolean[weights_.length];
+        mask[W_TOKEN] = true;
+        mask[W_POSITION] = true;
+        mask[W_HEAD] = true;
+        for (int layer = 0; layer < layers_; layer++) {
+            int base = index(layer, 0);
+
+            mask[base + F_WQ] = true;
+            mask[base + F_WK] = true;
+            mask[base + F_WV] = true;
+            mask[base + F_WO] = true;
+            mask[base + F_W1] = true;
+            mask[base + F_W2] = true;
+        }
+        return mask;
+    }
+
+    /**
+     * creates a reusable key-value cache bound to this model for incremental token decoding
+     *
+     * @return empty KV cache sized to {@code layers * context * dModel}
+     */
+    public KvCache newCache() {
+        return new KvCache();
+    }
+
     /**
      * the arrays of the weights of the model, of the sizes of the configuration
      *
@@ -175,32 +210,32 @@ public final class TransformerModel {
     }
 
     /**
-     * the first values of the weights : the projections and the head start near zero, so the model
-     * of the first step answers a flat distribution, and the normalizations start as a plain copy
-     * of the values they read
+     * the first values of the weights : projections and embeddings start around 0.02, while residual
+     * output projections ({@code F_WO}, {@code F_W2}) are scaled by {@code 1 / sqrt(2 * layers)} to
+     * preserve residual stream variance across deep stacks
      *
      * @param random values of the first weights
      */
     private void initialize(Random random) {
         double spread = 0.02d;
-        double small = spread / Math.sqrt(2d * width_);
+        double residualSpread = spread / Math.sqrt(2d * layers_);
 
         fill(weights_[W_TOKEN], spread, random);
         fill(weights_[W_POSITION], spread, random);
         fill(weights_[W_HEAD], spread, random);
 
         for (int layer = 0; layer < layers_; layer++) {
-            fill(weights_[index(layer, F_WQ)], small, random);
-            fill(weights_[index(layer, F_WK)], small, random);
-            fill(weights_[index(layer, F_WV)], small, random);
-            fill(weights_[index(layer, F_WO)], small, random);
+            fill(weights_[index(layer, F_WQ)], spread, random);
+            fill(weights_[index(layer, F_WK)], spread, random);
+            fill(weights_[index(layer, F_WV)], spread, random);
+            fill(weights_[index(layer, F_WO)], residualSpread, random);
             fill(weights_[index(layer, F_W1)], spread, random);
-            fill(weights_[index(layer, F_W2)], small, random);
+            fill(weights_[index(layer, F_W2)], residualSpread, random);
 
-            java.util.Arrays.fill(weights_[index(layer, F_N1_SCALE)], 1f);
-            java.util.Arrays.fill(weights_[index(layer, F_N2_SCALE)], 1f);
+            Arrays.fill(weights_[index(layer, F_N1_SCALE)], 1f);
+            Arrays.fill(weights_[index(layer, F_N2_SCALE)], 1f);
         }
-        java.util.Arrays.fill(weights_[W_FINAL_SCALE], 1f);
+        Arrays.fill(weights_[W_FINAL_SCALE], 1f);
     }
 
     /**
@@ -217,30 +252,72 @@ public final class TransformerModel {
     }
 
     /**
+     * reusable per-token key-value cache accelerating autoregressive generation from {@code O(T^2)}
+     * per token to {@code O(T)} per token without changing logits
+     */
+    public final class KvCache {
+
+        private final float[][] kCache_;
+        private final float[][] vCache_;
+        private final float[] x_;
+        private final float[] out_;
+        private final float[] norm_;
+        private final float[] q_;
+        private final float[] att_;
+        private final float[] ffn_;
+        private final float[] scores_;
+        private final float[] logits_;
+        private int length_;
+
+        private KvCache() {
+            kCache_ = new float[layers_][context_ * width_];
+            vCache_ = new float[layers_][context_ * width_];
+            x_ = new float[width_];
+            out_ = new float[width_];
+            norm_ = new float[width_];
+            q_ = new float[width_];
+            att_ = new float[width_];
+            ffn_ = new float[feed_];
+            scores_ = new float[context_];
+            logits_ = new float[vocabulary_];
+        }
+
+        private TransformerModel owner() {
+            return TransformerModel.this;
+        }
+
+        public void reset() {
+            length_ = 0;
+        }
+
+        public int length() {
+            return length_;
+        }
+    }
+
+    /**
      * the values a forward step reads and writes : the activations of every layer, kept because a
      * backward step reads them again, and the buffers the gradients of a training are written in.
      *
-     * A step of a training keeps the values of every layer and the probabilities of the attention of
-     * every head, which is the largest part of the memory of a step : a sequence of 256 tokens of a
-     * model of 4 layers of 128 values keeps about four million values.
-     *
-     * The class is kept inside the module with the methods which read it, because only the core of
-     * the module trains a model : the page reads the model through {@link #logits} and {@link #next},
-     * and through the methods of the same name of the core.
+     * Forward-only steps share a single layer activation slot and omit normalization/softmax/gradient
+     * buffers; backward steps keep per-layer activations and attention probabilities.
      */
     final class Step {
 
-        private final int length_;
+        private final int capacity_;
         private final boolean backward_;
 
         // the values of the model : the buffers shared by the layers
         private final float[] x_;
         private final float[] out_;
-        private final float[] values_;
+        private float[] values_;
         private final float[] normFinal_;
         private final float[] finalCenter_;
         private final float[] finalInverse_;
-        private final float[][] scores_;
+        private final float[] lastX_;
+        private final float[] lastNorm_;
+        private final float[] lastLogits_;
+        private final float[][] rowScores_;
 
         // the values of every layer, read again by the backward step
         private final float[][] norm1_;
@@ -268,45 +345,40 @@ public final class TransformerModel {
         private final float[] dN2_;
         private final float[] dPost_;
         private final float[][] probs_;
-        private final float[] headQ_;
-        private final float[] headK_;
-        private final float[] headV_;
-        private final float[] headO_;
 
-        private Step(int length, boolean backward) {
+        private Step(int capacity, boolean backward) {
             int d = width_;
             int f = feed_;
+            int slots = backward ? layers_ : 1;
 
-            length_ = length;
+            capacity_ = capacity;
             backward_ = backward;
 
-            x_ = new float[length * d];
-            out_ = new float[length * d];
-            values_ = new float[length * vocabulary_];
-            normFinal_ = new float[length * d];
-            finalCenter_ = new float[length * d];
-            finalInverse_ = new float[length];
-            scores_ = new float[heads_][length * length];
+            x_ = new float[capacity * d];
+            out_ = new float[capacity * d];
+            values_ = backward ? new float[capacity * vocabulary_] : null;
+            normFinal_ = new float[capacity * d];
+            lastX_ = new float[d];
+            lastNorm_ = new float[d];
+            lastLogits_ = new float[vocabulary_];
 
-            norm1_ = new float[layers_][length * d];
-            norm2_ = new float[layers_][length * d];
-            query_ = new float[layers_][length * d];
-            key_ = new float[layers_][length * d];
-            value_ = new float[layers_][length * d];
-            att_ = new float[layers_][length * d];
-            pre_ = new float[layers_][length * f];
-            post_ = new float[layers_][length * f];
-            center1_ = new float[layers_][length * d];
-            center2_ = new float[layers_][length * d];
-            inverse1_ = new float[layers_][length];
-            inverse2_ = new float[layers_][length];
-
-            headQ_ = new float[length * headSize_];
-            headK_ = new float[length * headSize_];
-            headV_ = new float[length * headSize_];
-            headO_ = new float[length * headSize_];
+            norm1_ = new float[slots][capacity * d];
+            norm2_ = new float[slots][capacity * d];
+            query_ = new float[slots][capacity * d];
+            key_ = new float[slots][capacity * d];
+            value_ = new float[slots][capacity * d];
+            att_ = new float[slots][capacity * d];
+            pre_ = new float[slots][capacity * f];
+            post_ = new float[slots][capacity * f];
 
             if (!backward) {
+                finalCenter_ = null;
+                finalInverse_ = null;
+                rowScores_ = new float[heads_][capacity];
+                center1_ = null;
+                center2_ = null;
+                inverse1_ = null;
+                inverse2_ = null;
                 logitGradient_ = null;
                 dx_ = null;
                 dNext_ = null;
@@ -320,36 +392,44 @@ public final class TransformerModel {
                 probs_ = null;
                 return;
             }
-            logitGradient_ = new float[length * vocabulary_];
-            dx_ = new float[length * d];
-            dNext_ = new float[length * d];
-            dAtt_ = new float[length * d];
-            dQ_ = new float[length * d];
-            dK_ = new float[length * d];
-            dV_ = new float[length * d];
-            dN1_ = new float[length * d];
-            dN2_ = new float[length * f];
-            dPost_ = new float[length * f];
-            probs_ = new float[layers_ * heads_][length * length];
+            finalCenter_ = new float[capacity * d];
+            finalInverse_ = new float[capacity];
+            rowScores_ = null;
+            center1_ = new float[layers_][capacity * d];
+            center2_ = new float[layers_][capacity * d];
+            inverse1_ = new float[layers_][capacity];
+            inverse2_ = new float[layers_][capacity];
+            logitGradient_ = new float[capacity * vocabulary_];
+            dx_ = new float[capacity * d];
+            dNext_ = new float[capacity * d];
+            dAtt_ = new float[capacity * d];
+            dQ_ = new float[capacity * d];
+            dK_ = new float[capacity * d];
+            dV_ = new float[capacity * d];
+            dN1_ = new float[capacity * d];
+            dN2_ = new float[capacity * f];
+            dPost_ = new float[capacity * f];
+            probs_ = new float[layers_ * heads_][capacity * capacity];
+        }
+
+        private float[] values() {
+            if (values_ == null) {
+                values_ = new float[capacity_ * vocabulary_];
+            }
+            return values_;
         }
     }
 
     /**
-     * the values of the token which can follow the tokens given : the model reads the whole
-     * sequence at once, so an answer of the page reads the sequence again for every token it adds.
-     * A model of the sizes the page accepts keeps that read below a tenth of a second, which the
-     * thread of the training and the thread of the answer both support.
-     *
-     * @param tokens tokens of the sequence
-     * @param length number of the tokens to read
-     * @param step the buffers of the step, kept by the caller for a backward step
-     * @return the values of every token of the sequence, length rows of the vocabulary values
+     * runs causal transformer layers across {@code tokens[0..length)}, optionally populating
+     * {@code cache} with each layer's K/V projections
      */
-    float[] forward(int[] tokens, int length, Step step) {
+    private void forwardLayers(int[] tokens, int length, Step step, KvCache cache) {
         int d = width_;
         int f = feed_;
-        int v = vocabulary_;
-        float scale = 1f / (float) Math.sqrt(headSize_);
+        int stateSize = length * d;
+        int feedSize = length * f;
+        double scale = 1d / Math.sqrt(headSize_);
 
         for (int position = 0; position < length; position++) {
             int tokenOffset = tokens[position] * d;
@@ -362,18 +442,20 @@ public final class TransformerModel {
         }
         for (int layer = 0; layer < layers_; layer++) {
             int base = index(layer, 0);
-            float[] norm1 = step.norm1_[layer];
-            float[] norm2 = step.norm2_[layer];
-            float[] query = step.query_[layer];
-            float[] key = step.key_[layer];
-            float[] value = step.value_[layer];
-            float[] att = step.att_[layer];
-            float[] pre = step.pre_[layer];
-            float[] post = step.post_[layer];
+            int slot = step.backward_ ? layer : 0;
+            float[] norm1 = step.norm1_[slot];
+            float[] norm2 = step.norm2_[slot];
+            float[] query = step.query_[slot];
+            float[] key = step.key_[slot];
+            float[] value = step.value_[slot];
+            float[] att = step.att_[slot];
+            float[] pre = step.pre_[slot];
+            float[] post = step.post_[slot];
 
             Tensor.layerNorm(step.x_, length, d, weights_[base + F_N1_SCALE],
-                    weights_[base + F_N1_SHIFT], norm1, step.center1_[layer],
-                    step.inverse1_[layer]);
+                    weights_[base + F_N1_SHIFT], norm1,
+                    step.backward_ ? step.center1_[layer] : null,
+                    step.backward_ ? step.inverse1_[layer] : null);
 
             Tensor.ab(norm1, length, d, weights_[base + F_WQ], d, query);
             Tensor.addBias(query, length, d, weights_[base + F_BQ]);
@@ -382,51 +464,253 @@ public final class TransformerModel {
             Tensor.ab(norm1, length, d, weights_[base + F_WV], d, value);
             Tensor.addBias(value, length, d, weights_[base + F_BV]);
 
-            Tensor.zero(att);
-            for (int head = 0; head < heads_; head++) {
-                int offset = head * headSize_;
-                float[] probability = step.backward_
-                        ? step.probs_[(layer * heads_) + head] : step.scores_[head];
-
-                Tensor.gather(query, length, d, offset, headSize_, step.headQ_);
-                Tensor.gather(key, length, d, offset, headSize_, step.headK_);
-                Tensor.gather(value, length, d, offset, headSize_, step.headV_);
-
-                Tensor.abt(step.headQ_, length, headSize_, step.headK_, length, probability);
-                for (int row = 0; row < length; row++) {
-                    int rowOffset = row * length;
-
-                    for (int column = 0; column < length; column++) {
-                        probability[rowOffset + column] = (column <= row)
-                                ? (probability[rowOffset + column] * scale) : -1e30f;
-                    }
-                    Tensor.softmax(probability, rowOffset, length);
-                }
-                Tensor.ab(probability, length, length, step.headV_, headSize_, step.headO_);
-                Tensor.scatter(step.headO_, length, headSize_, offset, d, att);
+            if (cache != null) {
+                System.arraycopy(key, 0, cache.kCache_[layer], 0, stateSize);
+                System.arraycopy(value, 0, cache.vCache_[layer], 0, stateSize);
             }
+
+            final int layerIdx = layer;
+            Tensor.blocks(heads_, (long) heads_ * length * length * headSize_,
+                    (firstHead, lastHead) -> {
+                for (int head = firstHead; head < lastHead; head++) {
+                    int headOffset = head * headSize_;
+                    float[] scores = step.backward_
+                            ? step.probs_[(layerIdx * heads_) + head]
+                            : step.rowScores_[head];
+
+                    for (int row = 0; row < length; row++) {
+                        int qBase = (row * d) + headOffset;
+                        int scoreBase = step.backward_ ? (row * length) : 0;
+
+                        for (int col = 0; col <= row; col++) {
+                            int kBase = (col * d) + headOffset;
+                            double dot = 0d;
+
+                            for (int i = 0; i < headSize_; i++) {
+                                dot += (double) query[qBase + i] * key[kBase + i];
+                            }
+                            scores[scoreBase + col] = (float) (dot * scale);
+                        }
+                        if (step.backward_ && ((row + 1) < length)) {
+                            Tensor.zeroSlice(scores, scoreBase + row + 1, length - row - 1);
+                        }
+                        Tensor.softmax(scores, scoreBase, row + 1);
+
+                        int attBase = (row * d) + headOffset;
+                        Arrays.fill(att, attBase, attBase + headSize_, 0f);
+                        for (int col = 0; col <= row; col++) {
+                            float p = scores[scoreBase + col];
+
+                            if (p == 0f) {
+                                continue;
+                            }
+                            int vBase = (col * d) + headOffset;
+
+                            for (int i = 0; i < headSize_; i++) {
+                                att[attBase + i] += p * value[vBase + i];
+                            }
+                        }
+                    }
+                }
+            });
+
             Tensor.ab(att, length, d, weights_[base + F_WO], d, step.out_);
             Tensor.addBias(step.out_, length, d, weights_[base + F_BO]);
-            Tensor.add(step.x_, step.out_);
+            Tensor.add(step.x_, step.out_, stateSize);
 
             Tensor.layerNorm(step.x_, length, d, weights_[base + F_N2_SCALE],
-                    weights_[base + F_N2_SHIFT], norm2, step.center2_[layer],
-                    step.inverse2_[layer]);
+                    weights_[base + F_N2_SHIFT], norm2,
+                    step.backward_ ? step.center2_[layer] : null,
+                    step.backward_ ? step.inverse2_[layer] : null);
 
             Tensor.ab(norm2, length, d, weights_[base + F_W1], f, pre);
             Tensor.addBias(pre, length, f, weights_[base + F_B1]);
-            Tensor.copy(pre, post);
-            Tensor.gelu(post);
+            Tensor.copy(pre, post, feedSize);
+            Tensor.gelu(post, feedSize);
 
             Tensor.ab(post, length, f, weights_[base + F_W2], d, step.out_);
             Tensor.addBias(step.out_, length, d, weights_[base + F_B2]);
-            Tensor.add(step.x_, step.out_);
+            Tensor.add(step.x_, step.out_, stateSize);
         }
+        if (cache != null) {
+            cache.length_ = length;
+        }
+    }
+
+    private float[] forwardLastLogits(Step step, int length, float[] targetLogits) {
+        int d = width_;
+        int v = vocabulary_;
+
+        System.arraycopy(step.x_, (length - 1) * d, step.lastX_, 0, d);
+        Tensor.layerNorm(step.lastX_, 1, d, weights_[W_FINAL_SCALE], weights_[W_FINAL_SHIFT],
+                step.lastNorm_, null, null);
+        Tensor.mv(step.lastNorm_, d, weights_[W_HEAD], v, targetLogits);
+        Tensor.add(targetLogits, weights_[W_HEAD_BIAS], v);
+        return targetLogits;
+    }
+
+    /**
+     * the values of the token which can follow the tokens given : runs zero-copy causal multi-head
+     * self-attention across the sequence
+     *
+     * @param tokens tokens of the sequence
+     * @param length number of the tokens to read
+     * @param step the buffers of the step, kept by the caller for a backward step
+     * @return the values of every token of the sequence, length rows of the vocabulary values
+     */
+    float[] forward(int[] tokens, int length, Step step) {
+        int d = width_;
+        int v = vocabulary_;
+        float[] values = step.values();
+
+        forwardLayers(tokens, length, step, null);
         Tensor.layerNorm(step.x_, length, d, weights_[W_FINAL_SCALE], weights_[W_FINAL_SHIFT],
                 step.normFinal_, step.finalCenter_, step.finalInverse_);
-        Tensor.ab(step.normFinal_, length, d, weights_[W_HEAD], v, step.values_);
-        Tensor.addBias(step.values_, length, v, weights_[W_HEAD_BIAS]);
-        return step.values_;
+        Tensor.ab(step.normFinal_, length, d, weights_[W_HEAD], v, values);
+        Tensor.addBias(values, length, v, weights_[W_HEAD_BIAS]);
+        return values;
+    }
+
+    /**
+     * populates positions {@code [0, length)} of {@code cache} using batched forward matrix
+     * operations and returns a defensive copy of next-token logits
+     *
+     * @param tokens prompt token IDs
+     * @param length number of tokens from {@code tokens} to prefill
+     * @param cache KV cache created by {@link #newCache()}
+     * @return copy of logits for predicting position {@code length}
+     */
+    public float[] prefill(int[] tokens, int length, KvCache cache) {
+        return Arrays.copyOf(prefillInternal(tokens, length, cache), vocabulary_);
+    }
+
+    float[] prefillInternal(int[] tokens, int length, KvCache cache) {
+        if ((cache == null) || (cache.owner() != this)) {
+            throw new LlmCoreException("KV cache does not match the active model");
+        }
+        if ((tokens == null) || (length < 1) || (length > tokens.length) || (length > context_)) {
+            throw new LlmCoreException("Token sequence length out of range: " + length);
+        }
+        for (int i = 0; i < length; i++) {
+            if ((tokens[i] < 0) || (tokens[i] >= vocabulary_)) {
+                throw new LlmCoreException("Token ID out of range at position " + i + ": "
+                        + tokens[i]);
+            }
+        }
+        if (length == 1) {
+            return step(tokens[0], 0, cache, true);
+        }
+        synchronized (forwardLock_) {
+            Step step = newStep(length, false);
+
+            forwardLayers(tokens, length, step, cache);
+            return forwardLastLogits(step, length, cache.logits_);
+        }
+    }
+
+    /**
+     * processes a single token at {@code position} incrementally using {@code cache} and returns a
+     * defensive copy of next-token logits
+     *
+     * @param token input token ID in {@code [0, vocabulary)}
+     * @param position position index in {@code [0, Math.min(context - 1, cache.length()))}
+     * @param cache KV cache created by {@link #newCache()}
+     * @return copy of logits over the vocabulary
+     */
+    public float[] step(int token, int position, KvCache cache) {
+        return Arrays.copyOf(step(token, position, cache, true), vocabulary_);
+    }
+
+    float[] step(int token, int position, KvCache cache, boolean computeLogits) {
+        if ((cache == null) || (cache.owner() != this)) {
+            throw new LlmCoreException("KV cache does not match the active model");
+        }
+        if ((token < 0) || (token >= vocabulary_)) {
+            throw new LlmCoreException("Token ID out of range: " + token);
+        }
+        if ((position < 0) || (position >= context_) || (position > cache.length_)) {
+            throw new LlmCoreException("KV cache position out of range: " + position);
+        }
+        int d = width_;
+        int f = feed_;
+        double scale = 1d / Math.sqrt(headSize_);
+        int tokenOffset = token * d;
+        int posOffset = position * d;
+
+        for (int col = 0; col < d; col++) {
+            cache.x_[col] = weights_[W_TOKEN][tokenOffset + col]
+                    + weights_[W_POSITION][posOffset + col];
+        }
+        int seqLen = position + 1;
+        for (int layer = 0; layer < layers_; layer++) {
+            int base = index(layer, 0);
+
+            Tensor.layerNorm(cache.x_, 1, d, weights_[base + F_N1_SCALE],
+                    weights_[base + F_N1_SHIFT], cache.norm_, null, null);
+
+            Tensor.mv(cache.norm_, d, weights_[base + F_WQ], d, cache.q_);
+            Tensor.add(cache.q_, weights_[base + F_BQ], d);
+
+            Tensor.mv(cache.norm_, d, weights_[base + F_WK], d, cache.out_);
+            Tensor.add(cache.out_, weights_[base + F_BK], d);
+            System.arraycopy(cache.out_, 0, cache.kCache_[layer], posOffset, d);
+
+            Tensor.mv(cache.norm_, d, weights_[base + F_WV], d, cache.out_);
+            Tensor.add(cache.out_, weights_[base + F_BV], d);
+            System.arraycopy(cache.out_, 0, cache.vCache_[layer], posOffset, d);
+
+            float[] kMat = cache.kCache_[layer];
+            float[] vMat = cache.vCache_[layer];
+            for (int head = 0; head < heads_; head++) {
+                int hOff = head * headSize_;
+
+                for (int col = 0; col < seqLen; col++) {
+                    int kOff = (col * d) + hOff;
+                    double dot = 0d;
+
+                    for (int i = 0; i < headSize_; i++) {
+                        dot += (double) cache.q_[hOff + i] * kMat[kOff + i];
+                    }
+                    cache.scores_[col] = (float) (dot * scale);
+                }
+                Tensor.softmax(cache.scores_, 0, seqLen);
+                Arrays.fill(cache.att_, hOff, hOff + headSize_, 0f);
+                for (int col = 0; col < seqLen; col++) {
+                    float p = cache.scores_[col];
+
+                    if (p == 0f) {
+                        continue;
+                    }
+                    int vOff = (col * d) + hOff;
+
+                    for (int i = 0; i < headSize_; i++) {
+                        cache.att_[hOff + i] += p * vMat[vOff + i];
+                    }
+                }
+            }
+
+            Tensor.mv(cache.att_, d, weights_[base + F_WO], d, cache.out_);
+            Tensor.add(cache.out_, weights_[base + F_BO], d);
+            Tensor.add(cache.x_, cache.out_, d);
+
+            Tensor.layerNorm(cache.x_, 1, d, weights_[base + F_N2_SCALE],
+                    weights_[base + F_N2_SHIFT], cache.norm_, null, null);
+            Tensor.mv(cache.norm_, d, weights_[base + F_W1], f, cache.ffn_);
+            Tensor.add(cache.ffn_, weights_[base + F_B1], f);
+            Tensor.gelu(cache.ffn_);
+            Tensor.mv(cache.ffn_, f, weights_[base + F_W2], d, cache.out_);
+            Tensor.add(cache.out_, weights_[base + F_B2], d);
+            Tensor.add(cache.x_, cache.out_, d);
+        }
+        cache.length_ = seqLen;
+        if (!computeLogits) {
+            return null;
+        }
+        Tensor.layerNorm(cache.x_, 1, d, weights_[W_FINAL_SCALE], weights_[W_FINAL_SHIFT],
+                cache.norm_, null, null);
+        Tensor.mv(cache.norm_, d, weights_[W_HEAD], vocabulary_, cache.logits_);
+        Tensor.add(cache.logits_, weights_[W_HEAD_BIAS], vocabulary_);
+        return cache.logits_;
     }
 
     /**
@@ -438,17 +722,24 @@ public final class TransformerModel {
      * @return the buffers
      */
     Step newStep(int length, boolean backward) {
+        if ((length < 1) || (length > context_)) {
+            throw new LlmCoreException("Step length out of range: " + length);
+        }
         if (backward) {
             Step cached = backwardStep_;
-            if ((cached == null) || (cached.length_ != length)) {
-                cached = new Step(length, true);
+            if ((cached == null) || (cached.capacity_ < length)) {
+                int cap = (cached == null) ? length
+                        : Math.min(context_, Math.max(length, cached.capacity_ * 2));
+                cached = new Step(cap, true);
                 backwardStep_ = cached;
             }
             return cached;
         }
         Step cached = forwardStep_;
-        if ((cached == null) || (cached.length_ != length)) {
-            cached = new Step(length, false);
+        if ((cached == null) || (cached.capacity_ < length)) {
+            int cap = (cached == null) ? length
+                    : Math.min(context_, Math.max(length, cached.capacity_ * 2));
+            cached = new Step(cap, false);
             forwardStep_ = cached;
         }
         return cached;
@@ -468,12 +759,25 @@ public final class TransformerModel {
      * @return the loss of the step
      */
     double backward(int[] tokens, int length, Step step) {
+        return backward(tokens, length, step, false);
+    }
+
+    double backward(int[] tokens, int length, Step step, boolean accumulate) {
+        if ((tokens == null) || (length < 2) || (length > tokens.length) || (length > context_)) {
+            throw new LlmCoreException("Backward sequence length out of range: " + length);
+        }
+        if ((step == null) || !step.backward_ || (step.capacity_ < length)) {
+            throw new LlmCoreException("Invalid backward step buffer for length: " + length);
+        }
         int d = width_;
         int f = feed_;
         int v = vocabulary_;
         int count = length - 1;
+        int stateSize = length * d;
         double loss = 0d;
+        float[] values = step.values();
         float[] error = step.logitGradient_;
+        double invCount = 1d / count;
 
         for (int position = 0; position < length; position++) {
             int base = position * v;
@@ -482,28 +786,47 @@ public final class TransformerModel {
                 Tensor.zeroSlice(error, base, v);
                 continue;
             }
-            System.arraycopy(step.values_, base, error, base, v);
-            Tensor.softmax(error, base, v);
+            double maxLogit = Double.NEGATIVE_INFINITY;
+            for (int j = 0; j < v; j++) {
+                float logit = values[base + j];
 
+                if (logit > maxLogit) {
+                    maxLogit = logit;
+                }
+            }
+            double sumExp = 0d;
+            for (int j = 0; j < v; j++) {
+                double e = Math.exp((double) values[base + j] - maxLogit);
+
+                error[base + j] = (float) e;
+                sumExp += e;
+            }
             int target = tokens[position + 1];
+            loss += Math.log(sumExp) - ((double) values[base + target] - maxLogit);
+            double invSum = 1d / sumExp;
 
-            loss -= Math.log(Math.max(error[base + target], 1e-9d));
-            error[base + target] -= 1f;
+            for (int j = 0; j < v; j++) {
+                double prob = error[base + j] * invSum;
+
+                error[base + j] = (float) (((j == target) ? (prob - 1d) : prob) * invCount);
+            }
         }
-        for (int index = 0; index < error.length; index++) {
-            error[index] /= count;
+        if (accumulate) {
+            Tensor.atbAdd(step.normFinal_, d, length, error, v, gradients_[W_HEAD]);
+            Tensor.columnSumAdd(error, length, v, gradients_[W_HEAD_BIAS]);
+        } else {
+            Tensor.atb(step.normFinal_, d, length, error, v, gradients_[W_HEAD]);
+            Tensor.columnSum(error, length, v, gradients_[W_HEAD_BIAS]);
+            Tensor.zero(gradients_[W_FINAL_SCALE]);
         }
-        Tensor.atb(step.normFinal_, d, length, error, v, gradients_[W_HEAD]);
-        Tensor.columnSum(error, length, v, gradients_[W_HEAD_BIAS]);
         Tensor.abt(error, length, v, weights_[W_HEAD], d, step.dx_);
 
-        Tensor.zero(gradients_[W_FINAL_SCALE]);
-        Tensor.zero(step.dNext_);
+        Tensor.zeroSlice(step.dNext_, 0, stateSize);
         Tensor.layerNormBackward(length, d, step.finalCenter_, step.finalInverse_,
                 weights_[W_FINAL_SCALE], step.dx_, step.dNext_, gradients_[W_FINAL_SCALE],
-                gradients_[W_FINAL_SHIFT]);
-        Tensor.copy(step.dNext_, step.dx_);
-        return backwardLayers(tokens, length, step, loss / count, d, f, v);
+                gradients_[W_FINAL_SHIFT], accumulate);
+        Tensor.copy(step.dNext_, step.dx_, stateSize);
+        return backwardLayers(tokens, length, step, loss / count, d, f, accumulate);
     }
 
     /**
@@ -516,12 +839,14 @@ public final class TransformerModel {
      * @param loss the loss of the read, read again by the caller
      * @param d width of the model
      * @param f width of the network which follows the attention
-     * @param v number of the tokens of the vocabulary
+     * @param accumulate true to add gradients into existing buffers instead of overwriting
      * @return the loss of the read
      */
     private double backwardLayers(int[] tokens, int length, Step step, double loss, int d, int f,
-            int v) {
-        float scale = 1f / (float) Math.sqrt(headSize_);
+            boolean accumulate) {
+        int stateSize = length * d;
+        int feedSize = length * f;
+        double scale = 1d / Math.sqrt(headSize_);
 
         for (int layer = layers_ - 1; layer >= 0; layer--) {
             int base = index(layer, 0);
@@ -536,80 +861,125 @@ public final class TransformerModel {
 
             // the network which follows the attention
             Tensor.abt(step.dx_, length, d, weights_[base + F_W2], f, step.dPost_);
-            Tensor.atb(post, f, length, step.dx_, d, gradients_[base + F_W2]);
-            Tensor.columnSum(step.dx_, length, d, gradients_[base + F_B2]);
+            if (accumulate) {
+                Tensor.atbAdd(post, f, length, step.dx_, d, gradients_[base + F_W2]);
+                Tensor.columnSumAdd(step.dx_, length, d, gradients_[base + F_B2]);
+            } else {
+                Tensor.atb(post, f, length, step.dx_, d, gradients_[base + F_W2]);
+                Tensor.columnSum(step.dx_, length, d, gradients_[base + F_B2]);
+            }
 
-            Tensor.geluDerivative(pre, step.dN2_);
-            for (int index = 0; index < step.dN2_.length; index++) {
+            Tensor.geluDerivative(pre, step.dN2_, feedSize);
+            for (int index = 0; index < feedSize; index++) {
                 step.dN2_[index] *= step.dPost_[index];
             }
-            Tensor.atb(norm2, d, length, step.dN2_, f, gradients_[base + F_W1]);
-            Tensor.columnSum(step.dN2_, length, f, gradients_[base + F_B1]);
-            Tensor.abt(step.dN2_, length, f, weights_[base + F_W1], d, step.dNext_);
+            if (accumulate) {
+                Tensor.atbAdd(norm2, d, length, step.dN2_, f, gradients_[base + F_W1]);
+                Tensor.columnSumAdd(step.dN2_, length, f, gradients_[base + F_B1]);
+                Tensor.abt(step.dN2_, length, f, weights_[base + F_W1], d, step.dNext_);
+            } else {
+                Tensor.atb(norm2, d, length, step.dN2_, f, gradients_[base + F_W1]);
+                Tensor.columnSum(step.dN2_, length, f, gradients_[base + F_B1]);
+                Tensor.abt(step.dN2_, length, f, weights_[base + F_W1], d, step.dNext_);
+                Tensor.zero(gradients_[base + F_N2_SCALE]);
+            }
 
             // the normalization the network reads : its difference goes back through the
             // normalization and joins the residual path of the layer
-            Tensor.zero(gradients_[base + F_N2_SCALE]);
             Tensor.layerNormBackward(length, d, step.center2_[layer], step.inverse2_[layer],
                     weights_[base + F_N2_SCALE], step.dNext_, step.dx_,
-                    gradients_[base + F_N2_SCALE], gradients_[base + F_N2_SHIFT]);
+                    gradients_[base + F_N2_SCALE], gradients_[base + F_N2_SHIFT], accumulate);
 
             Tensor.abt(step.dx_, length, d, weights_[base + F_WO], d, step.dAtt_);
-            Tensor.atb(att, d, length, step.dx_, d, gradients_[base + F_WO]);
-            Tensor.columnSum(step.dx_, length, d, gradients_[base + F_BO]);
-
-            for (int head = 0; head < heads_; head++) {
-                int offset = head * headSize_;
-                float[] probability = step.probs_[(layer * heads_) + head];
-                float[] difference = step.scores_[head];
-
-                Tensor.gather(step.dAtt_, length, d, offset, headSize_, step.headO_);
-                Tensor.gather(value, length, d, offset, headSize_, step.headV_);
-                Tensor.abt(step.headO_, length, headSize_, step.headV_, length, difference);
-
-                // the probabilities of the read give the difference of the scores : the sum of a row
-                // of the probabilities is one, so the row keeps only its own difference
-                for (int row = 0; row < length; row++) {
-                    int start = row * length;
-                    double total = 0d;
-
-                    for (int column = 0; column <= row; column++) {
-                        total += ((double) probability[start + column])
-                                * ((double) difference[start + column]);
-                    }
-                    for (int column = 0; column <= row; column++) {
-                        difference[start + column] = (float) ((((double) difference[start + column])
-                                - total) * ((double) probability[start + column])
-                                * ((double) scale));
-                    }
-                    Tensor.zeroSlice(difference, start + row + 1, length - row - 1);
-                }
-                Tensor.atb(probability, length, length, step.headO_, headSize_, step.headV_);
-                Tensor.scatter(step.headV_, length, headSize_, offset, d, step.dV_);
-
-                Tensor.gather(query, length, d, offset, headSize_, step.headQ_);
-                Tensor.gather(key, length, d, offset, headSize_, step.headK_);
-                Tensor.atb(difference, length, length, step.headQ_, headSize_, step.headV_);
-                Tensor.scatter(step.headV_, length, headSize_, offset, d, step.dK_);
-                Tensor.ab(difference, length, length, step.headK_, headSize_, step.headQ_);
-                Tensor.scatter(step.headQ_, length, headSize_, offset, d, step.dQ_);
+            if (accumulate) {
+                Tensor.atbAdd(att, d, length, step.dx_, d, gradients_[base + F_WO]);
+                Tensor.columnSumAdd(step.dx_, length, d, gradients_[base + F_BO]);
+            } else {
+                Tensor.atb(att, d, length, step.dx_, d, gradients_[base + F_WO]);
+                Tensor.columnSum(step.dx_, length, d, gradients_[base + F_BO]);
             }
-            Tensor.zero(step.dN1_);
+
+            final int layerIdx = layer;
+            Tensor.blocks(heads_, (long) heads_ * length * length * headSize_,
+                    (firstHead, lastHead) -> {
+                double[] dProb = new double[length];
+
+                for (int head = firstHead; head < lastHead; head++) {
+                    int headOffset = head * headSize_;
+                    float[] probs = step.probs_[(layerIdx * heads_) + head];
+
+                    for (int t = 0; t < length; t++) {
+                        int off = (t * d) + headOffset;
+
+                        Arrays.fill(step.dQ_, off, off + headSize_, 0f);
+                        Arrays.fill(step.dK_, off, off + headSize_, 0f);
+                        Arrays.fill(step.dV_, off, off + headSize_, 0f);
+                    }
+                    for (int row = 0; row < length; row++) {
+                        int rowOff = (row * d) + headOffset;
+                        int probOff = row * length;
+                        double total = 0d;
+
+                        for (int col = 0; col <= row; col++) {
+                            int cOff = (col * d) + headOffset;
+                            float p = probs[probOff + col];
+                            double dp = 0d;
+
+                            for (int i = 0; i < headSize_; i++) {
+                                float da = step.dAtt_[rowOff + i];
+
+                                dp += (double) da * value[cOff + i];
+                                if (p != 0f) {
+                                    step.dV_[cOff + i] += p * da;
+                                }
+                            }
+                            dProb[col] = dp;
+                            total += p * dp;
+                        }
+                        for (int col = 0; col <= row; col++) {
+                            float ds = (float) ((dProb[col] - total) * probs[probOff + col] * scale);
+
+                            if (ds == 0f) {
+                                continue;
+                            }
+                            int cOff = (col * d) + headOffset;
+
+                            for (int i = 0; i < headSize_; i++) {
+                                step.dQ_[rowOff + i] += ds * key[cOff + i];
+                                step.dK_[cOff + i] += ds * query[rowOff + i];
+                            }
+                        }
+                    }
+                }
+            });
+
+            Tensor.zeroSlice(step.dN1_, 0, stateSize);
             for (int field = 0; field <= F_WV; field += 2) {
                 float[] source = (field == F_WQ) ? step.dQ_
                         : ((field == F_WK) ? step.dK_ : step.dV_);
 
                 Tensor.abt(source, length, d, weights_[base + field], d, step.dNext_);
-                Tensor.add(step.dN1_, step.dNext_);
-                Tensor.atb(norm1, d, length, source, d, gradients_[base + field]);
-                Tensor.columnSum(source, length, d, gradients_[base + field + 1]);
+                Tensor.add(step.dN1_, step.dNext_, stateSize);
+                if (accumulate) {
+                    Tensor.atbAdd(norm1, d, length, source, d, gradients_[base + field]);
+                    Tensor.columnSumAdd(source, length, d, gradients_[base + field + 1]);
+                } else {
+                    Tensor.atb(norm1, d, length, source, d, gradients_[base + field]);
+                    Tensor.columnSum(source, length, d, gradients_[base + field + 1]);
+                }
             }
             // the normalization the attention reads : its difference goes back through the
             // normalization and joins the residual path, which is the input of the layer
-            Tensor.zero(gradients_[base + F_N1_SCALE]);
+            if (!accumulate) {
+                Tensor.zero(gradients_[base + F_N1_SCALE]);
+            }
             Tensor.layerNormBackward(length, d, step.center1_[layer], step.inverse1_[layer],
                     weights_[base + F_N1_SCALE], step.dN1_, step.dx_,
-                    gradients_[base + F_N1_SCALE], gradients_[base + F_N1_SHIFT]);
+                    gradients_[base + F_N1_SCALE], gradients_[base + F_N1_SHIFT], accumulate);
+        }
+        if (!accumulate) {
+            Tensor.zero(gradients_[W_TOKEN]);
+            Tensor.zero(gradients_[W_POSITION]);
         }
         for (int position = 0; position < length; position++) {
             int tokenOffset = tokens[position] * d;
@@ -626,19 +996,29 @@ public final class TransformerModel {
     }
 
     /**
-     * the values of the token which can follow the tokens given, read once : the answer of the page
-     * reads the sequence again for every token it adds, and keeps the last row of the values.
+     * the values of the token which can follow the tokens given, read once : validates bounds and
+     * keeps the last row of the values
      *
      * @param tokens tokens of the sequence
      * @param length number of the tokens to read
      * @return the values of the last position, one value for every token of the vocabulary
      */
     public float[] logits(int[] tokens, int length) {
-        Step step = newStep(length, false);
+        if ((tokens == null) || (length < 1) || (length > tokens.length) || (length > context_)) {
+            throw new LlmCoreException("Token sequence length out of range: " + length);
+        }
+        for (int i = 0; i < length; i++) {
+            if ((tokens[i] < 0) || (tokens[i] >= vocabulary_)) {
+                throw new LlmCoreException("Token ID out of range at position " + i + ": "
+                        + tokens[i]);
+            }
+        }
+        synchronized (forwardLock_) {
+            Step step = newStep(length, false);
 
-        forward(tokens, length, step);
-        return java.util.Arrays.copyOfRange(step.values_, (length - 1) * vocabulary_,
-                length * vocabulary_);
+            forwardLayers(tokens, length, step, null);
+            return Arrays.copyOf(forwardLastLogits(step, length, step.lastLogits_), vocabulary_);
+        }
     }
 
     /**
@@ -658,19 +1038,32 @@ public final class TransformerModel {
                 return Double.NaN;
             }
         }
-        Step step = newStep(length, false);
-        float[] values = forward(tokens, length, step);
-        float[] probs = new float[v];
-        double total = 0d;
-        int count = length - 1;
+        synchronized (forwardLock_) {
+            Step step = newStep(length, false);
+            float[] values = forward(tokens, length, step);
+            double total = 0d;
+            int count = length - 1;
 
-        for (int position = 0; position < count; position++) {
-            int target = tokens[position + 1];
-            System.arraycopy(values, position * v, probs, 0, v);
-            Tensor.softmax(probs, 0, v);
-            total -= Math.log(Math.max(probs[target], 1e-9d));
+            for (int position = 0; position < count; position++) {
+                int base = position * v;
+                int target = tokens[position + 1];
+                double maxLogit = Double.NEGATIVE_INFINITY;
+
+                for (int j = 0; j < v; j++) {
+                    float logit = values[base + j];
+
+                    if (logit > maxLogit) {
+                        maxLogit = logit;
+                    }
+                }
+                double sumExp = 0d;
+                for (int j = 0; j < v; j++) {
+                    sumExp += Math.exp((double) values[base + j] - maxLogit);
+                }
+                total += Math.log(sumExp) - ((double) values[base + target] - maxLogit);
+            }
+            return total / count;
         }
-        return total / count;
     }
 
     /**
@@ -678,10 +1071,11 @@ public final class TransformerModel {
      *
      * @param tokens tokens of the sequence
      * @param length number of the tokens to read
-     * @param sampler choice of the token
+     * @param sampler choice of the token, or null for greedy selection
      * @return the identifier of the token chosen
      */
     public int next(int[] tokens, int length, Sampler sampler) {
-        return sampler.pick(logits(tokens, length));
+        Sampler effective = (sampler == null) ? new Sampler() : sampler;
+        return effective.pick(logits(tokens, length));
     }
 }

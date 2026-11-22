@@ -1,6 +1,7 @@
 package ken.mizoguch.webviewer.llm.core;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Random;
 
@@ -15,7 +16,8 @@ public final class Dataset {
     private final Tokenizer tokenizer_;
     private final List<int[]> texts_;
 
-    private long tokens_;
+    private volatile int count_;
+    private volatile long tokens_;
 
     /**
      * the texts of a tokenizer
@@ -24,6 +26,9 @@ public final class Dataset {
      * texts added
      */
     public Dataset(Tokenizer tokenizer) {
+        if (tokenizer == null) {
+            throw new LlmCoreException("Tokenizer is required");
+        }
         tokenizer_ = tokenizer;
         texts_ = new ArrayList<>();
     }
@@ -39,10 +44,14 @@ public final class Dataset {
      * @param text text to add, empty or null texts are left out
      */
     public void add(String text) {
+        add(text, true);
+    }
+
+    void add(String text, boolean allowLearn) {
         if ((text == null) || text.isEmpty()) {
             return;
         }
-        if (tokenizer_ instanceof CharTokenizer characters) {
+        if (allowLearn && (tokenizer_ instanceof CharTokenizer characters)) {
             characters.learn(text);
         }
         int[] encoded = tokenizer_.encode(text);
@@ -52,6 +61,7 @@ public final class Dataset {
         tokens[encoded.length] = tokenizer_.end();
 
         texts_.add(tokens);
+        count_ = texts_.size();
         tokens_ += tokens.length;
     }
 
@@ -61,11 +71,15 @@ public final class Dataset {
      * @param texts texts to add
      */
     public void addAll(List<String> texts) {
+        addAll(texts, true);
+    }
+
+    void addAll(List<String> texts, boolean allowLearn) {
         if (texts == null) {
             return;
         }
         for (String text : texts) {
-            add(text);
+            add(text, allowLearn);
         }
     }
 
@@ -75,6 +89,7 @@ public final class Dataset {
      */
     public void clear() {
         texts_.clear();
+        count_ = 0;
         tokens_ = 0L;
     }
 
@@ -84,7 +99,7 @@ public final class Dataset {
      * @return number of the texts
      */
     public int count() {
-        return texts_.size();
+        return count_;
     }
 
     /**
@@ -97,7 +112,7 @@ public final class Dataset {
     }
 
     public boolean isEmpty() {
-        return texts_.isEmpty();
+        return count_ == 0;
     }
 
     /**
@@ -123,6 +138,9 @@ public final class Dataset {
      * @return the windows of the text, in the order they are read
      */
     public List<int[]> windows(int index, int context) {
+        if (context < 2) {
+            throw new LlmCoreException("Context length must be at least 2: " + context);
+        }
         List<int[]> windows = new ArrayList<>();
         int[] tokens = texts_.get(index);
 
@@ -130,7 +148,7 @@ public final class Dataset {
             return windows;
         }
         if (tokens.length <= context) {
-            windows.add(tokens);
+            windows.add(Arrays.copyOf(tokens, tokens.length));
             return windows;
         }
         for (int start = 0; start < (tokens.length - 1); start += (context - 1)) {
@@ -139,7 +157,7 @@ public final class Dataset {
             if (length < 2) {
                 break;
             }
-            windows.add(java.util.Arrays.copyOfRange(tokens, start, start + length));
+            windows.add(Arrays.copyOfRange(tokens, start, start + length));
         }
         return windows;
     }
@@ -153,7 +171,7 @@ public final class Dataset {
      * @return the tokens of the window, null when the training holds no text
      */
     public int[] sample(Random random, int context) {
-        if (texts_.isEmpty()) {
+        if ((random == null) || (context < 2) || texts_.isEmpty()) {
             return null;
         }
         List<int[]> windows = windows(random.nextInt(texts_.size()), context);

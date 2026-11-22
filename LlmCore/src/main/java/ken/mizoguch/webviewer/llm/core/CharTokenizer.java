@@ -5,7 +5,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.LinkedHashSet;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -69,8 +69,13 @@ public final class CharTokenizer implements Tokenizer {
         if (characters == null) {
             return;
         }
-        for (int codePoint : characters) {
-            if (!identifiers_.containsKey(codePoint)) {
+        for (Integer codePointValue : characters) {
+            if (codePointValue == null) {
+                continue;
+            }
+            int codePoint = codePointValue;
+
+            if (isValidScalarCodePoint(codePoint) && !identifiers_.containsKey(codePoint)) {
                 identifiers_.put(codePoint, FIRST + characters_.size());
                 characters_.add(codePoint);
             }
@@ -86,6 +91,30 @@ public final class CharTokenizer implements Tokenizer {
         return new ArrayList<>(characters_);
     }
 
+    CharTokenizer copy() {
+        return new CharTokenizer(characters_);
+    }
+
+    boolean hasUnseen(List<String> texts) {
+        if (texts == null) {
+            return false;
+        }
+        for (String text : texts) {
+            if ((text == null) || text.isEmpty()) {
+                continue;
+            }
+            for (int index = 0, length = text.length(); index < length;) {
+                int codePoint = text.codePointAt(index);
+
+                if (isValidScalarCodePoint(codePoint) && !identifiers_.containsKey(codePoint)) {
+                    return true;
+                }
+                index += Character.charCount(codePoint);
+            }
+        }
+        return false;
+    }
+
     /**
      * the vocabulary of a text : the characters the tokenizer does not know yet are added in the
      * order they appear, so a training which reads several texts keeps one vocabulary
@@ -93,22 +122,17 @@ public final class CharTokenizer implements Tokenizer {
      * @param text text to read
      */
     public void learn(String text) {
-        if (text == null) {
+        if ((text == null) || text.isEmpty()) {
             return;
         }
-        Set<Integer> ordered = new LinkedHashSet<>();
-
         for (int index = 0, length = text.length(); index < length;) {
             int codePoint = text.codePointAt(index);
 
-            ordered.add(codePoint);
-            index += Character.charCount(codePoint);
-        }
-        for (int codePoint : ordered) {
-            if (!identifiers_.containsKey(codePoint)) {
+            if (isValidScalarCodePoint(codePoint) && !identifiers_.containsKey(codePoint)) {
                 identifiers_.put(codePoint, FIRST + characters_.size());
                 characters_.add(codePoint);
             }
+            index += Character.charCount(codePoint);
         }
     }
 
@@ -140,18 +164,15 @@ public final class CharTokenizer implements Tokenizer {
         if ((text == null) || text.isEmpty()) {
             return new int[0];
         }
-        List<Integer> tokens = new ArrayList<>(text.length());
+        int length = text.length();
+        int[] ids = new int[text.codePointCount(0, length)];
+        int outIndex = 0;
 
-        for (int index = 0, length = text.length(); index < length;) {
+        for (int index = 0; index < length;) {
             int codePoint = text.codePointAt(index);
 
-            tokens.add(identifier(codePoint));
+            ids[outIndex++] = identifier(codePoint);
             index += Character.charCount(codePoint);
-        }
-        int[] ids = new int[tokens.size()];
-
-        for (int index = 0; index < ids.length; index++) {
-            ids[index] = tokens.get(index);
         }
         return ids;
     }
@@ -191,10 +212,26 @@ public final class CharTokenizer implements Tokenizer {
                     + "] characters");
         }
         List<Integer> characters = new ArrayList<>(count);
+        Set<Integer> seen = new HashSet<>((count * 2) + 1);
 
         for (int index = 0; index < count; index++) {
-            characters.add(in.readInt());
+            int codePoint = in.readInt();
+
+            if (!isValidScalarCodePoint(codePoint)) {
+                throw new IOException("Invalid Unicode scalar code point in vocabulary: "
+                        + codePoint);
+            }
+            if (!seen.add(codePoint)) {
+                throw new IOException("Duplicate character code point in vocabulary: "
+                        + codePoint);
+            }
+            characters.add(codePoint);
         }
         setCharacters(characters);
+    }
+
+    private static boolean isValidScalarCodePoint(int codePoint) {
+        return Character.isValidCodePoint(codePoint)
+                && ((codePoint < Character.MIN_SURROGATE) || (codePoint > Character.MAX_SURROGATE));
     }
 }
