@@ -38,20 +38,41 @@ TaskApi    llm.tasks()
 ### Local Model / ローカルモデル (`llm.local()`)
 
 ```text
-String  create(String configJson)         // {"vocab","vocabSize","dModel","heads","layers","context","seed"}
-String  load(String path)
-Boolean save(String path)                 // null saves to bound path
-Boolean unload()
-String  info()
-Boolean setOptimizer(String optionsJson)  // {"learningRate","weightDecay","largestGradient"}
-String  tokenize(String text)
-String  detokenize(String tokensJson)
-Integer tokenCount(String text)
-String  train(String texts, String optionsJson)        // returns taskId; options: {"epochs","learningRate"}
-String  trainFile(String path, String optionsJson)     // returns taskId
-String  evaluate(String texts)                         // returns taskId
-String  evaluateFile(String path)                      // returns taskId
-String  generate(String prompt, String optionsJson)    // returns taskId; {"maxTokens","temperature","topK","topP","seed"}
+String       create(String configJson)         // {"vocab","vocabSize","dModel","heads","layers","context","seed"}
+String       load(String path)
+Boolean      save(String path)                 // null saves to bound path
+Boolean      unload()
+String       info()
+Boolean      setOptimizer(String optionsJson)  // {"learningRate","weightDecay","largestGradient"}
+String       tokenize(String text)
+String       detokenize(String tokensJson)
+Integer      tokenCount(String text)
+String       train(String texts, String optionsJson)        // returns taskId; {"epochs","learningRate","minLearningRate","warmupSteps","gradientAccumulation"}
+String       trainFile(String path, String optionsJson)     // returns taskId
+String       evaluate(String texts)                         // returns taskId
+String       evaluateFile(String path)                      // returns taskId
+String       generate(String prompt, String optionsJson)    // returns taskId; {"maxTokens","temperature","topK","topP","minP","repetitionPenalty","seed"}; result includes confidence & inferenceId
+ContinualApi continual()
+```
+
+### Continual Self-Updating Learning / 継続自己更新学習 (`llm.local().continual()`)
+
+```text
+String  configure(String optionsJson)            // {"autoLearn","idleDelayMs","autoSavePath","autoSaveEvery","memoryCapacity","maxTokenTraces","holdoutCapacity","holdoutRatio","batchSize","microEpochs","maxLearningRate","minLearningRate","lrDecayFactor","maxRegression","replayRatio","selfMixRatio","learnFromSelfInference","selfConfidenceThreshold","selfMarginThreshold","minSelfTokens","allowVocabularyGrowth","memoryRecallEnabled","memoryMaxLambda","memoryMinSimilarity","memoryTemperature","negativeInhibitionGamma","loraRank","loraAlpha","surpriseThreshold","unlikelihoodWeight","consolidateEvery","ewcLambda","distillAlpha"}
+Boolean start()
+Boolean stop()
+String  status()
+String  observe(String text, String optionsJson) // single string or JSON array; {"weight","holdout"}
+String  observePair(String prompt, String response, String optionsJson) // immediate 1-shot episodic + Wake pair
+String  feedback(String feedbackJson)            // {"inferenceId","prompt","response","accepted","reward","correction"}
+String  observeLadder(String ladderJson, String optionsJson) // ingests DecoTofu ladders.snapshot(), structure(), drainTrace(), or drainObservations()
+String  stepNow()                                // runs one Wake update (or due Sleep consolidation) when idle
+String  consolidate()                            // explicitly triggers Sleep consolidation (LoRA merge + distillation + Online EWC)
+String  recall(String query, Integer topK)       // hybrid neural + lexical search over Tier-1 episodic memory
+String  memories(Integer limit)                  // lists episodic memories with retention/pin/consolidated flags
+Boolean pin(long episodeId, boolean pinned)      // pins/unpins an episode to protect from eviction
+Boolean forget(long episodeId)                   // immediately erases an episode and its recall traces
+Boolean clearMemory()
 ```
 
 ### Remote Providers & Endpoints (`llm.remote()`)
@@ -195,6 +216,19 @@ async function setup() {
   })), {
     onToken: (t) => appendText(t)
   });
+
+  // Closed-loop continual learning with DecoTofu ladders (inference-prioritized + holdout rollback gate)
+  llm.local().continual().configure(JSON.stringify({
+    autoLearn: true,
+    idleDelayMs: 250,
+    autoSavePath: 'model/self_updated.lmc',
+    autoSaveEvery: 10
+  }));
+  ladders.startTrace(JSON.stringify({ maxEntries: 512, minIntervalMs: 50 }));
+  setInterval(() => {
+    const drained = ladders.drainTrace(64);
+    if (drained !== '[]') llm.local().continual().observeLadder(drained, null);
+  }, 500);
 }
 ```
 

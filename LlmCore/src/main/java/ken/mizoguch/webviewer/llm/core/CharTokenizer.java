@@ -115,6 +115,56 @@ public final class CharTokenizer implements Tokenizer {
         return false;
     }
 
+    List<Integer> collectUnseen(List<String> texts) {
+        List<Integer> unseen = new ArrayList<>();
+        if (texts == null) {
+            return unseen;
+        }
+        Set<Integer> seen = new HashSet<>();
+
+        for (String text : texts) {
+            if ((text == null) || text.isEmpty()) {
+                continue;
+            }
+            for (int index = 0, length = text.length(); index < length;) {
+                int codePoint = text.codePointAt(index);
+
+                if (isValidScalarCodePoint(codePoint)
+                        && !identifiers_.containsKey(codePoint)
+                        && seen.add(codePoint)) {
+                    unseen.add(codePoint);
+                }
+                index += Character.charCount(codePoint);
+            }
+        }
+        return unseen;
+    }
+
+    boolean addCodePoints(List<Integer> codePoints) {
+        if ((codePoints == null) || codePoints.isEmpty()) {
+            return false;
+        }
+        int added = 0;
+
+        for (Integer codePointValue : codePoints) {
+            if (codePointValue == null) {
+                continue;
+            }
+            int codePoint = codePointValue;
+
+            if (isValidScalarCodePoint(codePoint) && !identifiers_.containsKey(codePoint)) {
+                if ((FIRST + characters_.size()) >= ModelConfig.MAX_VOCAB) {
+                    throw new LlmCoreException("Character vocabulary exceeds maximum of "
+                            + ModelConfig.MAX_VOCAB);
+                }
+                identifiers_.put(codePoint, FIRST + characters_.size());
+                characters_.add(codePoint);
+                added++;
+            }
+        }
+        return added > 0;
+    }
+
     /**
      * the vocabulary of a text : the characters the tokenizer does not know yet are added in the
      * order they appear, so a training which reads several texts keeps one vocabulary

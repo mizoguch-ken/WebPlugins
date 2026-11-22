@@ -17,21 +17,34 @@ public final class LocalApi {
 
     private final Llm owner_;
     private final LocalModelService service_;
+    private final ContinualController continual_;
+    private final ContinualApi continualApi_;
     private final TaskManager tasks_;
     private final EventDispatcher dispatcher_;
 
-    LocalApi(Llm owner, LocalModelService service, TaskManager tasks, EventDispatcher dispatcher) {
+    LocalApi(Llm owner, LocalModelService service, ContinualController continual,
+            TaskManager tasks, EventDispatcher dispatcher) {
         owner_ = owner;
         service_ = service;
+        continual_ = continual;
+        continualApi_ = new ContinualApi(owner, continual);
         tasks_ = tasks;
         dispatcher_ = dispatcher;
+    }
+
+    /**
+     * Sub-API ({@code llm.local().continual()}) for inference-prioritized continual self-updating
+     * learning, confidence-gated self-inference capture, feedback, and ladder observation.
+     */
+    public ContinualApi continual() {
+        return continualApi_;
     }
 
     /**
      * Builds a new local Transformer model configured by optional {@code configJson}.
      */
     public String create(String configJson) {
-        if (!requireLocalFree()) {
+        if (!acquireUserHoldSync()) {
             return null;
         }
         try {
@@ -41,6 +54,8 @@ public final class LocalApi {
         } catch (LlmCoreException | IllegalArgumentException ex) {
             owner_.logException(ex);
             return null;
+        } finally {
+            continual_.releaseUser();
         }
     }
 
@@ -48,11 +63,11 @@ public final class LocalApi {
      * Loads a local Transformer model from a sandboxed file path.
      */
     public String load(String path) {
-        if (!requireLocalFree()) {
-            return null;
-        }
         Path file = owner_.resolveSandboxPath(path);
         if (file == null) {
+            return null;
+        }
+        if (!acquireUserHoldSync()) {
             return null;
         }
         try {
@@ -62,6 +77,8 @@ public final class LocalApi {
         } catch (LlmCoreException ex) {
             owner_.logException(ex);
             return null;
+        } finally {
+            continual_.releaseUser();
         }
     }
 
@@ -69,9 +86,6 @@ public final class LocalApi {
      * Saves the active local model to {@code path}, or its bound path when {@code null}.
      */
     public Boolean save(String path) {
-        if (!requireLocalFree()) {
-            return false;
-        }
         Path file = null;
         if (path != null) {
             file = owner_.resolveSandboxPath(path);
@@ -79,12 +93,17 @@ public final class LocalApi {
                 return false;
             }
         }
+        if (!acquireUserHoldSync()) {
+            return false;
+        }
         try {
             service_.saveModel(file);
             return true;
         } catch (LlmCoreException ex) {
             owner_.logException(ex);
             return false;
+        } finally {
+            continual_.releaseUser();
         }
     }
 
@@ -92,7 +111,7 @@ public final class LocalApi {
      * Unloads the active local model from memory.
      */
     public Boolean unload() {
-        if (!requireLocalFree()) {
+        if (!acquireUserHoldSync()) {
             return false;
         }
         try {
@@ -102,6 +121,8 @@ public final class LocalApi {
         } catch (LlmCoreException ex) {
             owner_.logException(ex);
             return false;
+        } finally {
+            continual_.releaseUser();
         }
     }
 
@@ -117,7 +138,7 @@ public final class LocalApi {
      * {@code largestGradient}) via JSON object.
      */
     public Boolean setOptimizer(String optionsJson) {
-        if (!requireLocalModelReady()) {
+        if (!requireLocalModelPresent() || !acquireUserHoldSync()) {
             return false;
         }
         try {
@@ -126,6 +147,8 @@ public final class LocalApi {
         } catch (IllegalArgumentException | LlmCoreException ex) {
             owner_.logException(ex);
             return false;
+        } finally {
+            continual_.releaseUser();
         }
     }
 
@@ -133,7 +156,7 @@ public final class LocalApi {
      * Encodes {@code text} into a JSON array of integer token IDs.
      */
     public String tokenize(String text) {
-        if (!requireLocalModelReady()) {
+        if (!requireLocalModelPresent() || !acquireUserHoldSync()) {
             return null;
         }
         try {
@@ -141,6 +164,8 @@ public final class LocalApi {
         } catch (LlmCoreException ex) {
             owner_.logException(ex);
             return null;
+        } finally {
+            continual_.releaseUser();
         }
     }
 
@@ -148,7 +173,7 @@ public final class LocalApi {
      * Decodes a JSON array of integer token IDs back into text.
      */
     public String detokenize(String tokensJson) {
-        if (!requireLocalModelReady()) {
+        if (!requireLocalModelPresent() || !acquireUserHoldSync()) {
             return null;
         }
         try {
@@ -156,6 +181,8 @@ public final class LocalApi {
         } catch (IllegalArgumentException | LlmCoreException ex) {
             owner_.logException(ex);
             return null;
+        } finally {
+            continual_.releaseUser();
         }
     }
 
@@ -163,7 +190,7 @@ public final class LocalApi {
      * Returns the token count produced by the active local tokenizer for {@code text}.
      */
     public Integer tokenCount(String text) {
-        if (!requireLocalModelReady()) {
+        if (!requireLocalModelPresent() || !acquireUserHoldSync()) {
             return null;
         }
         try {
@@ -171,6 +198,8 @@ public final class LocalApi {
         } catch (LlmCoreException ex) {
             owner_.logException(ex);
             return null;
+        } finally {
+            continual_.releaseUser();
         }
     }
 
@@ -274,15 +303,22 @@ public final class LocalApi {
             owner_.logException(ex);
             return null;
         }
-        if (!requireLocalModelReady()) {
+        if (!requireLocalModelPresent() || !acquireUserHoldSync()) {
             return null;
         }
         String taskId = tasks_.submitLocal(
                 "generate",
-                (id, cancel) -> service_.generate(prompt, opts, cancel,
-                        localListener(id, "generate")),
+                (id, cancel) -> {
+                    try {
+                        return service_.generate(prompt, opts, cancel,
+                                localListener(id, "generate"));
+                    } finally {
+                        continual_.releaseUser();
+                    }
+                },
                 service_::stopIfRunning);
         if (taskId == null) {
+            continual_.releaseUser();
             owner_.logError("Local model is busy or plug-in is closed");
         }
         return taskId;
@@ -296,50 +332,70 @@ public final class LocalApi {
             owner_.logException(ex);
             return null;
         }
-        if (!requireLocalModelReady()) {
+        if (!requireLocalModelPresent() || !acquireUserHoldSync()) {
             return null;
         }
         List<String> immutable = List.copyOf(texts);
         String taskId = tasks_.submitLocal(
                 "train",
-                (id, cancel) -> service_.train(immutable, opts, cancel,
-                        localListener(id, "train")),
+                (id, cancel) -> {
+                    try {
+                        return service_.train(immutable, opts, cancel,
+                                localListener(id, "train"));
+                    } finally {
+                        continual_.releaseUser();
+                    }
+                },
                 service_::stopIfRunning);
         if (taskId == null) {
+            continual_.releaseUser();
             owner_.logError("Local model is busy or plug-in is closed");
         }
         return taskId;
     }
 
     private String submitEvaluation(List<String> texts) {
-        if (!requireLocalModelReady()) {
+        if (!requireLocalModelPresent() || !acquireUserHoldSync()) {
             return null;
         }
         List<String> immutable = List.copyOf(texts);
         String taskId = tasks_.submitLocal(
                 "evaluate",
-                (id, cancel) -> service_.evaluate(immutable, cancel),
+                (id, cancel) -> {
+                    try {
+                        return service_.evaluate(immutable, cancel);
+                    } finally {
+                        continual_.releaseUser();
+                    }
+                },
                 service_::stopIfRunning);
         if (taskId == null) {
+            continual_.releaseUser();
             owner_.logError("Local model is busy or plug-in is closed");
         }
         return taskId;
     }
 
-    private boolean requireLocalFree() {
-        if (!tasks_.isLocalIdle() || !service_.isIdle()) {
-            owner_.logError("Local model is currently busy");
+    private boolean requireLocalModelPresent() {
+        if (!service_.hasModel()) {
+            owner_.logError("No local model is loaded");
             return false;
         }
         return true;
     }
 
-    private boolean requireLocalModelReady() {
-        if (!service_.hasModel()) {
-            owner_.logError("No local model is loaded");
+    private boolean acquireUserHoldSync() {
+        if (!tasks_.isLocalIdle()) {
+            owner_.logError("Local model is currently busy");
             return false;
         }
-        return requireLocalFree();
+        continual_.preemptForUser();
+        if (!tasks_.isLocalIdle() || !service_.isIdle()) {
+            continual_.releaseUser();
+            owner_.logError("Local model is currently busy");
+            return false;
+        }
+        return true;
     }
 
     private LlmCoreListener localListener(String taskId, String kind) {

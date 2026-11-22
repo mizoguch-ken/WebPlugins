@@ -29,15 +29,26 @@ final class LocalModelService {
     static final int DEFAULT_EPOCHS = 40;
     static final int DEFAULT_TOKENS = 128;
 
-    record TrainOptions(int epochs, Double learningRate) {
+    record TrainOptions(int epochs, Double learningRate, Double minLearningRate, int warmupSteps,
+            int gradientAccumulation) {
     }
 
-    record GenerateOptions(int maxTokens, double temperature, int topK, double topP, Long seed) {
+    record GenerateOptions(int maxTokens, double temperature, int topK, double topP, double minP,
+            double repetitionPenalty, Long seed) {
     }
 
     private final LlmCore core_ = new LlmCore();
     private final Object runStateLock_ = new Object();
     private boolean coreRunning_;
+    private volatile ContinualController continualController_;
+
+    LlmCore core() {
+        return core_;
+    }
+
+    void attachContinual(ContinualController continualController) {
+        continualController_ = continualController;
+    }
 
     String newModel(String configJson) {
         core_.newModel(parseModelConfig(configJson));
@@ -89,6 +100,7 @@ final class LocalModelService {
             case LlmCore.TRAINING -> "training";
             case LlmCore.ANSWERING -> "answering";
             case LlmCore.EVALUATING -> "evaluating";
+            case LlmCore.CONTINUAL_TRAINING -> "continual";
             default -> "idle";
         };
     }
@@ -116,6 +128,10 @@ final class LocalModelService {
             info.add("learningRate", JsonUtil.finiteNumber(core_.learningRate()));
             info.add("weightDecay", JsonUtil.finiteNumber(core_.weightDecay()));
             info.add("largestGradient", JsonUtil.finiteNumber(core_.largestGradient()));
+        }
+        ContinualController cc = continualController_;
+        if (cc != null) {
+            info.add("continual", cc.statusJsonObject());
         }
         return JsonUtil.GSON.toJson(info);
     }
@@ -156,6 +172,9 @@ final class LocalModelService {
     static TrainOptions parseTrainOptions(String optionsJson) {
         int epochs = DEFAULT_EPOCHS;
         Double learningRate = null;
+        Double minLearningRate = null;
+        int warmupSteps = 0;
+        int gradientAccumulation = 1;
         if ((optionsJson != null) && !optionsJson.trim().isEmpty()) {
             JsonObject opts = JsonUtil.parseObject(optionsJson, "Training options");
             Integer ep = JsonUtil.optInt(opts, "epochs");
@@ -175,8 +194,30 @@ final class LocalModelService {
                             + " is refused : use a rate between 0 and 0.1");
                 }
             }
+            minLearningRate = JsonUtil.optDouble(opts, "minLearningRate");
+            if (minLearningRate != null) {
+                double mlr = minLearningRate.doubleValue();
+                if (!Double.isFinite(mlr) || (mlr < 0d) || (mlr > 0.1d)) {
+                    throw new LlmCoreException("Invalid minLearningRate: " + mlr);
+                }
+            }
+            Integer wu = JsonUtil.optInt(opts, "warmupSteps");
+            if (wu != null) {
+                if (wu.intValue() < 0) {
+                    throw new IllegalArgumentException("\"warmupSteps\" must be non-negative");
+                }
+                warmupSteps = wu.intValue();
+            }
+            Integer ga = JsonUtil.optInt(opts, "gradientAccumulation");
+            if (ga != null) {
+                if (ga.intValue() < 1) {
+                    throw new IllegalArgumentException("\"gradientAccumulation\" must be >= 1");
+                }
+                gradientAccumulation = ga.intValue();
+            }
         }
-        return new TrainOptions(epochs, learningRate);
+        return new TrainOptions(epochs, learningRate, minLearningRate, warmupSteps,
+                gradientAccumulation);
     }
 
     static GenerateOptions parseGenerateOptions(String optionsJson) {
@@ -184,6 +225,8 @@ final class LocalModelService {
         double temperature = Sampler.GREEDY;
         int topK = Sampler.NO_TOP;
         double topP = Sampler.NO_TAIL;
+        double minP = Sampler.NO_MIN_PROBABILITY;
+        double repetitionPenalty = Sampler.NO_REPETITION_PENALTY;
         Long seed = null;
 
         if ((optionsJson != null) && !optionsJson.trim().isEmpty()) {
@@ -221,9 +264,26 @@ final class LocalModelService {
                 }
                 topP = val;
             }
+            Double mp = JsonUtil.optDouble(opts, "minP");
+            if (mp != null) {
+                double val = mp.doubleValue();
+                if ((val < 0d) || (val > 1d)) {
+                    throw new IllegalArgumentException("\"minP\" must be between 0 and 1");
+                }
+                minP = val;
+            }
+            Double rp = JsonUtil.optDouble(opts, "repetitionPenalty");
+            if (rp != null) {
+                double val = rp.doubleValue();
+                if (val < 1d) {
+                    throw new IllegalArgumentException("\"repetitionPenalty\" must be >= 1.0");
+                }
+                repetitionPenalty = val;
+            }
             seed = JsonUtil.optLong(opts, "seed");
         }
-        return new GenerateOptions(maxTokens, temperature, topK, topP, seed);
+        return new GenerateOptions(maxTokens, temperature, topK, topP, minP, repetitionPenalty,
+                seed);
     }
 
     TaskManager.TaskOutcome train(List<String> texts, TrainOptions options,
@@ -233,7 +293,11 @@ final class LocalModelService {
         }
         final LlmCore.TrainResult trained;
         try {
-            trained = core_.train(texts, options.epochs(), options.learningRate(), listener);
+            trained = core_.train(texts,
+                    new LlmCore.TrainOptions(options.epochs(), options.learningRate(),
+                            options.minLearningRate(), options.warmupSteps(),
+                            options.gradientAccumulation()),
+                    listener);
         } finally {
             endCoreRun();
         }
@@ -262,7 +326,7 @@ final class LocalModelService {
         } finally {
             endCoreRun();
         }
-        boolean stopped = (cancel != null) && cancel.isCancelled();
+        boolean stopped = evaluated.stopped || ((cancel != null) && cancel.isCancelled());
         JsonObject end = new JsonObject();
         end.addProperty("kind", "evaluate");
         end.add("loss", JsonUtil.finiteNumber(evaluated.loss));
@@ -284,10 +348,17 @@ final class LocalModelService {
         final LlmCore.AnswerResult answered;
         try {
             Sampler sampler = new Sampler(options.temperature(), options.topK(), options.topP(),
+                    options.minP(), options.repetitionPenalty(),
                     (options.seed() == null) ? null : new Random(options.seed().longValue()));
             answered = core_.generate(prompt, options.maxTokens(), sampler, listener);
         } finally {
             endCoreRun();
+        }
+        String inferenceId = null;
+        ContinualController cc = continualController_;
+        if ((cc != null) && !answered.stopped && !answered.text.isEmpty()) {
+            inferenceId = cc.onInferenceCompleted(prompt, answered.text, answered.confidence,
+                    answered.meanLogProb, answered.meanMargin);
         }
         JsonObject end = new JsonObject();
         end.addProperty("kind", "generate");
@@ -296,6 +367,14 @@ final class LocalModelService {
         end.add("seconds", JsonUtil.finiteNumber(JsonUtil.roundMillis(answered.seconds)));
         end.addProperty("stopped", answered.stopped);
         end.addProperty("ended", answered.ended);
+        end.add("confidence", JsonUtil.finiteNumber(answered.confidence));
+        end.add("meanLogProb", JsonUtil.finiteNumber(answered.meanLogProb));
+        end.add("meanMargin", JsonUtil.finiteNumber(answered.meanMargin));
+        end.addProperty("memoryHits", answered.memoryHits);
+        end.add("memoryLambda", JsonUtil.finiteNumber(answered.memoryLambda));
+        if (inferenceId != null) {
+            end.addProperty("inferenceId", inferenceId);
+        }
         return new TaskManager.TaskOutcome(JsonUtil.GSON.toJson(end), answered.stopped);
     }
 

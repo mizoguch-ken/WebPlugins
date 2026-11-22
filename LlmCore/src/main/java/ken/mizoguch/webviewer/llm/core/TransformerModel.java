@@ -49,13 +49,18 @@ public final class TransformerModel {
      */
     static final int F_LAYER_COUNT = 16;
 
+    enum LossMode {
+        CROSS_ENTROPY,
+        UNLIKELIHOOD,
+        DISTILL
+    }
+
     /**
      * the width of the network which follows the attention, as a multiple of the width of the model
      */
     static final int FEED_WIDTH = 4;
 
     private final ModelConfig config_;
-    private final int vocabulary_;
     private final int width_;
     private final int heads_;
     private final int headSize_;
@@ -63,12 +68,15 @@ public final class TransformerModel {
     private final int context_;
     private final int feed_;
 
+    private int vocabulary_;
+
     private final float[][] weights_;
     private final float[][] gradients_;
     private final Object forwardLock_ = new Object();
 
     private Step forwardStep_;
     private Step backwardStep_;
+    private volatile LoraAdapter lora_;
 
     /**
      * a model of the configuration given, of the weights the seed gives
@@ -171,6 +179,108 @@ public final class TransformerModel {
         return new KvCache();
     }
 
+    void attachLora(LoraAdapter lora) {
+        synchronized (forwardLock_) {
+            if (lora_ != lora) {
+                lora_ = lora;
+                forwardStep_ = null;
+                backwardStep_ = null;
+            }
+        }
+    }
+
+    public LoraAdapter lora() {
+        return lora_;
+    }
+
+    void expandVocabulary(int newVocabSize) {
+        if (config_.vocabType() != ModelConfig.VOCAB_CHAR) {
+            throw new LlmCoreException("Vocabulary expansion is only supported for char models");
+        }
+        if ((newVocabSize <= vocabulary_) || (newVocabSize > ModelConfig.MAX_VOCAB)) {
+            throw new LlmCoreException("Expanded vocabulary size out of range: " + newVocabSize);
+        }
+        ModelConfig check = new ModelConfig(config_);
+        if (!check.setVocabSize(newVocabSize) || !check.isTrainable()) {
+            throw new LlmCoreException("Expanded vocabulary of " + newVocabSize
+                    + " tokens exceeds model limits");
+        }
+        int oldVocab = vocabulary_;
+        int d = width_;
+        Random rng = new Random(config_.seed() ^ ((long) oldVocab << 16) ^ newVocabSize);
+        double spread = 0.02d;
+
+        float[] nextToken = Arrays.copyOf(weights_[W_TOKEN], newVocabSize * d);
+        for (int i = oldVocab * d; i < nextToken.length; i++) {
+            nextToken[i] = (float) (rng.nextGaussian() * spread);
+        }
+
+        float[] oldHead = weights_[W_HEAD];
+        float[] nextHead = new float[d * newVocabSize];
+        for (int r = 0; r < d; r++) {
+            int dstBase = r * newVocabSize;
+            System.arraycopy(oldHead, r * oldVocab, nextHead, dstBase, oldVocab);
+            for (int c = oldVocab; c < newVocabSize; c++) {
+                nextHead[dstBase + c] = (float) (rng.nextGaussian() * spread);
+            }
+        }
+
+        float[] nextBias = Arrays.copyOf(weights_[W_HEAD_BIAS], newVocabSize);
+
+        weights_[W_TOKEN] = nextToken;
+        weights_[W_HEAD] = nextHead;
+        weights_[W_HEAD_BIAS] = nextBias;
+        gradients_[W_TOKEN] = new float[nextToken.length];
+        gradients_[W_HEAD] = new float[nextHead.length];
+        gradients_[W_HEAD_BIAS] = new float[nextBias.length];
+
+        synchronized (forwardLock_) {
+            vocabulary_ = newVocabSize;
+            config_.setVocabSize(newVocabSize);
+            if ((lora_ != null) && (lora_.vocabulary() < newVocabSize)) {
+                lora_.expandVocabulary(oldVocab, newVocabSize);
+            }
+            forwardStep_ = null;
+            backwardStep_ = null;
+        }
+    }
+
+    float[][] copyWeights() {
+        float[][] copy = new float[weights_.length][];
+        for (int i = 0; i < weights_.length; i++) {
+            copy[i] = weights_[i].clone();
+        }
+        return copy;
+    }
+
+    void restoreWeights(int targetVocab, float[][] saved) {
+        if ((saved == null) || (saved.length != weights_.length)) {
+            throw new LlmCoreException("Saved weights length mismatch");
+        }
+        synchronized (forwardLock_) {
+            for (int i = 0; i < weights_.length; i++) {
+                if (saved[i] == null) {
+                    throw new LlmCoreException("Missing saved weight leaf " + i);
+                }
+                if (weights_[i].length != saved[i].length) {
+                    weights_[i] = saved[i].clone();
+                    gradients_[i] = new float[saved[i].length];
+                } else {
+                    System.arraycopy(saved[i], 0, weights_[i], 0, saved[i].length);
+                    Tensor.zero(gradients_[i]);
+                }
+            }
+            if (vocabulary_ != targetVocab) {
+                vocabulary_ = targetVocab;
+                if (config_.vocabType() == ModelConfig.VOCAB_CHAR) {
+                    config_.setVocabSize(targetVocab);
+                }
+                forwardStep_ = null;
+                backwardStep_ = null;
+            }
+        }
+    }
+
     /**
      * the arrays of the weights of the model, of the sizes of the configuration
      *
@@ -267,6 +377,8 @@ public final class TransformerModel {
         private final float[] ffn_;
         private final float[] scores_;
         private final float[] logits_;
+        private float[] loraH_;
+        private float[] loraDelta_;
         private int length_;
 
         private KvCache() {
@@ -284,6 +396,19 @@ public final class TransformerModel {
 
         private TransformerModel owner() {
             return TransformerModel.this;
+        }
+
+        float[] finalNorm() {
+            return norm_;
+        }
+
+        private void ensureLoraScratch(int rank, int outLen) {
+            if ((loraH_ == null) || (loraH_.length < rank)) {
+                loraH_ = new float[rank];
+            }
+            if ((loraDelta_ == null) || (loraDelta_.length < outLen)) {
+                loraDelta_ = new float[outLen];
+            }
         }
 
         public void reset() {
@@ -306,6 +431,7 @@ public final class TransformerModel {
 
         private final int capacity_;
         private final boolean backward_;
+        private final int loraRank_;
 
         // the values of the model : the buffers shared by the layers
         private final float[] x_;
@@ -346,13 +472,22 @@ public final class TransformerModel {
         private final float[] dPost_;
         private final float[][] probs_;
 
-        private Step(int capacity, boolean backward) {
+        // optional LoRA activation & backward scratch buffers
+        private final float[] loraFwdH_;
+        private final float[][] loraH_;
+        private final float[] loraDelta_;
+        private final float[] loraDH_;
+        private final float[] loraHScaled_;
+        private final float[] loraDX_;
+
+        private Step(int capacity, boolean backward, int loraRank) {
             int d = width_;
             int f = feed_;
             int slots = backward ? layers_ : 1;
 
             capacity_ = capacity;
             backward_ = backward;
+            loraRank_ = loraRank;
 
             x_ = new float[capacity * d];
             out_ = new float[capacity * d];
@@ -370,6 +505,31 @@ public final class TransformerModel {
             att_ = new float[slots][capacity * d];
             pre_ = new float[slots][capacity * f];
             post_ = new float[slots][capacity * f];
+
+            if (loraRank > 0) {
+                int maxOut = Math.max(f, vocabulary_);
+                loraDelta_ = new float[capacity * maxOut];
+                if (backward) {
+                    loraFwdH_ = null;
+                    loraH_ = new float[(layers_ * LoraAdapter.SLOTS_PER_LAYER) + 1][capacity * loraRank];
+                    loraDH_ = new float[capacity * loraRank];
+                    loraHScaled_ = new float[capacity * loraRank];
+                    loraDX_ = new float[capacity * Math.max(d, f)];
+                } else {
+                    loraFwdH_ = new float[capacity * loraRank];
+                    loraH_ = null;
+                    loraDH_ = null;
+                    loraHScaled_ = null;
+                    loraDX_ = null;
+                }
+            } else {
+                loraFwdH_ = null;
+                loraH_ = null;
+                loraDelta_ = null;
+                loraDH_ = null;
+                loraHScaled_ = null;
+                loraDX_ = null;
+            }
 
             if (!backward) {
                 finalCenter_ = null;
@@ -430,6 +590,9 @@ public final class TransformerModel {
         int stateSize = length * d;
         int feedSize = length * f;
         double scale = 1d / Math.sqrt(headSize_);
+        LoraAdapter lora = lora_;
+        boolean callLora = (lora != null) && (!lora.isZero() || step.backward_)
+                && (step.backward_ ? (step.loraH_ != null) : (step.loraFwdH_ != null));
 
         for (int position = 0; position < length; position++) {
             int tokenOffset = tokens[position] * d;
@@ -459,10 +622,25 @@ public final class TransformerModel {
 
             Tensor.ab(norm1, length, d, weights_[base + F_WQ], d, query);
             Tensor.addBias(query, length, d, weights_[base + F_BQ]);
+            if (callLora) {
+                int sIdx = LoraAdapter.slotIndex(layer, LoraAdapter.LORA_WQ);
+                lora.addForwardBatched(sIdx, norm1, length, d, d, query,
+                        step.backward_ ? step.loraH_[sIdx] : step.loraFwdH_, step.loraDelta_);
+            }
             Tensor.ab(norm1, length, d, weights_[base + F_WK], d, key);
             Tensor.addBias(key, length, d, weights_[base + F_BK]);
+            if (callLora) {
+                int sIdx = LoraAdapter.slotIndex(layer, LoraAdapter.LORA_WK);
+                lora.addForwardBatched(sIdx, norm1, length, d, d, key,
+                        step.backward_ ? step.loraH_[sIdx] : step.loraFwdH_, step.loraDelta_);
+            }
             Tensor.ab(norm1, length, d, weights_[base + F_WV], d, value);
             Tensor.addBias(value, length, d, weights_[base + F_BV]);
+            if (callLora) {
+                int sIdx = LoraAdapter.slotIndex(layer, LoraAdapter.LORA_WV);
+                lora.addForwardBatched(sIdx, norm1, length, d, d, value,
+                        step.backward_ ? step.loraH_[sIdx] : step.loraFwdH_, step.loraDelta_);
+            }
 
             if (cache != null) {
                 System.arraycopy(key, 0, cache.kCache_[layer], 0, stateSize);
@@ -516,6 +694,11 @@ public final class TransformerModel {
 
             Tensor.ab(att, length, d, weights_[base + F_WO], d, step.out_);
             Tensor.addBias(step.out_, length, d, weights_[base + F_BO]);
+            if (callLora) {
+                int sIdx = LoraAdapter.slotIndex(layer, LoraAdapter.LORA_WO);
+                lora.addForwardBatched(sIdx, att, length, d, d, step.out_,
+                        step.backward_ ? step.loraH_[sIdx] : step.loraFwdH_, step.loraDelta_);
+            }
             Tensor.add(step.x_, step.out_, stateSize);
 
             Tensor.layerNorm(step.x_, length, d, weights_[base + F_N2_SCALE],
@@ -525,11 +708,21 @@ public final class TransformerModel {
 
             Tensor.ab(norm2, length, d, weights_[base + F_W1], f, pre);
             Tensor.addBias(pre, length, f, weights_[base + F_B1]);
+            if (callLora) {
+                int sIdx = LoraAdapter.slotIndex(layer, LoraAdapter.LORA_W1);
+                lora.addForwardBatched(sIdx, norm2, length, d, f, pre,
+                        step.backward_ ? step.loraH_[sIdx] : step.loraFwdH_, step.loraDelta_);
+            }
             Tensor.copy(pre, post, feedSize);
             Tensor.gelu(post, feedSize);
 
             Tensor.ab(post, length, f, weights_[base + F_W2], d, step.out_);
             Tensor.addBias(step.out_, length, d, weights_[base + F_B2]);
+            if (callLora) {
+                int sIdx = LoraAdapter.slotIndex(layer, LoraAdapter.LORA_W2);
+                lora.addForwardBatched(sIdx, post, length, f, d, step.out_,
+                        step.backward_ ? step.loraH_[sIdx] : step.loraFwdH_, step.loraDelta_);
+            }
             Tensor.add(step.x_, step.out_, stateSize);
         }
         if (cache != null) {
@@ -546,18 +739,16 @@ public final class TransformerModel {
                 step.lastNorm_, null, null);
         Tensor.mv(step.lastNorm_, d, weights_[W_HEAD], v, targetLogits);
         Tensor.add(targetLogits, weights_[W_HEAD_BIAS], v);
+        LoraAdapter lora = lora_;
+        if ((lora != null) && !lora.isZero()
+                && ((step.loraFwdH_ != null) || (step.loraH_ != null))) {
+            float[] hBuf = step.backward_ ? step.loraH_[lora.headSlot()] : step.loraFwdH_;
+            lora.addForwardBatched(lora.headSlot(), step.lastNorm_, 1, d, v, targetLogits, hBuf,
+                    step.loraDelta_);
+        }
         return targetLogits;
     }
 
-    /**
-     * the values of the token which can follow the tokens given : runs zero-copy causal multi-head
-     * self-attention across the sequence
-     *
-     * @param tokens tokens of the sequence
-     * @param length number of the tokens to read
-     * @param step the buffers of the step, kept by the caller for a backward step
-     * @return the values of every token of the sequence, length rows of the vocabulary values
-     */
     float[] forward(int[] tokens, int length, Step step) {
         int d = width_;
         int v = vocabulary_;
@@ -568,6 +759,15 @@ public final class TransformerModel {
                 step.normFinal_, step.finalCenter_, step.finalInverse_);
         Tensor.ab(step.normFinal_, length, d, weights_[W_HEAD], v, values);
         Tensor.addBias(values, length, v, weights_[W_HEAD_BIAS]);
+        LoraAdapter lora = lora_;
+        boolean callLora = (lora != null) && (!lora.isZero() || step.backward_)
+                && (step.backward_ ? (step.loraH_ != null) : (step.loraFwdH_ != null));
+        if (callLora) {
+            int headSlot = lora.headSlot();
+            float[] hBuf = step.backward_ ? step.loraH_[headSlot] : step.loraFwdH_;
+            lora.addForwardBatched(headSlot, step.normFinal_, length, d, v, values, hBuf,
+                    step.loraDelta_);
+        }
         return values;
     }
 
@@ -585,7 +785,8 @@ public final class TransformerModel {
     }
 
     float[] prefillInternal(int[] tokens, int length, KvCache cache) {
-        if ((cache == null) || (cache.owner() != this)) {
+        if ((cache == null) || (cache.owner() != this)
+                || (cache.logits_.length != vocabulary_)) {
             throw new LlmCoreException("KV cache does not match the active model");
         }
         if ((tokens == null) || (length < 1) || (length > tokens.length) || (length > context_)) {
@@ -604,7 +805,9 @@ public final class TransformerModel {
             Step step = newStep(length, false);
 
             forwardLayers(tokens, length, step, cache);
-            return forwardLastLogits(step, length, cache.logits_);
+            float[] logits = forwardLastLogits(step, length, cache.logits_);
+            System.arraycopy(step.lastNorm_, 0, cache.norm_, 0, width_);
+            return logits;
         }
     }
 
@@ -622,7 +825,8 @@ public final class TransformerModel {
     }
 
     float[] step(int token, int position, KvCache cache, boolean computeLogits) {
-        if ((cache == null) || (cache.owner() != this)) {
+        if ((cache == null) || (cache.owner() != this)
+                || (cache.logits_.length != vocabulary_)) {
             throw new LlmCoreException("KV cache does not match the active model");
         }
         if ((token < 0) || (token >= vocabulary_)) {
@@ -636,6 +840,11 @@ public final class TransformerModel {
         double scale = 1d / Math.sqrt(headSize_);
         int tokenOffset = token * d;
         int posOffset = position * d;
+        LoraAdapter lora = lora_;
+        boolean useLora = (lora != null) && !lora.isZero();
+        if (useLora) {
+            cache.ensureLoraScratch(lora.rank(), Math.max(f, vocabulary_));
+        }
 
         for (int col = 0; col < d; col++) {
             cache.x_[col] = weights_[W_TOKEN][tokenOffset + col]
@@ -650,13 +859,25 @@ public final class TransformerModel {
 
             Tensor.mv(cache.norm_, d, weights_[base + F_WQ], d, cache.q_);
             Tensor.add(cache.q_, weights_[base + F_BQ], d);
+            if (useLora) {
+                lora.addForwardVector(LoraAdapter.slotIndex(layer, LoraAdapter.LORA_WQ),
+                        cache.norm_, d, d, cache.q_, cache.loraH_, cache.loraDelta_);
+            }
 
             Tensor.mv(cache.norm_, d, weights_[base + F_WK], d, cache.out_);
             Tensor.add(cache.out_, weights_[base + F_BK], d);
+            if (useLora) {
+                lora.addForwardVector(LoraAdapter.slotIndex(layer, LoraAdapter.LORA_WK),
+                        cache.norm_, d, d, cache.out_, cache.loraH_, cache.loraDelta_);
+            }
             System.arraycopy(cache.out_, 0, cache.kCache_[layer], posOffset, d);
 
             Tensor.mv(cache.norm_, d, weights_[base + F_WV], d, cache.out_);
             Tensor.add(cache.out_, weights_[base + F_BV], d);
+            if (useLora) {
+                lora.addForwardVector(LoraAdapter.slotIndex(layer, LoraAdapter.LORA_WV),
+                        cache.norm_, d, d, cache.out_, cache.loraH_, cache.loraDelta_);
+            }
             System.arraycopy(cache.out_, 0, cache.vCache_[layer], posOffset, d);
 
             float[] kMat = cache.kCache_[layer];
@@ -691,15 +912,27 @@ public final class TransformerModel {
 
             Tensor.mv(cache.att_, d, weights_[base + F_WO], d, cache.out_);
             Tensor.add(cache.out_, weights_[base + F_BO], d);
+            if (useLora) {
+                lora.addForwardVector(LoraAdapter.slotIndex(layer, LoraAdapter.LORA_WO),
+                        cache.att_, d, d, cache.out_, cache.loraH_, cache.loraDelta_);
+            }
             Tensor.add(cache.x_, cache.out_, d);
 
             Tensor.layerNorm(cache.x_, 1, d, weights_[base + F_N2_SCALE],
                     weights_[base + F_N2_SHIFT], cache.norm_, null, null);
             Tensor.mv(cache.norm_, d, weights_[base + F_W1], f, cache.ffn_);
             Tensor.add(cache.ffn_, weights_[base + F_B1], f);
+            if (useLora) {
+                lora.addForwardVector(LoraAdapter.slotIndex(layer, LoraAdapter.LORA_W1),
+                        cache.norm_, d, f, cache.ffn_, cache.loraH_, cache.loraDelta_);
+            }
             Tensor.gelu(cache.ffn_);
             Tensor.mv(cache.ffn_, f, weights_[base + F_W2], d, cache.out_);
             Tensor.add(cache.out_, weights_[base + F_B2], d);
+            if (useLora) {
+                lora.addForwardVector(LoraAdapter.slotIndex(layer, LoraAdapter.LORA_W2),
+                        cache.ffn_, f, d, cache.out_, cache.loraH_, cache.loraDelta_);
+            }
             Tensor.add(cache.x_, cache.out_, d);
         }
         cache.length_ = seqLen;
@@ -710,36 +943,35 @@ public final class TransformerModel {
                 cache.norm_, null, null);
         Tensor.mv(cache.norm_, d, weights_[W_HEAD], vocabulary_, cache.logits_);
         Tensor.add(cache.logits_, weights_[W_HEAD_BIAS], vocabulary_);
+        if (useLora) {
+            lora.addForwardVector(lora.headSlot(), cache.norm_, d, vocabulary_, cache.logits_,
+                    cache.loraH_, cache.loraDelta_);
+        }
         return cache.logits_;
     }
 
-    /**
-     * the buffers a step needs : a training keeps the values of the read to send the difference
-     * back, an answer of the model does not need them
-     *
-     * @param length number of the tokens of the sequence
-     * @param backward true to keep the values a backward step reads
-     * @return the buffers
-     */
     Step newStep(int length, boolean backward) {
         if ((length < 1) || (length > context_)) {
             throw new LlmCoreException("Step length out of range: " + length);
         }
+        int activeRank = (lora_ == null) ? 0 : lora_.rank();
         if (backward) {
             Step cached = backwardStep_;
-            if ((cached == null) || (cached.capacity_ < length)) {
+            if ((cached == null) || (cached.capacity_ < length)
+                    || (cached.loraRank_ != activeRank)) {
                 int cap = (cached == null) ? length
                         : Math.min(context_, Math.max(length, cached.capacity_ * 2));
-                cached = new Step(cap, true);
+                cached = new Step(cap, true, activeRank);
                 backwardStep_ = cached;
             }
             return cached;
         }
         Step cached = forwardStep_;
-        if ((cached == null) || (cached.capacity_ < length)) {
+        if ((cached == null) || (cached.capacity_ < length)
+                || (cached.loraRank_ != activeRank)) {
             int cap = (cached == null) ? length
                     : Math.min(context_, Math.max(length, cached.capacity_ * 2));
-            cached = new Step(cap, false);
+            cached = new Step(cap, false, activeRank);
             forwardStep_ = cached;
         }
         return cached;
@@ -759,37 +991,72 @@ public final class TransformerModel {
      * @return the loss of the step
      */
     double backward(int[] tokens, int length, Step step) {
-        return backward(tokens, length, step, false);
+        return backward(tokens, length, step, false, 1d);
     }
 
     double backward(int[] tokens, int length, Step step, boolean accumulate) {
+        return backward(tokens, length, step, accumulate, 1d);
+    }
+
+    double backward(int[] tokens, int length, Step step, boolean accumulate, double lossWeight) {
+        return backward(tokens, length, 1, LossMode.CROSS_ENTROPY, null, 0d, step, accumulate,
+                lossWeight, true, (lora_ != null) && !lora_.isZero(), vocabulary_);
+    }
+
+    double backward(int[] tokens, int length, int lossStart, LossMode mode, float[][] teacherProbs,
+            double distillAlpha, Step step, boolean accumulate, double lossWeight,
+            boolean updateBase, boolean updateLora, int editableVocabFrom) {
         if ((tokens == null) || (length < 2) || (length > tokens.length) || (length > context_)) {
             throw new LlmCoreException("Backward sequence length out of range: " + length);
         }
         if ((step == null) || !step.backward_ || (step.capacity_ < length)) {
             throw new LlmCoreException("Invalid backward step buffer for length: " + length);
         }
+        LossMode lossMode = (mode == null) ? LossMode.CROSS_ENTROPY : mode;
         int d = width_;
         int f = feed_;
         int v = vocabulary_;
         int count = length - 1;
+        int startPos = Math.max(0, lossStart - 1);
+        int effectiveCount = Math.max(0, count - startPos);
+        LoraAdapter lora = lora_;
+        boolean effectiveUpdateLora = updateLora && (lora != null) && (step.loraH_ != null);
+        boolean useLoraGradPath = (lora != null) && (step.loraH_ != null)
+                && (!lora.isZero() || effectiveUpdateLora);
+
+        if (effectiveCount == 0) {
+            if (!accumulate) {
+                if (updateBase || (editableVocabFrom < v)) {
+                    for (float[] g : gradients_) {
+                        Tensor.zero(g);
+                    }
+                }
+                if (effectiveUpdateLora) {
+                    for (float[] g : lora.gradients()) {
+                        Tensor.zero(g);
+                    }
+                }
+            }
+            return 0d;
+        }
+
         int stateSize = length * d;
         double loss = 0d;
         float[] values = step.values();
         float[] error = step.logitGradient_;
-        double invCount = 1d / count;
+        double invCount = lossWeight / effectiveCount;
+        double alpha = Math.clamp(distillAlpha, 0d, 1d);
 
         for (int position = 0; position < length; position++) {
             int base = position * v;
 
-            if (position == count) {
+            if ((position >= count) || (position < startPos)) {
                 Tensor.zeroSlice(error, base, v);
                 continue;
             }
             double maxLogit = Double.NEGATIVE_INFINITY;
             for (int j = 0; j < v; j++) {
                 float logit = values[base + j];
-
                 if (logit > maxLogit) {
                     maxLogit = logit;
                 }
@@ -797,56 +1064,110 @@ public final class TransformerModel {
             double sumExp = 0d;
             for (int j = 0; j < v; j++) {
                 double e = Math.exp((double) values[base + j] - maxLogit);
-
                 error[base + j] = (float) e;
                 sumExp += e;
             }
-            int target = tokens[position + 1];
-            loss += Math.log(sumExp) - ((double) values[base + target] - maxLogit);
             double invSum = 1d / sumExp;
+            int target = tokens[position + 1];
 
-            for (int j = 0; j < v; j++) {
-                double prob = error[base + j] * invSum;
-
-                error[base + j] = (float) (((j == target) ? (prob - 1d) : prob) * invCount);
+            switch (lossMode) {
+                case UNLIKELIHOOD -> {
+                    double pTarget = Math.clamp(error[base + target] * invSum, 0d, 1d);
+                    double denom = Math.max(1e-4d, 1d - pTarget);
+                    loss += -Math.log(denom);
+                    for (int j = 0; j < v; j++) {
+                        double prob = error[base + j] * invSum;
+                        double g = (j == target)
+                                ? ((pTarget * (1d - pTarget)) / denom)
+                                : (-(pTarget * prob) / denom);
+                        error[base + j] = (float) (g * invCount);
+                    }
+                }
+                case DISTILL -> {
+                    float[] tp = ((teacherProbs != null) && (position < teacherProbs.length))
+                            ? teacherProbs[position]
+                            : null;
+                    if ((tp != null) && (tp.length == v) && (alpha > 0d)) {
+                        for (int j = 0; j < v; j++) {
+                            double prob = error[base + j] * invSum;
+                            double q = ((1d - alpha) * ((j == target) ? 1d : 0d))
+                                    + (alpha * Math.max(0d, tp[j]));
+                            if (q > 0d) {
+                                loss += -q * Math.log(Math.max(1e-12d, prob));
+                            }
+                            error[base + j] = (float) ((prob - q) * invCount);
+                        }
+                    } else {
+                        loss += Math.log(sumExp) - ((double) values[base + target] - maxLogit);
+                        for (int j = 0; j < v; j++) {
+                            double prob = error[base + j] * invSum;
+                            error[base + j] = (float) (((j == target) ? (prob - 1d) : prob) * invCount);
+                        }
+                    }
+                }
+                default -> {
+                    loss += Math.log(sumExp) - ((double) values[base + target] - maxLogit);
+                    for (int j = 0; j < v; j++) {
+                        double prob = error[base + j] * invSum;
+                        error[base + j] = (float) (((j == target) ? (prob - 1d) : prob) * invCount);
+                    }
+                }
             }
         }
-        if (accumulate) {
-            Tensor.atbAdd(step.normFinal_, d, length, error, v, gradients_[W_HEAD]);
-            Tensor.columnSumAdd(error, length, v, gradients_[W_HEAD_BIAS]);
-        } else {
-            Tensor.atb(step.normFinal_, d, length, error, v, gradients_[W_HEAD]);
-            Tensor.columnSum(error, length, v, gradients_[W_HEAD_BIAS]);
-            Tensor.zero(gradients_[W_FINAL_SCALE]);
+
+        if (updateBase) {
+            if (accumulate) {
+                Tensor.atbAdd(step.normFinal_, d, length, error, v, gradients_[W_HEAD]);
+                Tensor.columnSumAdd(error, length, v, gradients_[W_HEAD_BIAS]);
+            } else {
+                Tensor.atb(step.normFinal_, d, length, error, v, gradients_[W_HEAD]);
+                Tensor.columnSum(error, length, v, gradients_[W_HEAD_BIAS]);
+                Tensor.zero(gradients_[W_FINAL_SCALE]);
+            }
+        } else if (editableVocabFrom < v) {
+            if (!accumulate) {
+                Tensor.zero(gradients_[W_HEAD]);
+                Tensor.zero(gradients_[W_HEAD_BIAS]);
+            }
+            for (int row = 0; row < length; row++) {
+                int errBase = row * v;
+                int normBase = row * d;
+                for (int c = editableVocabFrom; c < v; c++) {
+                    float e = error[errBase + c];
+                    gradients_[W_HEAD_BIAS][c] += e;
+                    for (int col = 0; col < d; col++) {
+                        gradients_[W_HEAD][(col * v) + c] += step.normFinal_[normBase + col] * e;
+                    }
+                }
+            }
         }
+
         Tensor.abt(error, length, v, weights_[W_HEAD], d, step.dx_);
+        if (useLoraGradPath) {
+            lora.backwardBatched(lora.headSlot(), step.normFinal_, step.loraH_[lora.headSlot()],
+                    error, length, d, v, step.dx_, step.loraDH_, step.loraHScaled_,
+                    step.loraDX_, accumulate, effectiveUpdateLora);
+        }
 
         Tensor.zeroSlice(step.dNext_, 0, stateSize);
         Tensor.layerNormBackward(length, d, step.finalCenter_, step.finalInverse_,
-                weights_[W_FINAL_SCALE], step.dx_, step.dNext_, gradients_[W_FINAL_SCALE],
-                gradients_[W_FINAL_SHIFT], accumulate);
+                weights_[W_FINAL_SCALE], step.dx_, step.dNext_,
+                updateBase ? gradients_[W_FINAL_SCALE] : null,
+                updateBase ? gradients_[W_FINAL_SHIFT] : null,
+                accumulate);
         Tensor.copy(step.dNext_, step.dx_, stateSize);
-        return backwardLayers(tokens, length, step, loss / count, d, f, accumulate);
+        return backwardLayers(tokens, length, step, loss / effectiveCount, d, f, accumulate,
+                updateBase, useLoraGradPath, effectiveUpdateLora, editableVocabFrom);
     }
 
-    /**
-     * the difference which goes back through the layers, from the last one to the first one, then
-     * through the embeddings of the tokens and of the positions
-     *
-     * @param tokens tokens of the sequence the model read
-     * @param length number of the tokens read
-     * @param step the buffers of the read
-     * @param loss the loss of the read, read again by the caller
-     * @param d width of the model
-     * @param f width of the network which follows the attention
-     * @param accumulate true to add gradients into existing buffers instead of overwriting
-     * @return the loss of the read
-     */
     private double backwardLayers(int[] tokens, int length, Step step, double loss, int d, int f,
-            boolean accumulate) {
+            boolean accumulate, boolean updateBase, boolean useLoraGradPath,
+            boolean updateLora, int editableVocabFrom) {
         int stateSize = length * d;
         int feedSize = length * f;
+        int v = vocabulary_;
         double scale = 1d / Math.sqrt(headSize_);
+        LoraAdapter lora = lora_;
 
         for (int layer = layers_ - 1; layer >= 0; layer--) {
             int base = index(layer, 0);
@@ -861,42 +1182,67 @@ public final class TransformerModel {
 
             // the network which follows the attention
             Tensor.abt(step.dx_, length, d, weights_[base + F_W2], f, step.dPost_);
-            if (accumulate) {
-                Tensor.atbAdd(post, f, length, step.dx_, d, gradients_[base + F_W2]);
-                Tensor.columnSumAdd(step.dx_, length, d, gradients_[base + F_B2]);
-            } else {
-                Tensor.atb(post, f, length, step.dx_, d, gradients_[base + F_W2]);
-                Tensor.columnSum(step.dx_, length, d, gradients_[base + F_B2]);
+            if (useLoraGradPath) {
+                int sIdx = LoraAdapter.slotIndex(layer, LoraAdapter.LORA_W2);
+                lora.backwardBatched(sIdx, post, step.loraH_[sIdx], step.dx_, length, f, d,
+                        step.dPost_, step.loraDH_, step.loraHScaled_, step.loraDX_, accumulate,
+                        updateLora);
+            }
+            if (updateBase) {
+                if (accumulate) {
+                    Tensor.atbAdd(post, f, length, step.dx_, d, gradients_[base + F_W2]);
+                    Tensor.columnSumAdd(step.dx_, length, d, gradients_[base + F_B2]);
+                } else {
+                    Tensor.atb(post, f, length, step.dx_, d, gradients_[base + F_W2]);
+                    Tensor.columnSum(step.dx_, length, d, gradients_[base + F_B2]);
+                }
             }
 
             Tensor.geluDerivative(pre, step.dN2_, feedSize);
             for (int index = 0; index < feedSize; index++) {
                 step.dN2_[index] *= step.dPost_[index];
             }
-            if (accumulate) {
-                Tensor.atbAdd(norm2, d, length, step.dN2_, f, gradients_[base + F_W1]);
-                Tensor.columnSumAdd(step.dN2_, length, f, gradients_[base + F_B1]);
-                Tensor.abt(step.dN2_, length, f, weights_[base + F_W1], d, step.dNext_);
-            } else {
-                Tensor.atb(norm2, d, length, step.dN2_, f, gradients_[base + F_W1]);
-                Tensor.columnSum(step.dN2_, length, f, gradients_[base + F_B1]);
-                Tensor.abt(step.dN2_, length, f, weights_[base + F_W1], d, step.dNext_);
-                Tensor.zero(gradients_[base + F_N2_SCALE]);
+            Tensor.abt(step.dN2_, length, f, weights_[base + F_W1], d, step.dNext_);
+            if (useLoraGradPath) {
+                int sIdx = LoraAdapter.slotIndex(layer, LoraAdapter.LORA_W1);
+                lora.backwardBatched(sIdx, norm2, step.loraH_[sIdx], step.dN2_, length, d, f,
+                        step.dNext_, step.loraDH_, step.loraHScaled_, step.loraDX_, accumulate,
+                        updateLora);
+            }
+            if (updateBase) {
+                if (accumulate) {
+                    Tensor.atbAdd(norm2, d, length, step.dN2_, f, gradients_[base + F_W1]);
+                    Tensor.columnSumAdd(step.dN2_, length, f, gradients_[base + F_B1]);
+                } else {
+                    Tensor.atb(norm2, d, length, step.dN2_, f, gradients_[base + F_W1]);
+                    Tensor.columnSum(step.dN2_, length, f, gradients_[base + F_B1]);
+                    Tensor.zero(gradients_[base + F_N2_SCALE]);
+                }
             }
 
             // the normalization the network reads : its difference goes back through the
             // normalization and joins the residual path of the layer
             Tensor.layerNormBackward(length, d, step.center2_[layer], step.inverse2_[layer],
                     weights_[base + F_N2_SCALE], step.dNext_, step.dx_,
-                    gradients_[base + F_N2_SCALE], gradients_[base + F_N2_SHIFT], accumulate);
+                    updateBase ? gradients_[base + F_N2_SCALE] : null,
+                    updateBase ? gradients_[base + F_N2_SHIFT] : null,
+                    accumulate);
 
             Tensor.abt(step.dx_, length, d, weights_[base + F_WO], d, step.dAtt_);
-            if (accumulate) {
-                Tensor.atbAdd(att, d, length, step.dx_, d, gradients_[base + F_WO]);
-                Tensor.columnSumAdd(step.dx_, length, d, gradients_[base + F_BO]);
-            } else {
-                Tensor.atb(att, d, length, step.dx_, d, gradients_[base + F_WO]);
-                Tensor.columnSum(step.dx_, length, d, gradients_[base + F_BO]);
+            if (useLoraGradPath) {
+                int sIdx = LoraAdapter.slotIndex(layer, LoraAdapter.LORA_WO);
+                lora.backwardBatched(sIdx, att, step.loraH_[sIdx], step.dx_, length, d, d,
+                        step.dAtt_, step.loraDH_, step.loraHScaled_, step.loraDX_, accumulate,
+                        updateLora);
+            }
+            if (updateBase) {
+                if (accumulate) {
+                    Tensor.atbAdd(att, d, length, step.dx_, d, gradients_[base + F_WO]);
+                    Tensor.columnSumAdd(step.dx_, length, d, gradients_[base + F_BO]);
+                } else {
+                    Tensor.atb(att, d, length, step.dx_, d, gradients_[base + F_WO]);
+                    Tensor.columnSum(step.dx_, length, d, gradients_[base + F_BO]);
+                }
             }
 
             final int layerIdx = layer;
@@ -957,42 +1303,168 @@ public final class TransformerModel {
             for (int field = 0; field <= F_WV; field += 2) {
                 float[] source = (field == F_WQ) ? step.dQ_
                         : ((field == F_WK) ? step.dK_ : step.dV_);
+                int localSlot = field / 2;
 
                 Tensor.abt(source, length, d, weights_[base + field], d, step.dNext_);
                 Tensor.add(step.dN1_, step.dNext_, stateSize);
-                if (accumulate) {
-                    Tensor.atbAdd(norm1, d, length, source, d, gradients_[base + field]);
-                    Tensor.columnSumAdd(source, length, d, gradients_[base + field + 1]);
-                } else {
-                    Tensor.atb(norm1, d, length, source, d, gradients_[base + field]);
-                    Tensor.columnSum(source, length, d, gradients_[base + field + 1]);
+                if (useLoraGradPath) {
+                    int sIdx = LoraAdapter.slotIndex(layer, localSlot);
+                    lora.backwardBatched(sIdx, norm1, step.loraH_[sIdx], source, length, d, d,
+                            step.dN1_, step.loraDH_, step.loraHScaled_, step.loraDX_, accumulate,
+                            updateLora);
+                }
+                if (updateBase) {
+                    if (accumulate) {
+                        Tensor.atbAdd(norm1, d, length, source, d, gradients_[base + field]);
+                        Tensor.columnSumAdd(source, length, d, gradients_[base + field + 1]);
+                    } else {
+                        Tensor.atb(norm1, d, length, source, d, gradients_[base + field]);
+                        Tensor.columnSum(source, length, d, gradients_[base + field + 1]);
+                    }
                 }
             }
             // the normalization the attention reads : its difference goes back through the
             // normalization and joins the residual path, which is the input of the layer
-            if (!accumulate) {
+            if (updateBase && !accumulate) {
                 Tensor.zero(gradients_[base + F_N1_SCALE]);
             }
             Tensor.layerNormBackward(length, d, step.center1_[layer], step.inverse1_[layer],
                     weights_[base + F_N1_SCALE], step.dN1_, step.dx_,
-                    gradients_[base + F_N1_SCALE], gradients_[base + F_N1_SHIFT], accumulate);
+                    updateBase ? gradients_[base + F_N1_SCALE] : null,
+                    updateBase ? gradients_[base + F_N1_SHIFT] : null,
+                    accumulate);
         }
-        if (!accumulate) {
-            Tensor.zero(gradients_[W_TOKEN]);
-            Tensor.zero(gradients_[W_POSITION]);
-        }
-        for (int position = 0; position < length; position++) {
-            int tokenOffset = tokens[position] * d;
-            int positionOffset = position * d;
+        if (updateBase) {
+            if (!accumulate) {
+                Tensor.zero(gradients_[W_TOKEN]);
+                Tensor.zero(gradients_[W_POSITION]);
+            }
+            for (int position = 0; position < length; position++) {
+                int tokenOffset = tokens[position] * d;
+                int positionOffset = position * d;
 
-            for (int column = 0; column < d; column++) {
-                float value = step.dx_[positionOffset + column];
+                for (int column = 0; column < d; column++) {
+                    float value = step.dx_[positionOffset + column];
 
-                gradients_[W_TOKEN][tokenOffset + column] += value;
-                gradients_[W_POSITION][positionOffset + column] += value;
+                    gradients_[W_TOKEN][tokenOffset + column] += value;
+                    gradients_[W_POSITION][positionOffset + column] += value;
+                }
+            }
+        } else if (editableVocabFrom < v) {
+            if (!accumulate) {
+                Tensor.zero(gradients_[W_TOKEN]);
+            }
+            for (int position = 0; position < length; position++) {
+                int tok = tokens[position];
+                if (tok >= editableVocabFrom) {
+                    int tokenOffset = tok * d;
+                    int positionOffset = position * d;
+                    for (int column = 0; column < d; column++) {
+                        gradients_[W_TOKEN][tokenOffset + column] += step.dx_[positionOffset + column];
+                    }
+                }
             }
         }
         return loss;
+    }
+
+    void applySelectedVocabStep(int fromVocab, double stepLr, double clipNorm) {
+        int v = vocabulary_;
+        int d = width_;
+        if ((fromVocab >= v) || (stepLr <= 0d)) {
+            Tensor.zero(gradients_[W_TOKEN]);
+            Tensor.zero(gradients_[W_HEAD]);
+            Tensor.zero(gradients_[W_HEAD_BIAS]);
+            return;
+        }
+        double sq = 0d;
+        float[] gTok = gradients_[W_TOKEN];
+        float[] gHead = gradients_[W_HEAD];
+        float[] gBias = gradients_[W_HEAD_BIAS];
+        for (int i = fromVocab * d; i < gTok.length; i++) {
+            sq += (double) gTok[i] * gTok[i];
+        }
+        for (int r = 0; r < d; r++) {
+            int rowBase = r * v;
+            for (int c = fromVocab; c < v; c++) {
+                double val = gHead[rowBase + c];
+                sq += val * val;
+            }
+        }
+        for (int c = fromVocab; c < v; c++) {
+            sq += (double) gBias[c] * gBias[c];
+        }
+        double norm = Math.sqrt(sq);
+        if (Double.isFinite(norm) && (norm > 0d)) {
+            double scale = ((clipNorm > 0d) && (norm > clipNorm)) ? (clipNorm / norm) : 1d;
+            double effLr = stepLr * scale;
+            for (int i = fromVocab * d; i < gTok.length; i++) {
+                weights_[W_TOKEN][i] -= (float) (effLr * gTok[i]);
+            }
+            for (int r = 0; r < d; r++) {
+                int rowBase = r * v;
+                for (int c = fromVocab; c < v; c++) {
+                    weights_[W_HEAD][rowBase + c] -= (float) (effLr * gHead[rowBase + c]);
+                }
+            }
+            for (int c = fromVocab; c < v; c++) {
+                weights_[W_HEAD_BIAS][c] -= (float) (effLr * gBias[c]);
+            }
+        }
+        Tensor.zero(gTok);
+        Tensor.zero(gHead);
+        Tensor.zero(gBias);
+    }
+
+    float[] logitsAndHidden(int[] tokens, int length, float[] hiddenOut) {
+        if ((tokens == null) || (length < 1) || (length > tokens.length) || (length > context_)) {
+            throw new LlmCoreException("Token sequence length out of range: " + length);
+        }
+        for (int i = 0; i < length; i++) {
+            if ((tokens[i] < 0) || (tokens[i] >= vocabulary_)) {
+                throw new LlmCoreException("Token ID out of range at position " + i + ": "
+                        + tokens[i]);
+            }
+        }
+        synchronized (forwardLock_) {
+            Step step = newStep(length, false);
+            forwardLayers(tokens, length, step, null);
+            float[] logits = forwardLastLogits(step, length, step.lastLogits_);
+            if ((hiddenOut != null) && (hiddenOut.length >= width_)) {
+                System.arraycopy(step.lastNorm_, 0, hiddenOut, 0, width_);
+            }
+            return Arrays.copyOf(logits, vocabulary_);
+        }
+    }
+
+    float[] forwardHiddenAndLogits(int[] tokens, int length, float[] logitsOut) {
+        if ((tokens == null) || (length < 1) || (length > tokens.length) || (length > context_)) {
+            throw new LlmCoreException("Token sequence length out of range: " + length);
+        }
+        for (int i = 0; i < length; i++) {
+            if ((tokens[i] < 0) || (tokens[i] >= vocabulary_)) {
+                throw new LlmCoreException("Token ID out of range at position " + i + ": "
+                        + tokens[i]);
+            }
+        }
+        synchronized (forwardLock_) {
+            int d = width_;
+            int v = vocabulary_;
+            Step step = newStep(length, false);
+            forwardLayers(tokens, length, step, null);
+            Tensor.layerNorm(step.x_, length, d, weights_[W_FINAL_SCALE], weights_[W_FINAL_SHIFT],
+                    step.normFinal_, null, null);
+            if ((logitsOut != null) && (logitsOut.length >= (length * v))) {
+                Tensor.ab(step.normFinal_, length, d, weights_[W_HEAD], v, logitsOut);
+                Tensor.addBias(logitsOut, length, v, weights_[W_HEAD_BIAS]);
+                LoraAdapter lora = lora_;
+                if ((lora != null) && !lora.isZero() && (step.loraFwdH_ != null)) {
+                    lora.addForwardBatched(lora.headSlot(), step.normFinal_, length, d, v,
+                            logitsOut, step.loraFwdH_, step.loraDelta_);
+                }
+            }
+            return Arrays.copyOf(step.normFinal_, length * d);
+        }
     }
 
     /**

@@ -121,6 +121,72 @@ public final class AdamW {
         return steps_;
     }
 
+    static final class Snapshot {
+        final int steps_;
+        final float[][] first_;
+        final float[][] second_;
+
+        private Snapshot(int steps, float[][] first, float[][] second) {
+            steps_ = steps;
+            first_ = first;
+            second_ = second;
+        }
+    }
+
+    Snapshot snapshot() {
+        float[][] firstCopy = new float[first_.length][];
+        float[][] secondCopy = new float[second_.length][];
+        for (int i = 0; i < first_.length; i++) {
+            firstCopy[i] = first_[i].clone();
+            secondCopy[i] = second_[i].clone();
+        }
+        return new Snapshot(steps_, firstCopy, secondCopy);
+    }
+
+    void restore(Snapshot snap) {
+        if ((snap == null) || (snap.first_.length != first_.length)
+                || (snap.second_.length != second_.length)) {
+            throw new LlmCoreException("Invalid AdamW snapshot");
+        }
+        steps_ = snap.steps_;
+        for (int i = 0; i < first_.length; i++) {
+            if (first_[i].length == snap.first_[i].length) {
+                System.arraycopy(snap.first_[i], 0, first_[i], 0, snap.first_[i].length);
+                System.arraycopy(snap.second_[i], 0, second_[i], 0, snap.second_[i].length);
+            } else {
+                first_[i] = snap.first_[i].clone();
+                second_[i] = snap.second_[i].clone();
+            }
+        }
+    }
+
+    float[][] firstMoments() {
+        return first_;
+    }
+
+    float[][] secondMoments() {
+        return second_;
+    }
+
+    void loadState(int steps, float[][] first, float[][] second) {
+        if ((first == null) || (second == null) || (first.length != first_.length)
+                || (second.length != second_.length)) {
+            throw new LlmCoreException("Invalid AdamW state length");
+        }
+        for (int i = 0; i < first_.length; i++) {
+            if ((first[i] == null) || (second[i] == null)
+                    || (first[i].length != first_[i].length)
+                    || (second[i].length != second_[i].length)) {
+                throw new LlmCoreException("Mismatched AdamW moment shape at leaf " + i);
+            }
+        }
+        steps_ = Math.max(0, steps);
+        for (int i = 0; i < first_.length; i++) {
+            System.arraycopy(first[i], 0, first_[i], 0, first_[i].length);
+            System.arraycopy(second[i], 0, second_[i], 0, second_[i].length);
+        }
+    }
+
     /**
      * forget the averages of the gradients of the previous steps : a model which is loaded again or
      * trained with an other text starts its averages again
@@ -132,6 +198,35 @@ public final class AdamW {
         }
         for (float[] values : second_) {
             Tensor.zero(values);
+        }
+    }
+
+    void expandLeaf1D(int leaf, int newLength) {
+        first_[leaf] = java.util.Arrays.copyOf(first_[leaf], newLength);
+        second_[leaf] = java.util.Arrays.copyOf(second_[leaf], newLength);
+    }
+
+    void expandLeafColumns(int leaf, int rows, int oldCols, int newCols) {
+        float[] oldFirst = first_[leaf];
+        float[] oldSecond = second_[leaf];
+        float[] nextFirst = new float[rows * newCols];
+        float[] nextSecond = new float[rows * newCols];
+        int copyCols = Math.min(oldCols, newCols);
+
+        for (int r = 0; r < rows; r++) {
+            System.arraycopy(oldFirst, r * oldCols, nextFirst, r * newCols, copyCols);
+            System.arraycopy(oldSecond, r * oldCols, nextSecond, r * newCols, copyCols);
+        }
+        first_[leaf] = nextFirst;
+        second_[leaf] = nextSecond;
+    }
+
+    void resizeTo(float[][] weights) {
+        steps_ = 0;
+        for (int i = 0; i < first_.length; i++) {
+            int len = weights[i].length;
+            first_[i] = new float[len];
+            second_[i] = new float[len];
         }
     }
 

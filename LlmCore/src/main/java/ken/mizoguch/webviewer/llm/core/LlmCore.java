@@ -11,6 +11,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Random;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * the model of the plug-in : a model is built, trained, saved, read again and asked by the page,
@@ -54,11 +55,21 @@ public final class LlmCore {
      */
     public static final int EVALUATING = 3;
 
+    /**
+     * background continual self-updating training runs on the active model
+     */
+    public static final int CONTINUAL_TRAINING = 4;
+
     private final Object lock_ = new Object();
+    private final AtomicInteger pendingInferences_ = new AtomicInteger(0);
+    private final ContinualLearner continual_ = new ContinualLearner();
+    private final ElasticConsolidation ewc_ = new ElasticConsolidation();
 
     private volatile TransformerModel model_;
     private volatile Tokenizer tokenizer_;
     private volatile AdamW optimizer_;
+    private volatile LoraAdapter lora_;
+    private volatile AdamW loraOptimizer_;
     private volatile Dataset dataset_;
     private volatile Path path_;
 
@@ -67,6 +78,7 @@ public final class LlmCore {
     private volatile double loss_ = Double.NaN;
     private volatile int running_;
     private volatile boolean stop_;
+    private volatile boolean externalPreempt_;
 
     /**
      * a core which holds no model yet
@@ -76,7 +88,8 @@ public final class LlmCore {
     }
 
     /**
-     * the state of the core : {@link #IDLE}, {@link #TRAINING} or {@link #ANSWERING}
+     * the state of the core : {@link #IDLE}, {@link #TRAINING}, {@link #ANSWERING},
+     * {@link #EVALUATING}, or {@link #CONTINUAL_TRAINING}
      *
      * @return the state
      */
@@ -86,6 +99,47 @@ public final class LlmCore {
 
     public boolean isIdle() {
         return running_ == IDLE;
+    }
+
+    public ContinualLearner continual() {
+        return continual_;
+    }
+
+    public ContinualLearner.StepResult continualStep() {
+        return continual_.step(this);
+    }
+
+    public ContinualLearner.StepResult consolidate() {
+        return continual_.consolidate(this);
+    }
+
+    public LoraAdapter lora() {
+        return lora_;
+    }
+
+    public boolean isEwcActive() {
+        return ewc_.isActive();
+    }
+
+    public List<EpisodicMemory.RecallMatch> recallMemory(String query, int topK) {
+        synchronized (lock_) {
+            ready();
+            busy();
+            ensureEpisodicIndexedLocked();
+            return continual_.memory().search(model_, tokenizer_, query, topK);
+        }
+    }
+
+    public void requestLearningPreemption() {
+        externalPreempt_ = true;
+    }
+
+    public void releaseLearningPreemption() {
+        externalPreempt_ = false;
+    }
+
+    public boolean isLearningPreempted() {
+        return externalPreempt_ || (pendingInferences_.get() > 0);
     }
 
     /**
@@ -130,12 +184,16 @@ public final class LlmCore {
             model_ = nextModel;
             tokenizer_ = nextTokenizer;
             optimizer_ = new AdamW(nextModel.weights(), nextModel.weightDecayMask());
+            lora_ = null;
+            loraOptimizer_ = null;
             dataset_ = new Dataset(nextTokenizer);
             path_ = null;
             steps_ = 0L;
             loaded_ = false;
             loss_ = Double.NaN;
             stop_ = false;
+            ewc_.clear();
+            continual_.clear();
         }
     }
 
@@ -206,17 +264,47 @@ public final class LlmCore {
             model_ = read;
             tokenizer_ = content.tokenizer();
             optimizer_ = opt;
+            lora_ = null;
+            loraOptimizer_ = null;
             dataset_ = new Dataset(tokenizer_);
             path_ = file;
             steps_ = meta.steps();
             loaded_ = true;
             loss_ = meta.loss();
             stop_ = false;
+            ewc_.clear();
+            continual_.clear();
+
+            ModelStore.ContinualState cs = content.continualState();
+            if (cs != null) {
+                if ((cs.loraWeights() != null) && (cs.loraRank() > 0)) {
+                    LoraAdapter restoredLora = new LoraAdapter(read.config(), cs.loraRank(),
+                            cs.loraAlpha());
+                    restoredLora.loadWeights(cs.loraWeights(), cs.loraZero());
+                    read.attachLora(restoredLora);
+                    AdamW restoredLoraOpt = new AdamW(restoredLora.weights(),
+                            restoredLora.weightDecayMask());
+                    if ((cs.loraFirstMoments() != null) && (cs.loraSecondMoments() != null)) {
+                        restoredLoraOpt.loadState(cs.loraOptimizerSteps(),
+                                cs.loraFirstMoments(), cs.loraSecondMoments());
+                    }
+                    lora_ = restoredLora;
+                    loraOptimizer_ = restoredLoraOpt;
+                }
+                if (cs.ewcActive() && (cs.ewcAnchor() != null) && (cs.ewcFisher() != null)) {
+                    ewc_.loadState(cs.ewcAnchor(), cs.ewcFisher());
+                }
+                continual_.memory().importState(cs.episodes(), cs.coreHoldout(),
+                        cs.recentHoldout(), cs.tick(), cs.nextEpisodeId());
+                continual_.loadCounters(cs.adaptiveLr(), cs.bestValLoss(), cs.lastValLoss(),
+                        cs.wakeAccepted(), cs.sleepConsolidations(), cs.rejectedUpdates(),
+                        cs.wakeStepsSinceConsolidation());
+            }
         }
     }
 
     /**
-     * the model written in a file, with the vocabulary of its tokens
+     * the model written in a file, with the vocabulary of its tokens and persistent continual state
      *
      * @param file file to write
      * @throws LlmCoreException when the core holds no model or when the file can not be written
@@ -231,14 +319,49 @@ public final class LlmCore {
                     ? ModelStore.Metadata.EMPTY
                     : new ModelStore.Metadata(steps_, loss_, opt.learningRate(),
                             opt.weightDecay(), opt.largestGradient());
+            ModelStore.ContinualState cs = buildContinualStateLocked();
             String failure = ModelStore.save(file, model_.config(), tokenizer_,
-                    model_.weights(), meta);
+                    model_.weights(), meta, cs);
 
             if (failure != null) {
                 throw new LlmCoreException(failure);
             }
             path_ = file;
         }
+    }
+
+    private ModelStore.ContinualState buildContinualStateLocked() {
+        LoraAdapter lora = lora_;
+        AdamW loraOpt = loraOptimizer_;
+        ContinualLearner.Stats st = continual_.stats();
+        EpisodicMemory mem = continual_.memory();
+        boolean hasLora = (lora != null);
+        boolean hasLoraOpt = hasLora && (loraOpt != null);
+        boolean hasEwc = ewc_.isActive();
+
+        return new ModelStore.ContinualState(
+                hasLora ? lora.rank() : 0,
+                hasLora ? lora.alpha() : 8.0d,
+                !hasLora || lora.isZero(),
+                hasLora ? lora.weights() : null,
+                hasLoraOpt ? loraOpt.steps() : 0,
+                hasLoraOpt ? loraOpt.firstMoments() : null,
+                hasLoraOpt ? loraOpt.secondMoments() : null,
+                hasEwc,
+                hasEwc ? ewc_.anchor() : null,
+                hasEwc ? ewc_.fisher() : null,
+                mem.exportEpisodeRecords(),
+                mem.coreHoldoutTexts(),
+                mem.recentHoldoutTexts(),
+                mem.currentTick(),
+                mem.nextEpisodeId(),
+                st.adaptiveLearningRate(),
+                st.bestValLoss(),
+                st.lastValLoss(),
+                st.wakeAccepted(),
+                st.sleepConsolidations(),
+                st.rejectedUpdates(),
+                st.wakeStepsSinceConsolidation());
     }
 
     /**
@@ -250,12 +373,16 @@ public final class LlmCore {
             model_ = null;
             tokenizer_ = null;
             optimizer_ = null;
+            lora_ = null;
+            loraOptimizer_ = null;
             dataset_ = new Dataset(new ByteTokenizer());
             path_ = null;
             steps_ = 0L;
             loaded_ = false;
             loss_ = Double.NaN;
             stop_ = false;
+            ewc_.clear();
+            continual_.clear();
         }
     }
 
@@ -788,6 +915,12 @@ public final class LlmCore {
             model_ = candidateModel;
             optimizer_ = candidateOptimizer;
             dataset_ = candidateDataset;
+            if (!expanded && (lora_ != null) && !lora_.isZero()) {
+                lora_.mergeInto(model_);
+                if (loraOptimizer_ != null) {
+                    loraOptimizer_.reset();
+                }
+            }
             if (learningRate != null) {
                 optimizer_.setLearningRate(learningRate.doubleValue());
             }
@@ -801,7 +934,13 @@ public final class LlmCore {
             its turn is kept, so the training of that page stops at its first step */
 
             try {
-                return read(options, began, told);
+                TrainResult tr = read(options, began, told);
+                if (tr.steps > 0L) {
+                    continual_.memory().invalidateOnlineEmbeddings();
+                    continual_.seedReplay(texts);
+                    ewc_.captureAnchorAndFisher(model_, tokenizer_, texts, 0.75d, () -> stop_);
+                }
+                return tr;
             } catch (OutOfMemoryError memory) {
                 throw new LlmCoreException("Not enough memory for this model : make the model or"
                         + " the texts smaller and train again");
@@ -957,6 +1096,740 @@ public final class LlmCore {
     }
 
     /**
+     * Executes one continual Wake (or scheduled Sleep consolidation) tick under inference
+     * preemption control, surprise gating, LoRA isolation, Stratified Holdout gating, and
+     * momentum-preserving rollback.
+     */
+    ContinualLearner.StepResult executeContinualStep(ContinualLearner learner) {
+        synchronized (lock_) {
+            if ((model_ == null) || (running_ != IDLE)) {
+                return new ContinualLearner.StepResult(ContinualLearner.StepPhase.NONE,
+                        ContinualLearner.StepOutcome.SKIPPED, 0, steps_, Double.NaN, Double.NaN,
+                        Double.NaN, learner.adaptiveLr(), false, "Model unavailable or busy");
+            }
+            if (stop_ || isLearningPreempted()) {
+                learner.onPreempted();
+                return new ContinualLearner.StepResult(ContinualLearner.StepPhase.NONE,
+                        ContinualLearner.StepOutcome.PREEMPTED, 0, steps_, Double.NaN, Double.NaN,
+                        Double.NaN, learner.adaptiveLr(), false, "Preempted by user request");
+            }
+            ContinualConfig cfg = learner.config();
+            if ((cfg.consolidateEvery() > 0)
+                    && (learner.wakeStepsSinceConsolidation() >= cfg.consolidateEvery())
+                    && (lora_ != null) && !lora_.isZero()) {
+                return executeConsolidationLocked(learner);
+            }
+            return executeWakeLocked(learner);
+        }
+    }
+
+    ContinualLearner.StepResult executeConsolidation(ContinualLearner learner) {
+        synchronized (lock_) {
+            if ((model_ == null) || (running_ != IDLE)) {
+                return new ContinualLearner.StepResult(ContinualLearner.StepPhase.SLEEP,
+                        ContinualLearner.StepOutcome.SKIPPED, 0, steps_, Double.NaN, Double.NaN,
+                        Double.NaN, learner.adaptiveLr(), false, "Model unavailable or busy");
+            }
+            if (stop_ || isLearningPreempted()) {
+                learner.onPreempted();
+                return new ContinualLearner.StepResult(ContinualLearner.StepPhase.SLEEP,
+                        ContinualLearner.StepOutcome.PREEMPTED, 0, steps_, Double.NaN, Double.NaN,
+                        Double.NaN, learner.adaptiveLr(), false, "Preempted by user request");
+            }
+            return executeConsolidationLocked(learner);
+        }
+    }
+
+    private ContinualLearner.StepResult executeWakeLocked(ContinualLearner learner) {
+        ContinualConfig cfg = learner.config();
+        ensureLoraConfiguredLocked(cfg);
+        ensureEpisodicIndexedLocked();
+
+        if (cfg.surpriseThreshold() > 0d) {
+            boolean absorbedAny = applySurpriseGating(learner, cfg.surpriseThreshold());
+            if (!learner.memory().hasPendingWake()) {
+                if (absorbedAny) {
+                    return new ContinualLearner.StepResult(ContinualLearner.StepPhase.WAKE,
+                            ContinualLearner.StepOutcome.SKIPPED, 0, steps_, Double.NaN,
+                            Double.NaN, Double.NaN, learner.adaptiveLr(), false,
+                            "Low-surprise observations absorbed into episodic memory");
+                }
+                return new ContinualLearner.StepResult(ContinualLearner.StepPhase.WAKE,
+                        ContinualLearner.StepOutcome.NO_DATA, 0, steps_, Double.NaN, Double.NaN,
+                        Double.NaN, learner.adaptiveLr(), false, "No continual samples pending");
+            }
+        }
+
+        EpisodicMemory.WakeSelection plan = learner.memory().selectWakeBatch(
+                tokenizer_, cfg, cfg.allowVocabularyGrowth());
+        if (plan == null) {
+            if (learner.memory().hasPendingWake()) {
+                learner.memory().dropUnencodablePending(tokenizer_);
+                return new ContinualLearner.StepResult(ContinualLearner.StepPhase.WAKE,
+                        ContinualLearner.StepOutcome.SKIPPED, 0, steps_, Double.NaN, Double.NaN,
+                        Double.NaN, learner.adaptiveLr(), false,
+                        "Skipped unencodable samples with growth disabled");
+            }
+            return new ContinualLearner.StepResult(ContinualLearner.StepPhase.WAKE,
+                    ContinualLearner.StepOutcome.NO_DATA, 0, steps_, Double.NaN, Double.NaN,
+                    Double.NaN, learner.adaptiveLr(), false, "No continual samples pending");
+        }
+
+        List<Integer> unseen = List.of();
+        if ((tokenizer_ instanceof CharTokenizer currentChar) && cfg.allowVocabularyGrowth()) {
+            unseen = currentChar.collectUnseen(plan.trainTexts_);
+            if (!unseen.isEmpty()) {
+                int candidateVocab = Math.max(ModelConfig.MIN_VOCAB,
+                        currentChar.size() + unseen.size());
+                ModelConfig sizeCheck = new ModelConfig(model_.config());
+                if ((candidateVocab > ModelConfig.MAX_VOCAB)
+                        || !sizeCheck.setVocabSize(candidateVocab)
+                        || !sizeCheck.isTrainable()) {
+                    learner.memory().dropUnencodablePending(tokenizer_);
+                    return new ContinualLearner.StepResult(ContinualLearner.StepPhase.WAKE,
+                            ContinualLearner.StepOutcome.SKIPPED, 0, steps_, Double.NaN,
+                            Double.NaN, Double.NaN, learner.adaptiveLr(), false,
+                            "Vocabulary growth would exceed model limits");
+                }
+            }
+        }
+
+        boolean useLoraWake = (cfg.loraRank() > 0) && (lora_ != null) && (loraOptimizer_ != null);
+        int prevVocab = model_.vocabulary();
+        List<Integer> prevCodePoints = (tokenizer_ instanceof CharTokenizer ct)
+                ? ct.characters() : null;
+        float[][] savedBaseWeights = (!useLoraWake || !unseen.isEmpty())
+                ? model_.copyWeights() : null;
+        AdamW.Snapshot savedBaseOpt = !useLoraWake ? optimizer_.snapshot() : null;
+        LoraAdapter.Snapshot savedLora = (lora_ != null) ? lora_.snapshot() : null;
+        AdamW.Snapshot savedLoraOpt = (loraOptimizer_ != null) ? loraOptimizer_.snapshot() : null;
+        ElasticConsolidation.Snapshot savedEwc = (!unseen.isEmpty() && ewc_.isActive())
+                ? ewc_.copy() : null;
+        double savedLoss = loss_;
+        long prevSteps = steps_;
+        double effLr = learner.adaptiveLr();
+
+        running_ = CONTINUAL_TRAINING;
+        boolean expanded = false;
+        try {
+            if (!unseen.isEmpty() && (tokenizer_ instanceof CharTokenizer currentChar)) {
+                int oldVocab = model_.vocabulary();
+                currentChar.addCodePoints(unseen);
+                int targetVocab = Math.max(ModelConfig.MIN_VOCAB, currentChar.size());
+                if (targetVocab > oldVocab) {
+                    model_.expandVocabulary(targetVocab);
+                    optimizer_.expandLeaf1D(TransformerModel.W_TOKEN,
+                            targetVocab * model_.width());
+                    optimizer_.expandLeafColumns(TransformerModel.W_HEAD, model_.width(),
+                            oldVocab, targetVocab);
+                    optimizer_.expandLeaf1D(TransformerModel.W_HEAD_BIAS, targetVocab);
+                    if ((lora_ != null) && (loraOptimizer_ != null)) {
+                        int headBIdx = (lora_.headSlot() * 2) + 1;
+                        loraOptimizer_.expandLeafColumns(headBIdx, lora_.rank(), oldVocab,
+                                targetVocab);
+                    }
+                    if (ewc_.isActive()) {
+                        ewc_.expandVocabulary(oldVocab, targetVocab, model_.width(),
+                                model_.weights());
+                    }
+                    expanded = true;
+                }
+            }
+
+            StratifiedEval baseline = evaluateStratifiedHoldoutLocked(learner.memory());
+            if (baseline == null) {
+                restoreWakeSnapshot(prevVocab, prevCodePoints, savedBaseWeights, savedBaseOpt,
+                        savedLora, savedLoraOpt, savedEwc, savedLoss, prevSteps);
+                learner.onPreempted();
+                return new ContinualLearner.StepResult(ContinualLearner.StepPhase.WAKE,
+                        ContinualLearner.StepOutcome.PREEMPTED, plan.episodes_.size(), 0L,
+                        Double.NaN, Double.NaN, Double.NaN, effLr, false,
+                        "Preempted before holdout baseline");
+            }
+
+            List<TrainingTarget> targets = buildWakeTargets(plan.episodes_, cfg);
+            if (targets.isEmpty()) {
+                if (expanded) {
+                    restoreWakeSnapshot(prevVocab, prevCodePoints, savedBaseWeights, savedBaseOpt,
+                            savedLora, savedLoraOpt, savedEwc, savedLoss, prevSteps);
+                }
+                return new ContinualLearner.StepResult(ContinualLearner.StepPhase.WAKE,
+                        ContinualLearner.StepOutcome.SKIPPED, 0, 0L, Double.NaN,
+                        baseline.overall_, Double.NaN, effLr, false, "No valid token windows");
+            }
+
+            Random shuffleRng = new Random(model_.config().seed() ^ steps_);
+            double totalLossSum = 0d;
+            double totalWeightSum = 0d;
+            long appliedSteps = 0L;
+
+            for (int epoch = 0; epoch < cfg.microEpochs(); epoch++) {
+                Collections.shuffle(targets, shuffleRng);
+                double microLossSum = 0d;
+                double microWeightSum = 0d;
+                int microCount = 0;
+
+                for (TrainingTarget t : targets) {
+                    if (stop_ || isLearningPreempted()) {
+                        restoreWakeSnapshot(prevVocab, prevCodePoints, savedBaseWeights,
+                                savedBaseOpt, savedLora, savedLoraOpt, savedEwc, savedLoss,
+                                prevSteps);
+                        learner.onPreempted();
+                        return new ContinualLearner.StepResult(ContinualLearner.StepPhase.WAKE,
+                                ContinualLearner.StepOutcome.PREEMPTED, plan.episodes_.size(), 0L,
+                                Double.NaN, baseline.overall_, Double.NaN, effLr, false,
+                                "Preempted during Wake micro-step");
+                    }
+                    TransformerModel.Step step = model_.newStep(t.tokens().length, true);
+                    model_.forward(t.tokens(), t.tokens().length, step);
+                    double error = model_.backward(
+                            t.tokens(),
+                            t.tokens().length,
+                            t.lossStart(),
+                            t.mode(),
+                            t.teacherProbs(),
+                            t.distillAlpha(),
+                            step,
+                            microCount > 0,
+                            t.weight(),
+                            !useLoraWake,
+                            useLoraWake,
+                            useLoraWake ? prevVocab : model_.vocabulary());
+                    if (!Double.isFinite(error)) {
+                        restoreWakeSnapshot(prevVocab, prevCodePoints, savedBaseWeights,
+                                savedBaseOpt, savedLora, savedLoraOpt, savedEwc, savedLoss,
+                                prevSteps);
+                        learner.onWakeRejected(plan.episodes_);
+                        return new ContinualLearner.StepResult(ContinualLearner.StepPhase.WAKE,
+                                ContinualLearner.StepOutcome.ROLLED_BACK, plan.episodes_.size(), 0L,
+                                Double.NaN, baseline.overall_, Double.NaN, effLr, false,
+                                "Non-finite Wake loss triggered rollback");
+                    }
+                    microLossSum += error * t.weight();
+                    microWeightSum += t.weight();
+                    microCount++;
+                }
+
+                double norm;
+                if (useLoraWake) {
+                    norm = loraOptimizer_.step(lora_.weights(), lora_.gradients(), effLr,
+                            1d / microWeightSum);
+                    if (expanded) {
+                        model_.applySelectedVocabStep(prevVocab, effLr / microWeightSum,
+                                optimizer_.largestGradient());
+                    }
+                    if (Double.isFinite(norm)) {
+                        lora_.markUpdated();
+                    }
+                } else {
+                    if (ewc_.isActive() && (cfg.ewcLambda() > 0d)) {
+                        ewc_.applyPenaltyGradients(model_.weights(), model_.gradients(),
+                                cfg.ewcLambda());
+                    }
+                    norm = optimizer_.step(model_.weights(), model_.gradients(), effLr,
+                            1d / microWeightSum);
+                }
+
+                if (!Double.isFinite(norm)) {
+                    restoreWakeSnapshot(prevVocab, prevCodePoints, savedBaseWeights, savedBaseOpt,
+                            savedLora, savedLoraOpt, savedEwc, savedLoss, prevSteps);
+                    learner.onWakeRejected(plan.episodes_);
+                    return new ContinualLearner.StepResult(ContinualLearner.StepPhase.WAKE,
+                            ContinualLearner.StepOutcome.ROLLED_BACK, plan.episodes_.size(), 0L,
+                            Double.NaN, baseline.overall_, Double.NaN, effLr, false,
+                            "Non-finite gradient norm triggered rollback");
+                }
+                steps_++;
+                appliedSteps++;
+                totalLossSum += microLossSum;
+                totalWeightSum += microWeightSum;
+            }
+
+            double trainLoss = (totalWeightSum > 0d) ? (totalLossSum / totalWeightSum) : Double.NaN;
+            boolean weightsOk = allWeightsFinite(model_.weights())
+                    && ((lora_ == null) || allWeightsFinite(lora_.weights()));
+            if (!Double.isFinite(trainLoss) || !weightsOk) {
+                restoreWakeSnapshot(prevVocab, prevCodePoints, savedBaseWeights, savedBaseOpt,
+                        savedLora, savedLoraOpt, savedEwc, savedLoss, prevSteps);
+                learner.onWakeRejected(plan.episodes_);
+                return new ContinualLearner.StepResult(ContinualLearner.StepPhase.WAKE,
+                        ContinualLearner.StepOutcome.ROLLED_BACK, plan.episodes_.size(), 0L,
+                        trainLoss, baseline.overall_, Double.NaN, effLr, false,
+                        "Non-finite state after Wake step");
+            }
+
+            StratifiedEval candidate = evaluateStratifiedHoldoutLocked(learner.memory());
+            if (candidate == null) {
+                restoreWakeSnapshot(prevVocab, prevCodePoints, savedBaseWeights, savedBaseOpt,
+                        savedLora, savedLoraOpt, savedEwc, savedLoss, prevSteps);
+                learner.onPreempted();
+                return new ContinualLearner.StepResult(ContinualLearner.StepPhase.WAKE,
+                        ContinualLearner.StepOutcome.PREEMPTED, plan.episodes_.size(), 0L,
+                        trainLoss, baseline.overall_, Double.NaN, effLr, false,
+                        "Preempted during holdout validation");
+            }
+
+            boolean regressed = isStratifiedRegression(baseline, candidate, cfg.maxRegression());
+            if (regressed) {
+                restoreWakeSnapshot(prevVocab, prevCodePoints, savedBaseWeights, savedBaseOpt,
+                        savedLora, savedLoraOpt, savedEwc, savedLoss, prevSteps);
+                learner.onWakeRejected(plan.episodes_);
+                return new ContinualLearner.StepResult(ContinualLearner.StepPhase.WAKE,
+                        ContinualLearner.StepOutcome.ROLLED_BACK, plan.episodes_.size(), 0L,
+                        trainLoss, baseline.overall_, candidate.overall_, effLr, false,
+                        "Stratified holdout regressed");
+            }
+
+            learner.onWakeAccepted(plan.episodes_, candidate.overall_);
+            learner.memory().invalidateOnlineEmbeddings();
+            loss_ = Double.isFinite(candidate.overall_) ? candidate.overall_ : trainLoss;
+            return new ContinualLearner.StepResult(ContinualLearner.StepPhase.WAKE,
+                    ContinualLearner.StepOutcome.ACCEPTED, plan.episodes_.size(), appliedSteps,
+                    trainLoss, baseline.overall_, candidate.overall_, effLr, expanded,
+                    "Accepted Wake update");
+        } catch (OutOfMemoryError memory) {
+            restoreWakeSnapshot(prevVocab, prevCodePoints, savedBaseWeights, savedBaseOpt,
+                    savedLora, savedLoraOpt, savedEwc, savedLoss, prevSteps);
+            return new ContinualLearner.StepResult(ContinualLearner.StepPhase.WAKE,
+                    ContinualLearner.StepOutcome.ROLLED_BACK, 0, 0L, Double.NaN, Double.NaN,
+                    Double.NaN, effLr, false, "Out of memory during Wake step");
+        } finally {
+            running_ = IDLE;
+            stop_ = false;
+        }
+    }
+
+    private ContinualLearner.StepResult executeConsolidationLocked(ContinualLearner learner) {
+        ContinualConfig cfg = learner.config();
+        int consLimit = Math.max(8, cfg.batchSize() * 3);
+        List<EpisodicMemory.Episode> consEpisodes = learner.memory().selectConsolidationBatch(
+                tokenizer_, consLimit);
+        boolean hasLoraDelta = (lora_ != null) && !lora_.isZero();
+        if (consEpisodes.isEmpty() && !hasLoraDelta) {
+            return new ContinualLearner.StepResult(ContinualLearner.StepPhase.SLEEP,
+                    ContinualLearner.StepOutcome.NO_DATA, 0, 0L, Double.NaN, Double.NaN,
+                    Double.NaN, learner.adaptiveLr(), false, "Nothing to consolidate");
+        }
+
+        int prevVocab = model_.vocabulary();
+        float[][] savedBaseWeights = model_.copyWeights();
+        AdamW.Snapshot savedBaseOpt = optimizer_.snapshot();
+        LoraAdapter.Snapshot savedLora = (lora_ != null) ? lora_.snapshot() : null;
+        AdamW.Snapshot savedLoraOpt = (loraOptimizer_ != null) ? loraOptimizer_.snapshot() : null;
+        ElasticConsolidation.Snapshot savedEwc = ewc_.copy();
+        double savedLoss = loss_;
+        long prevSteps = steps_;
+        double sleepLr = Math.max(cfg.minLearningRate(), learner.adaptiveLr() * 0.25d);
+
+        running_ = CONTINUAL_TRAINING;
+        try {
+            StratifiedEval baseline = evaluateStratifiedHoldoutLocked(learner.memory());
+            if (baseline == null) {
+                learner.onPreempted();
+                return new ContinualLearner.StepResult(ContinualLearner.StepPhase.SLEEP,
+                        ContinualLearner.StepOutcome.PREEMPTED, 0, 0L, Double.NaN, Double.NaN,
+                        Double.NaN, sleepLr, false, "Preempted before Sleep baseline");
+            }
+
+            // Capture teacher probabilities from (W_base + LoRA + Episodic kNN) BEFORE merge
+            List<TrainingTarget> distillTargets = new ArrayList<>();
+            int context = model_.context();
+            int v = model_.vocabulary();
+            int d = model_.width();
+            for (EpisodicMemory.Episode ep : consEpisodes) {
+                if (stop_ || isLearningPreempted()) {
+                    learner.onPreempted();
+                    return new ContinualLearner.StepResult(ContinualLearner.StepPhase.SLEEP,
+                            ContinualLearner.StepOutcome.PREEMPTED, 0, 0L, Double.NaN,
+                            baseline.overall_, Double.NaN, sleepLr, false,
+                            "Preempted capturing Sleep teacher targets");
+                }
+                EpisodicMemory.EncodedPair pair = EpisodicMemory.encodePairWindow(
+                        tokenizer_, ep.prompt_, ep.response_, context);
+                if ((pair == null) || (pair.tokens().length < 2)) {
+                    continue;
+                }
+                int len = pair.tokens().length;
+                float[] logitsBuf = new float[len * v];
+                float[] hidden = model_.forwardHiddenAndLogits(pair.tokens(), len, logitsBuf);
+                float[][] teacherProbs = new float[len - 1][];
+                float[] posLogits = new float[v];
+                float[] posHidden = new float[d];
+                for (int pos = 0; pos < (len - 1); pos++) {
+                    System.arraycopy(logitsBuf, pos * v, posLogits, 0, v);
+                    if (cfg.memoryRecallEnabled() && (cfg.distillAlpha() > 0d)) {
+                        System.arraycopy(hidden, pos * d, posHidden, 0, d);
+                        learner.memory().fuseLogits(posHidden, posLogits, cfg);
+                    }
+                    teacherProbs[pos] = toSoftmaxProbs(posLogits);
+                }
+                distillTargets.add(new TrainingTarget(
+                        pair.tokens(), pair.lossStart(), TransformerModel.LossMode.DISTILL,
+                        teacherProbs, cfg.distillAlpha(), ep.importance_));
+            }
+
+            if (hasLoraDelta) {
+                lora_.mergeInto(model_);
+                if (loraOptimizer_ != null) {
+                    loraOptimizer_.reset();
+                }
+            }
+
+            double trainLoss = Double.NaN;
+            long appliedSteps = 0L;
+            if (!distillTargets.isEmpty()) {
+                double microLossSum = 0d;
+                double microWeightSum = 0d;
+                int microCount = 0;
+                for (TrainingTarget t : distillTargets) {
+                    if (stop_ || isLearningPreempted()) {
+                        restoreWakeSnapshot(prevVocab, null, savedBaseWeights, savedBaseOpt,
+                                savedLora, savedLoraOpt, savedEwc, savedLoss, prevSteps);
+                        learner.onPreempted();
+                        return new ContinualLearner.StepResult(ContinualLearner.StepPhase.SLEEP,
+                                ContinualLearner.StepOutcome.PREEMPTED, consEpisodes.size(), 0L,
+                                Double.NaN, baseline.overall_, Double.NaN, sleepLr, false,
+                                "Preempted during Sleep distillation");
+                    }
+                    TransformerModel.Step step = model_.newStep(t.tokens().length, true);
+                    model_.forward(t.tokens(), t.tokens().length, step);
+                    double err = model_.backward(
+                            t.tokens(),
+                            t.tokens().length,
+                            t.lossStart(),
+                            t.mode(),
+                            t.teacherProbs(),
+                            t.distillAlpha(),
+                            step,
+                            microCount > 0,
+                            t.weight(),
+                            true,
+                            false,
+                            prevVocab);
+                    if (!Double.isFinite(err)) {
+                        restoreWakeSnapshot(prevVocab, null, savedBaseWeights, savedBaseOpt,
+                                savedLora, savedLoraOpt, savedEwc, savedLoss, prevSteps);
+                        learner.onSleepRejected();
+                        return new ContinualLearner.StepResult(ContinualLearner.StepPhase.SLEEP,
+                                ContinualLearner.StepOutcome.ROLLED_BACK, consEpisodes.size(), 0L,
+                                Double.NaN, baseline.overall_, Double.NaN, sleepLr, false,
+                                "Non-finite Sleep distillation loss");
+                    }
+                    microLossSum += err * t.weight();
+                    microWeightSum += t.weight();
+                    microCount++;
+                }
+
+                if (ewc_.isActive() && (cfg.ewcLambda() > 0d)) {
+                    ewc_.applyPenaltyGradients(model_.weights(), model_.gradients(),
+                            cfg.ewcLambda());
+                }
+                double norm = optimizer_.step(model_.weights(), model_.gradients(), sleepLr,
+                        1d / microWeightSum);
+                if (!Double.isFinite(norm) || !allWeightsFinite(model_.weights())) {
+                    restoreWakeSnapshot(prevVocab, null, savedBaseWeights, savedBaseOpt,
+                            savedLora, savedLoraOpt, savedEwc, savedLoss, prevSteps);
+                    learner.onSleepRejected();
+                    return new ContinualLearner.StepResult(ContinualLearner.StepPhase.SLEEP,
+                            ContinualLearner.StepOutcome.ROLLED_BACK, consEpisodes.size(), 0L,
+                            Double.NaN, baseline.overall_, Double.NaN, sleepLr, false,
+                            "Non-finite state during Sleep update");
+                }
+                trainLoss = microLossSum / microWeightSum;
+                steps_++;
+                appliedSteps = 1L;
+            }
+
+            StratifiedEval candidate = evaluateStratifiedHoldoutLocked(learner.memory());
+            if (candidate == null) {
+                restoreWakeSnapshot(prevVocab, null, savedBaseWeights, savedBaseOpt, savedLora,
+                        savedLoraOpt, savedEwc, savedLoss, prevSteps);
+                learner.onPreempted();
+                return new ContinualLearner.StepResult(ContinualLearner.StepPhase.SLEEP,
+                        ContinualLearner.StepOutcome.PREEMPTED, consEpisodes.size(), 0L,
+                        trainLoss, baseline.overall_, Double.NaN, sleepLr, false,
+                        "Preempted during Sleep validation");
+            }
+            if (isStratifiedRegression(baseline, candidate, cfg.maxRegression())) {
+                restoreWakeSnapshot(prevVocab, null, savedBaseWeights, savedBaseOpt, savedLora,
+                        savedLoraOpt, savedEwc, savedLoss, prevSteps);
+                learner.onSleepRejected();
+                return new ContinualLearner.StepResult(ContinualLearner.StepPhase.SLEEP,
+                        ContinualLearner.StepOutcome.ROLLED_BACK, consEpisodes.size(), 0L,
+                        trainLoss, baseline.overall_, candidate.overall_, sleepLr, false,
+                        "Stratified holdout regressed during Sleep consolidation");
+            }
+
+            List<String> anchorTexts = new ArrayList<>(learner.memory().coreHoldoutTexts());
+            for (EpisodicMemory.Episode ep : consEpisodes) {
+                if (!ep.combinedText().isEmpty()) {
+                    anchorTexts.add(ep.combinedText());
+                }
+            }
+            boolean ewcUpdated = ewc_.captureAnchorAndFisher(model_, tokenizer_, anchorTexts,
+                    0.75d, () -> stop_ || isLearningPreempted());
+            if (!ewcUpdated && (stop_ || isLearningPreempted())) {
+                restoreWakeSnapshot(prevVocab, null, savedBaseWeights, savedBaseOpt, savedLora,
+                        savedLoraOpt, savedEwc, savedLoss, prevSteps);
+                learner.onPreempted();
+                return new ContinualLearner.StepResult(ContinualLearner.StepPhase.SLEEP,
+                        ContinualLearner.StepOutcome.PREEMPTED, consEpisodes.size(), 0L,
+                        trainLoss, baseline.overall_, candidate.overall_, sleepLr, false,
+                        "Preempted during EWC Fisher update");
+            }
+
+            learner.onSleepAccepted(consEpisodes, candidate.overall_);
+            learner.memory().invalidateOnlineEmbeddings();
+            loss_ = Double.isFinite(candidate.overall_)
+                    ? candidate.overall_ : (Double.isFinite(trainLoss) ? trainLoss : loss_);
+            return new ContinualLearner.StepResult(ContinualLearner.StepPhase.SLEEP,
+                    ContinualLearner.StepOutcome.ACCEPTED, consEpisodes.size(), appliedSteps,
+                    trainLoss, baseline.overall_, candidate.overall_, sleepLr, false,
+                    "Consolidated into backbone with Online EWC");
+        } catch (OutOfMemoryError memory) {
+            restoreWakeSnapshot(prevVocab, null, savedBaseWeights, savedBaseOpt, savedLora,
+                    savedLoraOpt, savedEwc, savedLoss, prevSteps);
+            return new ContinualLearner.StepResult(ContinualLearner.StepPhase.SLEEP,
+                    ContinualLearner.StepOutcome.ROLLED_BACK, 0, 0L, Double.NaN, Double.NaN,
+                    Double.NaN, sleepLr, false, "Out of memory during Sleep consolidation");
+        } finally {
+            running_ = IDLE;
+            stop_ = false;
+        }
+    }
+
+    private void ensureLoraConfiguredLocked(ContinualConfig cfg) {
+        int wantRank = cfg.loraRank();
+        if (wantRank <= 0) {
+            if ((lora_ != null) && lora_.isZero()) {
+                model_.attachLora(null);
+                lora_ = null;
+                loraOptimizer_ = null;
+            }
+            return;
+        }
+        int effectiveWant = Math.clamp(wantRank, 1, Math.max(2, model_.width() / 4));
+        if ((lora_ == null)
+                || (lora_.isZero() && ((lora_.rank() != effectiveWant)
+                || (Math.abs(lora_.alpha() - cfg.loraAlpha()) > 1e-6d)))) {
+            LoraAdapter next = new LoraAdapter(model_.config(), wantRank, cfg.loraAlpha());
+            model_.attachLora(next);
+            lora_ = next;
+            loraOptimizer_ = new AdamW(next.weights(), next.weightDecayMask());
+        } else if (model_.lora() != lora_) {
+            model_.attachLora(lora_);
+        }
+    }
+
+    private void ensureEpisodicIndexedLocked() {
+        if ((model_ != null) && (tokenizer_ != null)) {
+            continual_.memory().indexUnindexed(model_, tokenizer_,
+                    continual_.config().maxTokenTraces());
+        }
+    }
+
+    private static boolean applySurpriseGating(ContinualLearner learner, double threshold) {
+        boolean skippedAny = false;
+        EpisodicMemory mem = learner.memory();
+        // Inspect live episodes safely via snapshot list or markWait inside memory:
+        // Only plain unpinned OBSERVATIONs already indexed with low surprise bypass Wake gradient steps.
+        skippedAny = mem.suppressLowSurpriseObservations(threshold, learner::onSurpriseSkipped);
+        return skippedAny;
+    }
+
+    private List<TrainingTarget> buildWakeTargets(List<EpisodicMemory.Episode> episodes,
+            ContinualConfig cfg) {
+        int context = model_.context();
+        List<TrainingTarget> targets = new ArrayList<>(episodes.size() * 2);
+        for (EpisodicMemory.Episode ep : episodes) {
+            if (ep.kind_ != EpisodicMemory.Kind.FEEDBACK_NEGATIVE) {
+                EpisodicMemory.EncodedPair pos = EpisodicMemory.encodePairWindow(
+                        tokenizer_, ep.prompt_, ep.response_, context);
+                if ((pos != null) && (pos.tokens().length >= 2)) {
+                    targets.add(new TrainingTarget(
+                            pos.tokens(),
+                            pos.lossStart(),
+                            TransformerModel.LossMode.CROSS_ENTROPY,
+                            null,
+                            0d,
+                            ep.importance_));
+                }
+            }
+            if (!ep.rejectedResponse_.isEmpty() && (cfg.unlikelihoodWeight() > 0d)) {
+                EpisodicMemory.EncodedPair neg = EpisodicMemory.encodePairWindow(
+                        tokenizer_, ep.prompt_, ep.rejectedResponse_, context);
+                if ((neg != null) && (neg.tokens().length >= 2)) {
+                    targets.add(new TrainingTarget(
+                            neg.tokens(),
+                            neg.lossStart(),
+                            TransformerModel.LossMode.UNLIKELIHOOD,
+                            null,
+                            0d,
+                            cfg.unlikelihoodWeight() * ep.importance_));
+                }
+            }
+        }
+        return targets;
+    }
+
+    private StratifiedEval evaluateStratifiedHoldoutLocked(EpisodicMemory mem) {
+        Double core = evaluateHoldoutLocked(mem.coreHoldoutTexts());
+        if (core == null) {
+            return null;
+        }
+        Double recent = evaluateHoldoutLocked(mem.recentHoldoutTexts());
+        if (recent == null) {
+            return null;
+        }
+        double cVal = core.doubleValue();
+        double rVal = recent.doubleValue();
+        double overall;
+        if (Double.isFinite(cVal) && Double.isFinite(rVal)) {
+            overall = (0.5d * cVal) + (0.5d * rVal);
+        } else if (Double.isFinite(cVal)) {
+            overall = cVal;
+        } else {
+            overall = rVal;
+        }
+        return new StratifiedEval(cVal, rVal, overall);
+    }
+
+    private static boolean isStratifiedRegression(StratifiedEval base, StratifiedEval cand,
+            double maxReg) {
+        if (Double.isFinite(base.core_) && (!Double.isFinite(cand.core_)
+                || (cand.core_ > (base.core_ + maxReg)))) {
+            return true;
+        }
+        if (Double.isFinite(base.overall_) && (!Double.isFinite(cand.overall_)
+                || (cand.overall_ > (base.overall_ + maxReg)))) {
+            return true;
+        }
+        return false;
+    }
+
+    private static float[] toSoftmaxProbs(float[] logits) {
+        int v = logits.length;
+        float[] probs = new float[v];
+        double max = Double.NEGATIVE_INFINITY;
+        for (float l : logits) {
+            if (Float.isFinite(l) && (l > max)) {
+                max = l;
+            }
+        }
+        if (!Double.isFinite(max)) {
+            return probs;
+        }
+        double sum = 0d;
+        for (int i = 0; i < v; i++) {
+            double e = Float.isFinite(logits[i]) ? Math.exp((double) logits[i] - max) : 0d;
+            probs[i] = (float) e;
+            sum += e;
+        }
+        if (sum > 0d) {
+            float inv = (float) (1d / sum);
+            for (int i = 0; i < v; i++) {
+                probs[i] *= inv;
+            }
+        }
+        return probs;
+    }
+
+    private void restoreWakeSnapshot(int prevVocab, List<Integer> prevCodePoints,
+            float[][] savedBaseWeights, AdamW.Snapshot savedBaseOpt,
+            LoraAdapter.Snapshot savedLora, AdamW.Snapshot savedLoraOpt,
+            ElasticConsolidation.Snapshot savedEwc, double savedLoss, long prevSteps) {
+        if ((tokenizer_ instanceof CharTokenizer ct) && (prevCodePoints != null)) {
+            ct.setCharacters(prevCodePoints);
+        }
+        if (savedBaseWeights != null) {
+            model_.restoreWeights(prevVocab, savedBaseWeights);
+        }
+        if (savedBaseOpt != null) {
+            optimizer_.restore(savedBaseOpt);
+        } else if (savedBaseWeights != null) {
+            optimizer_.resizeTo(model_.weights());
+        }
+        if ((lora_ != null) && (savedLora != null)) {
+            lora_.restore(savedLora);
+            model_.attachLora(lora_);
+        }
+        if ((loraOptimizer_ != null) && (savedLoraOpt != null)) {
+            loraOptimizer_.restore(savedLoraOpt);
+        }
+        if (savedEwc != null) {
+            ewc_.restore(savedEwc);
+        }
+        loss_ = savedLoss;
+        steps_ = prevSteps;
+    }
+
+    private record StratifiedEval(double core_, double recent_, double overall_) {
+    }
+
+    private record TrainingTarget(
+            int[] tokens,
+            int lossStart,
+            TransformerModel.LossMode mode,
+            float[][] teacherProbs,
+            double distillAlpha,
+            double weight) {
+    }
+
+    private Double evaluateHoldoutLocked(List<String> holdoutTexts) {
+        if ((holdoutTexts == null) || holdoutTexts.isEmpty()) {
+            return Double.valueOf(Double.NaN);
+        }
+        int context = model_.context();
+        int[] window = new int[context];
+        double totalLoss = 0d;
+        long totalTokens = 0L;
+
+        for (String text : holdoutTexts) {
+            if (stop_ || isLearningPreempted()) {
+                return null;
+            }
+            if ((text == null) || text.isEmpty()) {
+                continue;
+            }
+            int[] encoded = tokenizer_.encode(text);
+            if (encoded.length == 0) {
+                continue;
+            }
+            int[] seq = Arrays.copyOf(encoded, encoded.length + 1);
+            seq[encoded.length] = tokenizer_.end();
+            int offset = 0;
+            while (offset < (seq.length - 1)) {
+                if (stop_ || isLearningPreempted()) {
+                    return null;
+                }
+                int len = Math.min(context, seq.length - offset);
+                System.arraycopy(seq, offset, window, 0, len);
+                double wLoss = model_.loss(window, len);
+                if (!Double.isFinite(wLoss)) {
+                    return Double.valueOf(Double.NaN);
+                }
+                int stepTokens = len - 1;
+                totalLoss += wLoss * stepTokens;
+                totalTokens += stepTokens;
+                offset += stepTokens;
+            }
+        }
+        return (totalTokens == 0L)
+                ? Double.valueOf(Double.NaN) : Double.valueOf(totalLoss / totalTokens);
+    }
+
+    private static boolean allWeightsFinite(float[][] weights) {
+        for (float[] leaf : weights) {
+            for (float v : leaf) {
+                if (!Float.isFinite(v)) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
      * the end of an answer : the text the model wrote, the number of the tokens it wrote and the
      * reason it stopped
      */
@@ -987,13 +1860,44 @@ public final class LlmCore {
          */
         public final boolean ended;
 
+        /**
+         * mean log probability across emitted tokens, or NaN if no token was emitted
+         */
+        public final double meanLogProb;
+
+        /**
+         * geometric-mean token probability in {@code [0, 1]} across emitted tokens
+         */
+        public final double confidence;
+
+        /**
+         * mean top1-minus-top2 probability margin across emitted tokens
+         */
+        public final double meanMargin;
+
+        /**
+         * number of decoding steps where Tier-1 episodic associative memory contributed
+         */
+        public final int memoryHits;
+
+        /**
+         * average kNN-LM blend weight lambda across decoding steps
+         */
+        public final double memoryLambda;
+
         private AnswerResult(String text, int tokens, double seconds, boolean stopped,
-                boolean ended) {
+                boolean ended, double meanLogProb, double confidence, double meanMargin,
+                int memoryHits, double memoryLambda) {
             this.text = text;
             this.tokens = tokens;
             this.seconds = seconds;
             this.stopped = stopped;
             this.ended = ended;
+            this.meanLogProb = meanLogProb;
+            this.confidence = confidence;
+            this.meanMargin = meanMargin;
+            this.memoryHits = memoryHits;
+            this.memoryLambda = memoryLambda;
         }
     }
 
@@ -1014,27 +1918,33 @@ public final class LlmCore {
      */
     public AnswerResult generate(String prompt, int maxTokens, Sampler sampler,
             LlmCoreListener listener) {
-        synchronized (lock_) {
-            ready();
-            busy();
+        pendingInferences_.incrementAndGet();
+        try {
+            synchronized (lock_) {
+                ready();
+                busy();
 
-            int limit = Math.clamp(maxTokens, 1, MAX_TOKENS);
-            LlmCoreListener told = (listener == null) ? NONE : listener;
-            Sampler chosen = (sampler == null) ? new Sampler() : sampler;
+                int limit = Math.clamp(maxTokens, 1, MAX_TOKENS);
+                LlmCoreListener told = (listener == null) ? NONE : listener;
+                Sampler chosen = (sampler == null) ? new Sampler() : sampler;
 
-            running_ = ANSWERING;
-            /* no stop_ of its own : a stop the page asked while this answer was still waiting for
-            its turn is kept, so the answer of that page stops at its first token */
+                running_ = ANSWERING;
+                /* no stop_ of its own : a stop the page asked while this answer was still waiting for
+                its turn is kept, so the answer of that page stops at its first token */
 
-            double began = System.nanoTime();
-            try {
-                return answer(prompt, limit, chosen, told, began);
-            } catch (OutOfMemoryError memory) {
-                throw new LlmCoreException("Not enough memory to answer : ask a shorter text");
-            } finally {
-                running_ = IDLE;
-                stop_ = false;
+                double began = System.nanoTime();
+                try {
+                    ensureEpisodicIndexedLocked();
+                    return answer(prompt, limit, chosen, told, began);
+                } catch (OutOfMemoryError memory) {
+                    throw new LlmCoreException("Not enough memory to answer : ask a shorter text");
+                } finally {
+                    running_ = IDLE;
+                    stop_ = false;
+                }
             }
+        } finally {
+            pendingInferences_.decrementAndGet();
         }
     }
 
@@ -1060,28 +1970,51 @@ public final class LlmCore {
             window[length++] = tokenizer_.end();
         }
         if (stop_) {
-            return new AnswerResult("", 0, seconds(began), true, false);
+            return new AnswerResult("", 0, seconds(began), true, false, Double.NaN, 0d,
+                    Double.NaN, 0, 0d);
         }
+        ContinualConfig cfg = continual_.config();
+        boolean memEnabled = cfg.memoryRecallEnabled();
         TransformerModel.KvCache cache = (length < context) ? model_.newCache() : null;
+        float[] hiddenBuf = new float[model_.width()];
         float[] logits;
+        float[] currentHidden;
 
         if (cache == null) {
-            logits = model_.logits(window, context);
+            logits = model_.logitsAndHidden(window, context, hiddenBuf);
+            currentHidden = hiddenBuf;
         } else if (length == 1) {
             logits = model_.step(window[0], 0, cache, true);
+            currentHidden = cache.finalNorm();
         } else {
             logits = model_.prefillInternal(window, length, cache);
+            currentHidden = cache.finalNorm();
         }
 
         Stream stream = new Stream(tokenizer_);
         int made = 0;
         boolean ended = false;
         boolean stopped = false;
+        double sumLogProb = 0d;
+        double sumMargin = 0d;
+        int logProbCount = 0;
+        int memoryHits = 0;
+        double lambdaSum = 0d;
+        int stepCount = 0;
 
         for (int index = 0; index < limit; index++) {
             if (stop_) {
                 stopped = true;
                 break;
+            }
+            if (memEnabled) {
+                EpisodicMemory.FusionInfo fi = continual_.memory().fuseLogits(
+                        currentHidden, logits, cfg);
+                stepCount++;
+                if ((fi.lambda() > 0d) || (fi.matchedTraces() > 0)) {
+                    memoryHits++;
+                    lambdaSum += fi.lambda();
+                }
             }
             int token = sampler.pick(logits, window, length);
 
@@ -1091,6 +2024,12 @@ public final class LlmCore {
             if (token == tokenizer_.end()) {
                 ended = true;
                 break;
+            }
+            double lp = tokenLogProbability(logits, token);
+            if (Double.isFinite(lp)) {
+                sumLogProb += lp;
+                sumMargin += top1MinusTop2Probability(logits);
+                logProbCount++;
             }
             String piece = stream.add(token);
 
@@ -1108,18 +2047,89 @@ public final class LlmCore {
             if (length < context) {
                 window[length] = token;
                 logits = model_.step(token, length, cache, true);
+                currentHidden = cache.finalNorm();
                 length++;
             } else {
                 System.arraycopy(window, 1, window, 0, context - 1);
                 window[context - 1] = token;
-                logits = model_.logits(window, context);
+                logits = model_.logitsAndHidden(window, context, hiddenBuf);
+                currentHidden = hiddenBuf;
             }
         }
         String tail = stream.flush();
         if (!tail.isEmpty()) {
             listener.onToken(tail);
         }
-        return new AnswerResult(stream.text(), made, seconds(began), stopped, ended);
+        double meanLogProb = (logProbCount > 0) ? (sumLogProb / logProbCount) : Double.NaN;
+        double confidence = Double.isFinite(meanLogProb)
+                ? Math.clamp(Math.exp(meanLogProb), 0d, 1d) : 0d;
+        double meanMargin = (logProbCount > 0) ? (sumMargin / logProbCount) : Double.NaN;
+        double avgLambda = (stepCount > 0) ? (lambdaSum / stepCount) : 0d;
+        return new AnswerResult(stream.text(), made, seconds(began), stopped, ended, meanLogProb,
+                confidence, meanMargin, memoryHits, avgLambda);
+    }
+
+    private static double top1MinusTop2Probability(float[] logits) {
+        if ((logits == null) || (logits.length < 2)) {
+            return 1d;
+        }
+        double max1 = Double.NEGATIVE_INFINITY;
+        double max2 = Double.NEGATIVE_INFINITY;
+        for (float l : logits) {
+            if (!Float.isFinite(l)) {
+                continue;
+            }
+            if (l >= max1) {
+                max2 = max1;
+                max1 = l;
+            } else if (l > max2) {
+                max2 = l;
+            }
+        }
+        if (!Double.isFinite(max1)) {
+            return 0d;
+        }
+        double sumExp = 0d;
+        for (float l : logits) {
+            if (Float.isFinite(l)) {
+                sumExp += Math.exp((double) l - max1);
+            }
+        }
+        if (!(sumExp > 0d) || !Double.isFinite(sumExp)) {
+            return 0d;
+        }
+        double p1 = 1d / sumExp;
+        double p2 = Double.isFinite(max2) ? (Math.exp(max2 - max1) / sumExp) : 0d;
+        return Math.clamp(p1 - p2, 0d, 1d);
+    }
+
+    private static double tokenLogProbability(float[] logits, int token) {
+        if ((logits == null) || (token < 0) || (token >= logits.length)) {
+            return Double.NaN;
+        }
+        double targetLogit = logits[token];
+        if (!Double.isFinite(targetLogit)) {
+            return Double.NaN;
+        }
+        double maxLogit = Double.NEGATIVE_INFINITY;
+        for (float l : logits) {
+            if (Float.isFinite(l) && (l > maxLogit)) {
+                maxLogit = l;
+            }
+        }
+        if (!Double.isFinite(maxLogit)) {
+            return Double.NaN;
+        }
+        double sumExp = 0d;
+        for (float l : logits) {
+            if (Float.isFinite(l)) {
+                sumExp += Math.exp((double) l - maxLogit);
+            }
+        }
+        if (!(sumExp > 0d) || !Double.isFinite(sumExp)) {
+            return Double.NaN;
+        }
+        return (targetLogit - maxLogit) - Math.log(sumExp);
     }
 
     /**

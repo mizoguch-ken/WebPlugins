@@ -32,6 +32,7 @@ public final class Llm extends PluginSupport {
     private final RagStore ragStore_ = new RagStore();
     private final EventDispatcher dispatcher_;
     private final TaskManager tasks_;
+    private final ContinualController continualController_;
 
     private final LocalApi localApi_;
     private final RemoteApi remoteApi_;
@@ -56,7 +57,9 @@ public final class Llm extends PluginSupport {
     Llm(EventDispatcher.EventSink sink) {
         dispatcher_ = new EventDispatcher(this, sink);
         tasks_ = new TaskManager(dispatcher_);
-        localApi_ = new LocalApi(this, localService_, tasks_, dispatcher_);
+        continualController_ = new ContinualController(this, localService_, tasks_, dispatcher_);
+        localService_.attachContinual(continualController_);
+        localApi_ = new LocalApi(this, localService_, continualController_, tasks_, dispatcher_);
         remoteApi_ = new RemoteApi(this, profiles_, remoteClient_, tasks_, dispatcher_);
         ragApi_ = new RagApi(this, ragStore_, profiles_, remoteClient_, tasks_, remoteApi_);
         sessionApi_ = new SessionApi(this, sessionStore_, profiles_, remoteClient_, tasks_,
@@ -170,6 +173,7 @@ public final class Llm extends PluginSupport {
 
     @Override
     public void close() {
+        continualController_.close();
         localService_.stop();
         tasks_.close();
         remoteClient_.close();

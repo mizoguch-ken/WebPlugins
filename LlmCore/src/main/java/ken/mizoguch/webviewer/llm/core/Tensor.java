@@ -787,20 +787,22 @@ public final class Tensor {
     static void layerNormBackward(int rows, int width, float[] centered,
             float[] inverse, float[] scale, float[] gradient, float[] out, float[] scaleGradient,
             float[] shiftGradient, boolean accumulate) {
-        if (accumulate) {
-            columnSumAdd(gradient, rows, width, shiftGradient);
-        } else {
-            columnSum(gradient, rows, width, shiftGradient);
-        }
-        blocks(width, (long) rows * width, (from, to) -> {
-            for (int row = 0; row < rows; row++) {
-                int offset = row * width;
-
-                for (int column = from; column < to; column++) {
-                    scaleGradient[column] += gradient[offset + column] * centered[offset + column];
-                }
+        if ((shiftGradient != null) && (scaleGradient != null)) {
+            if (accumulate) {
+                columnSumAdd(gradient, rows, width, shiftGradient);
+            } else {
+                columnSum(gradient, rows, width, shiftGradient);
             }
-        });
+            blocks(width, (long) rows * width, (from, to) -> {
+                for (int row = 0; row < rows; row++) {
+                    int offset = row * width;
+
+                    for (int column = from; column < to; column++) {
+                        scaleGradient[column] += gradient[offset + column] * centered[offset + column];
+                    }
+                }
+            });
+        }
         blocks(rows, (long) rows * width, (first, last) -> {
             for (int row = first; row < last; row++) {
                 int offset = row * width;

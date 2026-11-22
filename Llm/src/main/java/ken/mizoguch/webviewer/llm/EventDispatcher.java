@@ -160,6 +160,15 @@ final class EventDispatcher {
         dispatchEventJson(encodeBounded(ev, "message"), false);
     }
 
+    void emitContinual(String payloadJson) {
+        JsonObject ev = new JsonObject();
+        ev.addProperty("event", "continual");
+        ev.addProperty("lane", TaskManager.LANE_LOCAL);
+        ev.addProperty("kind", "continual");
+        ev.add("result", parseResultQuietly(payloadJson));
+        dispatchEventJson(encodeBounded(ev, null), false);
+    }
+
     void emitDone(String taskId, String lane, String kind, String resultJson) {
         emitResultEnvelope("done", taskId, lane, kind, resultJson);
     }
