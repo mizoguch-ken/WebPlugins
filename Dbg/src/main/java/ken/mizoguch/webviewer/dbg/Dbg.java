@@ -16,6 +16,7 @@ import javafx.scene.input.Clipboard;
 import javafx.scene.input.ClipboardContent;
 import javafx.scene.web.WebEngine;
 import javafx.stage.Stage;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
 import ken.mizoguch.webviewer.plugin.kit.ScriptFunction;
 import ken.mizoguch.webviewer.plugin.kit.ScriptValue;
@@ -37,6 +38,7 @@ import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
 public class Dbg extends PluginSupport {
 
     private static final String FUNCTION_NAME = "dbg";
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(Dbg.class);
 
     /**
      * the tree of the jar of the plug-in which holds Firebug Lite
@@ -214,7 +216,7 @@ public class Dbg extends PluginSupport {
         String work = scriptFunction(name);
 
         if (work == null) {
-            return "{\"error\":" + Json.string("incorrect name of the work of the page") + "}";
+            return "{\"error\":" + Json.string(I18N.get(this, "dbg.cmd.incorrectWorkName")) + "}";
         }
         return bridge_.command(work, arguments);
     }
@@ -295,12 +297,12 @@ public class Dbg extends PluginSupport {
             local = files();
         } catch (IOException ex) {
             writeStackTrace(FUNCTION_NAME, ex);
-            return "{" + Json.field("error", "the plug-in can not write its files") + "}";
+            return "{" + Json.field("error", I18N.get(this, "dbg.save.filesUnavailable")) + "}";
         }
         Path to = SandboxPath.resolve(local, name);
 
         if (to == null) {
-            return "{" + Json.field("error", "Incorrect file path [" + name + "]") + "}";
+            return "{" + Json.field("error", I18N.get(this, "dbg.save.pathIncorrect", name)) + "}";
         }
         boolean net = Journal.NETWORK.equals(kind);
         Journal journal = bridge_.journal();
@@ -317,7 +319,7 @@ public class Dbg extends PluginSupport {
             Files.writeString(to, text, StandardCharsets.UTF_8);
         } catch (IOException ex) {
             writeStackTrace(FUNCTION_NAME, ex);
-            return "{" + Json.field("error", "the plug-in can not write the file [" + name + "]") + "}";
+            return "{" + Json.field("error", I18N.get(this, "dbg.save.writeFailed", name)) + "}";
         }
         return "{" + Json.field("file", local.relativize(to).toString().replace('\\', '/'))
                 + "," + Json.field("count", journal.size(net ? Journal.NETWORK : Journal.CONSOLE)) + "}";
@@ -457,7 +459,7 @@ public class Dbg extends PluginSupport {
     private void console(String console, String value, boolean err) {
         // the name of the function of the page is written in the javascript of the plug-in
         if (!ScriptFunction.isValid(console)) {
-            write(FUNCTION_NAME, "Incorrect console function [" + console + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "dbg.console.invalidFunction", console), true);
             return;
         }
         if (isConsoleOut_ && !isHook_) {
@@ -542,7 +544,7 @@ public class Dbg extends PluginSupport {
         }
         if (!isFilesWritten_) {
             Archive.write(Dbg.class, filesDir_,
-                    name -> write(FUNCTION_NAME, "Incorrect file in the archive [" + name + "]", true),
+                    name -> write(FUNCTION_NAME, I18N.get(this, "dbg.archive.invalidFile", name), true),
                     FIREBUG_TREE, DBG_TREE);
             isFilesWritten_ = true;
         }
@@ -636,10 +638,12 @@ public class Dbg extends PluginSupport {
             try {
                 engine.executeScript(script);
             } catch (RuntimeException ex) {
+                String msg = I18N.get(this, "dbg.page.refusedScript", ex.getMessage());
+
                 if (webViewer() != null) {
-                    super.write(FUNCTION_NAME, "the page refused the script [" + ex.getMessage() + "]", true);
+                    super.write(FUNCTION_NAME, msg, true);
                 } else {
-                    System.err.println(FUNCTION_NAME + ": the page refused the script [" + ex.getMessage() + "]");
+                    System.err.println(FUNCTION_NAME + ": " + msg);
                 }
             }
         });
@@ -652,7 +656,12 @@ public class Dbg extends PluginSupport {
      * @return the state of the plug-in, written in json
      */
     String panelState() {
+        return panelState(PluginI18n.resolveLocale(this));
+    }
+
+    String panelState(Locale locale) {
         Journal journal = bridge_.journal();
+        String lang = PluginI18n.isJapanese(locale) ? PluginI18n.LANG_JA : PluginI18n.LANG_EN;
 
         return "{" + Json.field("k", "state")
                 + "," + Json.field("devtools", devTools_.isOpen())
@@ -663,7 +672,14 @@ public class Dbg extends PluginSupport {
                 + "," + Json.field("dropped", journal.dropped())
                 + "," + Json.field("version", version())
                 + "," + Json.field("page", pageLocation())
+                + "," + Json.field("lang", lang)
                 + "}";
+    }
+
+    @Override
+    public void onLanguageChanged(Locale locale) {
+        devTools_.updateTitle();
+        bridge_.send("dbgUi.state", panelState(locale));
     }
 
     /**

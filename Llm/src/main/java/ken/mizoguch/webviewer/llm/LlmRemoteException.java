@@ -63,7 +63,7 @@ public final class LlmRemoteException extends RuntimeException {
     }
 
     static LlmRemoteException cancelled() {
-        return new LlmRemoteException("Remote request was cancelled", null, 0, "cancelled",
+        return new LlmRemoteException(LlmI18n.get("llm.remote.cancelled"), null, 0, "cancelled",
                 "cancelled", false, 0L);
     }
 

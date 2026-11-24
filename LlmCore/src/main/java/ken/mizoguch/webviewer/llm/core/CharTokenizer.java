@@ -154,8 +154,8 @@ public final class CharTokenizer implements Tokenizer {
 
             if (isValidScalarCodePoint(codePoint) && !identifiers_.containsKey(codePoint)) {
                 if ((FIRST + characters_.size()) >= ModelConfig.MAX_VOCAB) {
-                    throw new LlmCoreException("Character vocabulary exceeds maximum of "
-                            + ModelConfig.MAX_VOCAB);
+                    throw new LlmCoreException(LlmCoreI18n.get("tokenizer.char.maxExceeded",
+                            ModelConfig.MAX_VOCAB));
                 }
                 identifiers_.put(codePoint, FIRST + characters_.size());
                 characters_.add(codePoint);
@@ -255,11 +255,10 @@ public final class CharTokenizer implements Tokenizer {
         int count = in.readInt();
 
         if ((count < 0) || (count > ModelConfig.MAX_VOCAB)) {
-            throw new IOException("Incorrect character vocabulary of [" + count + "] characters");
+            throw new IOException(LlmCoreI18n.get("tokenizer.char.incorrectCount", count));
         }
         if ((size < FIRST) || (size < (FIRST + count))) {
-            throw new IOException("A vocabulary of [" + size + "] tokens can not hold [" + count
-                    + "] characters");
+            throw new IOException(LlmCoreI18n.get("tokenizer.char.tooSmall", size, count));
         }
         List<Integer> characters = new ArrayList<>(count);
         Set<Integer> seen = new HashSet<>((count * 2) + 1);
@@ -268,12 +267,10 @@ public final class CharTokenizer implements Tokenizer {
             int codePoint = in.readInt();
 
             if (!isValidScalarCodePoint(codePoint)) {
-                throw new IOException("Invalid Unicode scalar code point in vocabulary: "
-                        + codePoint);
+                throw new IOException(LlmCoreI18n.get("tokenizer.char.invalidCodePoint", codePoint));
             }
             if (!seen.add(codePoint)) {
-                throw new IOException("Duplicate character code point in vocabulary: "
-                        + codePoint);
+                throw new IOException(LlmCoreI18n.get("tokenizer.char.duplicateCodePoint", codePoint));
             }
             characters.add(codePoint);
         }

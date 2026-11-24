@@ -15,6 +15,7 @@ import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 import javax.swing.event.EventListenerList;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 
 /**
  *
@@ -23,6 +24,7 @@ import javax.swing.event.EventListenerList;
 public final class LinkBoxClient {
 
     private static final int MAX_RESPONSE_LENGTH = 8192;
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(LinkBoxClient.class);
 
     private final EventListenerList eventListenerList_;
 
@@ -812,7 +814,7 @@ public final class LinkBoxClient {
      */
     public boolean cmdSetIPAddr(String address, String mask, String gateway) {
         if ((address == null) || (mask == null) || (gateway == null)) {
-            exceptionCaught(new IllegalArgumentException("Address, mask, and gateway must not be null"));
+            exceptionCaught(new IllegalArgumentException(I18N.get("capai.arg.addrMaskGatewayNull")));
             return false;
         }
         try {
@@ -822,7 +824,7 @@ public final class LinkBoxClient {
             byte[] gwy = InetAddress.getByName(gateway).getAddress();
 
             if ((adr.length != 4) || (msk.length != 4) || (gwy.length != 4)) {
-                exceptionCaught(new IllegalArgumentException("IPv4 address is required"));
+                exceptionCaught(new IllegalArgumentException(I18N.get("capai.arg.ipv4Required")));
                 return false;
             }
 
@@ -850,7 +852,7 @@ public final class LinkBoxClient {
      */
     public boolean cmdSetHostAddr(List<String> address) {
         if (address == null) {
-            exceptionCaught(new IllegalArgumentException("Host address list must not be null"));
+            exceptionCaught(new IllegalArgumentException(I18N.get("capai.arg.hostAddrListNull")));
             return false;
         }
         try {
@@ -860,12 +862,12 @@ public final class LinkBoxClient {
             for (int i = 0; i < address.size(); i++) {
                 String host = address.get(i);
                 if (host == null) {
-                    exceptionCaught(new IllegalArgumentException("Host address must not be null"));
+                    exceptionCaught(new IllegalArgumentException(I18N.get("capai.arg.hostAddrNull")));
                     return false;
                 }
                 byte[] adr = InetAddress.getByName(host).getAddress();
                 if (adr.length != 4) {
-                    exceptionCaught(new IllegalArgumentException("IPv4 address is required"));
+                    exceptionCaught(new IllegalArgumentException(I18N.get("capai.arg.ipv4Required")));
                     return false;
                 }
 
@@ -1030,7 +1032,7 @@ public final class LinkBoxClient {
                 pw.write(request + "\r");
                 pw.flush();
                 if (pw.checkError()) {
-                    exceptionCaught(new IOException("Failed to write request: " + command));
+                    exceptionCaught(new IOException(I18N.get("capai.io.writeFailed", command)));
                     return result;
                 }
             }

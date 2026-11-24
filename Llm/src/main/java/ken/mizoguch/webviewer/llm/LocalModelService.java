@@ -65,7 +65,7 @@ final class LocalModelService {
         if (target == null) {
             target = core_.path();
             if (target == null) {
-                throw new LlmCoreException("No file path provided and model has no bound path");
+                throw new LlmCoreException(LlmI18n.get("llm.local.saveNoPath"));
             }
         }
         core_.save(target);
@@ -142,7 +142,7 @@ final class LocalModelService {
 
     String detokenize(String tokensJson) {
         if (tokensJson == null) {
-            throw new IllegalArgumentException("Tokens JSON array must not be null");
+            throw new IllegalArgumentException(LlmI18n.get("llm.local.tokensNull"));
         }
         int[] ids = JsonUtil.parseIntArray(tokensJson);
         return core_.detokenize(ids);
@@ -153,7 +153,7 @@ final class LocalModelService {
     }
 
     String setOptimizer(String optionsJson) {
-        JsonObject opts = JsonUtil.parseObject(optionsJson, "Optimizer configuration");
+        JsonObject opts = JsonUtil.parseObject(optionsJson, LlmI18n.get("llm.ctx.optimizerConfig"));
         Double lr = JsonUtil.optDouble(opts, "learningRate");
         Double wd = JsonUtil.optDouble(opts, "weightDecay");
         Double grad = JsonUtil.optDouble(opts, "largestGradient");
@@ -176,13 +176,13 @@ final class LocalModelService {
         int warmupSteps = 0;
         int gradientAccumulation = 1;
         if ((optionsJson != null) && !optionsJson.trim().isEmpty()) {
-            JsonObject opts = JsonUtil.parseObject(optionsJson, "Training options");
+            JsonObject opts = JsonUtil.parseObject(optionsJson, LlmI18n.get("llm.ctx.trainingOptions"));
             Integer ep = JsonUtil.optInt(opts, "epochs");
             if (ep != null) {
                 int val = ep.intValue();
                 if ((val < 1) || (val > LlmCore.MAX_EPOCHS)) {
-                    throw new LlmCoreException("A training of " + val
-                            + " epochs is refused : use 1 to " + LlmCore.MAX_EPOCHS + " epochs");
+                    throw new LlmCoreException(
+                            LlmI18n.get("llm.local.epochsRefused", val, LlmCore.MAX_EPOCHS));
                 }
                 epochs = val;
             }
@@ -190,28 +190,27 @@ final class LocalModelService {
             if (learningRate != null) {
                 double lr = learningRate.doubleValue();
                 if (!Double.isFinite(lr) || (lr <= 0d) || (lr > 0.1d)) {
-                    throw new LlmCoreException("A learning rate of " + learningRate
-                            + " is refused : use a rate between 0 and 0.1");
+                    throw new LlmCoreException(LlmI18n.get("llm.local.learningRateRefused", learningRate));
                 }
             }
             minLearningRate = JsonUtil.optDouble(opts, "minLearningRate");
             if (minLearningRate != null) {
                 double mlr = minLearningRate.doubleValue();
                 if (!Double.isFinite(mlr) || (mlr < 0d) || (mlr > 0.1d)) {
-                    throw new LlmCoreException("Invalid minLearningRate: " + mlr);
+                    throw new LlmCoreException(LlmI18n.get("llm.local.invalidMinLearningRate", mlr));
                 }
             }
             Integer wu = JsonUtil.optInt(opts, "warmupSteps");
             if (wu != null) {
                 if (wu.intValue() < 0) {
-                    throw new IllegalArgumentException("\"warmupSteps\" must be non-negative");
+                    throw new IllegalArgumentException(LlmI18n.get("llm.local.warmupNonNegative"));
                 }
                 warmupSteps = wu.intValue();
             }
             Integer ga = JsonUtil.optInt(opts, "gradientAccumulation");
             if (ga != null) {
                 if (ga.intValue() < 1) {
-                    throw new IllegalArgumentException("\"gradientAccumulation\" must be >= 1");
+                    throw new IllegalArgumentException(LlmI18n.get("llm.local.gradAccumMin"));
                 }
                 gradientAccumulation = ga.intValue();
             }
@@ -230,13 +229,13 @@ final class LocalModelService {
         Long seed = null;
 
         if ((optionsJson != null) && !optionsJson.trim().isEmpty()) {
-            JsonObject opts = JsonUtil.parseObject(optionsJson, "Generation options");
+            JsonObject opts = JsonUtil.parseObject(optionsJson, LlmI18n.get("llm.ctx.generationOptions"));
             Integer mt = JsonUtil.optInt(opts, "maxTokens");
             if (mt != null) {
                 int val = mt.intValue();
                 if ((val < 1) || (val > LlmCore.MAX_TOKENS)) {
-                    throw new LlmCoreException("Invalid maxTokens " + val
-                            + " (expected 1.." + LlmCore.MAX_TOKENS + ")");
+                    throw new LlmCoreException(
+                            LlmI18n.get("llm.local.invalidMaxTokens", val, LlmCore.MAX_TOKENS));
                 }
                 maxTokens = val;
             }
@@ -244,7 +243,7 @@ final class LocalModelService {
             if (temp != null) {
                 double val = temp.doubleValue();
                 if (val < 0d) {
-                    throw new IllegalArgumentException("\"temperature\" must be non-negative");
+                    throw new IllegalArgumentException(LlmI18n.get("llm.local.temperatureNonNegative"));
                 }
                 temperature = val;
             }
@@ -252,7 +251,7 @@ final class LocalModelService {
             if (tk != null) {
                 int val = tk.intValue();
                 if (val < 0) {
-                    throw new IllegalArgumentException("\"topK\" must be non-negative");
+                    throw new IllegalArgumentException(LlmI18n.get("llm.local.topKNonNegative"));
                 }
                 topK = val;
             }
@@ -260,7 +259,7 @@ final class LocalModelService {
             if (tp != null) {
                 double val = tp.doubleValue();
                 if ((val < 0d) || (val > 1d)) {
-                    throw new IllegalArgumentException("\"topP\" must be between 0 and 1");
+                    throw new IllegalArgumentException(LlmI18n.get("llm.local.topPRange"));
                 }
                 topP = val;
             }
@@ -268,7 +267,7 @@ final class LocalModelService {
             if (mp != null) {
                 double val = mp.doubleValue();
                 if ((val < 0d) || (val > 1d)) {
-                    throw new IllegalArgumentException("\"minP\" must be between 0 and 1");
+                    throw new IllegalArgumentException(LlmI18n.get("llm.local.minPRange"));
                 }
                 minP = val;
             }
@@ -276,7 +275,7 @@ final class LocalModelService {
             if (rp != null) {
                 double val = rp.doubleValue();
                 if (val < 1d) {
-                    throw new IllegalArgumentException("\"repetitionPenalty\" must be >= 1.0");
+                    throw new IllegalArgumentException(LlmI18n.get("llm.local.repPenaltyMin"));
                 }
                 repetitionPenalty = val;
             }
@@ -417,11 +416,11 @@ final class LocalModelService {
         try {
             parsed = JsonParser.parseString(trimmed);
         } catch (JsonSyntaxException ex) {
-            throw new IllegalArgumentException("Texts JSON array is malformed: " + ex.getMessage(),
+            throw new IllegalArgumentException(LlmI18n.get("llm.local.textsMalformed", ex.getMessage()),
                     ex);
         }
         if ((parsed == null) || !parsed.isJsonArray()) {
-            throw new IllegalArgumentException("Texts must be a string or JSON array of strings");
+            throw new IllegalArgumentException(LlmI18n.get("llm.local.textsType"));
         }
         JsonArray array = parsed.getAsJsonArray();
         for (int i = 0; i < array.size(); i++) {
@@ -430,7 +429,7 @@ final class LocalModelService {
                 continue;
             }
             if (!el.isJsonPrimitive() || !el.getAsJsonPrimitive().isString()) {
-                throw new IllegalArgumentException("Text entry at index " + i + " must be a string");
+                throw new IllegalArgumentException(LlmI18n.get("llm.local.textEntryString", i));
             }
             String value = el.getAsString();
             if (!value.isEmpty()) {
@@ -441,7 +440,8 @@ final class LocalModelService {
     }
 
     static List<String> readCorpusFile(Path file) throws IOException {
-        String content = SandboxFiles.readUtf8Bounded(file, MAX_CORPUS_BYTES, "Corpus file");
+        String content = SandboxFiles.readUtf8Bounded(file, MAX_CORPUS_BYTES,
+                LlmI18n.get("llm.ctx.corpusFile"));
         String fileName = (file.getFileName() == null)
                 ? "" : file.getFileName().toString().toLowerCase(Locale.ROOT);
         if (fileName.endsWith(".json") && content.trim().startsWith("[")) {
@@ -458,46 +458,45 @@ final class LocalModelService {
         if ((configJson == null) || configJson.trim().isEmpty()) {
             return sizes;
         }
-        JsonObject read = JsonUtil.parseObject(configJson, "Model configuration");
+        JsonObject read = JsonUtil.parseObject(configJson, LlmI18n.get("llm.ctx.modelConfig"));
 
         String vocabName = JsonUtil.optString(read, "vocab");
         if (vocabName != null) {
             int type = ModelConfig.vocabTypeOf(vocabName);
             if (type < 0) {
-                throw new LlmCoreException("Unsupported vocab \"" + vocabName + "\": use \""
-                        + ModelConfig.VOCAB_NAME_BYTE + "\" or \""
-                        + ModelConfig.VOCAB_NAME_CHAR + "\"");
+                throw new LlmCoreException(LlmI18n.get("llm.local.unsupportedVocab",
+                        vocabName, ModelConfig.VOCAB_NAME_BYTE, ModelConfig.VOCAB_NAME_CHAR));
             }
             sizes.setVocabType(type);
         }
 
         Integer vocabSize = JsonUtil.optInt(read, "vocabSize");
         if ((vocabSize != null) && !sizes.setVocabSize(vocabSize.intValue())) {
-            throw new LlmCoreException("Invalid vocabSize " + vocabSize.intValue());
+            throw new LlmCoreException(LlmI18n.get("llm.local.invalidVocabSize", vocabSize.intValue()));
         }
 
         Integer dModel = JsonUtil.optInt(read, "dModel");
         if ((dModel != null) && !sizes.setDModel(dModel.intValue())) {
-            throw new LlmCoreException("Invalid dModel " + dModel.intValue()
-                    + " (expected " + ModelConfig.MIN_D_MODEL + ".." + ModelConfig.MAX_D_MODEL + ")");
+            throw new LlmCoreException(LlmI18n.get("llm.local.invalidDModel",
+                    dModel.intValue(), ModelConfig.MIN_D_MODEL, ModelConfig.MAX_D_MODEL));
         }
 
         Integer heads = JsonUtil.optInt(read, "heads");
         if ((heads != null) && !sizes.setHeads(heads.intValue())) {
-            throw new LlmCoreException("Invalid heads " + heads.intValue()
-                    + " for dModel " + sizes.dModel());
+            throw new LlmCoreException(
+                    LlmI18n.get("llm.local.invalidHeads", heads.intValue(), sizes.dModel()));
         }
 
         Integer layers = JsonUtil.optInt(read, "layers");
         if ((layers != null) && !sizes.setLayers(layers.intValue())) {
-            throw new LlmCoreException("Invalid layers " + layers.intValue()
-                    + " (expected " + ModelConfig.MIN_LAYERS + ".." + ModelConfig.MAX_LAYERS + ")");
+            throw new LlmCoreException(LlmI18n.get("llm.local.invalidLayers",
+                    layers.intValue(), ModelConfig.MIN_LAYERS, ModelConfig.MAX_LAYERS));
         }
 
         Integer context = JsonUtil.optInt(read, "context");
         if ((context != null) && !sizes.setContext(context.intValue())) {
-            throw new LlmCoreException("Invalid context " + context.intValue()
-                    + " (expected " + ModelConfig.MIN_CONTEXT + ".." + ModelConfig.MAX_CONTEXT + ")");
+            throw new LlmCoreException(LlmI18n.get("llm.local.invalidContext",
+                    context.intValue(), ModelConfig.MIN_CONTEXT, ModelConfig.MAX_CONTEXT));
         }
 
         Long seed = JsonUtil.optLong(read, "seed");

@@ -133,7 +133,7 @@ final class ContinualController {
         ContinualConfig.Builder builder = learner.config().toBuilder();
 
         if ((optionsJson != null) && !optionsJson.trim().isEmpty()) {
-            JsonObject opts = JsonUtil.parseObject(optionsJson, "Continual options");
+            JsonObject opts = JsonUtil.parseObject(optionsJson, LlmI18n.get("llm.ctx.continualOptions"));
             Integer vInt;
             Long vLong;
             Double vDbl;
@@ -197,7 +197,7 @@ final class ContinualController {
             if ((vLong = JsonUtil.optLong(opts, "idleDelayMs")) != null) {
                 long d = vLong.longValue();
                 if ((d < 100L) || (d > 60_000L)) {
-                    throw new IllegalArgumentException("idleDelayMs out of range (100..60000): " + d);
+                    throw new IllegalArgumentException(LlmI18n.get("llm.continual.idleDelayRange", d));
                 }
                 synchronized (stateLock_) {
                     idleDelayMs_ = d;
@@ -207,7 +207,7 @@ final class ContinualController {
                 long iv = vLong.longValue();
                 if ((iv < 1000L) || (iv > 3_600_000L)) {
                     throw new IllegalArgumentException(
-                            "consolidationIntervalMs out of range (1000..3600000): " + iv);
+                            LlmI18n.get("llm.continual.consolidationRange", iv));
                 }
                 synchronized (stateLock_) {
                     consolidationIntervalMs_ = iv;
@@ -222,7 +222,7 @@ final class ContinualController {
                 double c = vDbl.doubleValue();
                 if (!Double.isFinite(c) || (c < 0d) || (c > 1d)) {
                     throw new IllegalArgumentException(
-                            "minInferenceConfidence out of range [0, 1]: " + c);
+                            LlmI18n.get("llm.continual.minConfidenceRange", c));
                 }
                 synchronized (stateLock_) {
                     minInferenceConfidence_ = c;
@@ -242,7 +242,8 @@ final class ContinualController {
                     } else {
                         Path resolved = owner_.resolveSandboxPath(rawPath);
                         if (resolved == null) {
-                            throw new IllegalArgumentException("Invalid autoSavePath: " + rawPath);
+                            throw new IllegalArgumentException(
+                                    LlmI18n.get("llm.continual.invalidAutoSavePath", rawPath));
                         }
                         synchronized (stateLock_) {
                             autoSavePath_ = resolved;
@@ -265,7 +266,7 @@ final class ContinualController {
                         Path resolved = owner_.resolveSandboxPath(rawPath);
                         if (resolved == null) {
                             throw new IllegalArgumentException(
-                                    "Invalid autoMemorySavePath: " + rawPath);
+                                    LlmI18n.get("llm.continual.invalidAutoMemorySavePath", rawPath));
                         }
                         synchronized (stateLock_) {
                             autoMemorySavePath_ = resolved;
@@ -360,7 +361,7 @@ final class ContinualController {
         String p = (prompt == null) ? "" : prompt.trim();
         String r = (response == null) ? "" : response.trim();
         if (r.isEmpty()) {
-            throw new IllegalArgumentException("Sample response must not be empty");
+            throw new IllegalArgumentException(LlmI18n.get("llm.continual.sampleEmpty"));
         }
         MemoryBank.Layer layer = MemoryBank.Layer.SEMANTIC;
         MemoryBank.Kind kind = MemoryBank.Kind.FACT;
@@ -370,13 +371,13 @@ final class ContinualController {
         String source = "sample";
 
         if ((optionsJson != null) && !optionsJson.trim().isEmpty()) {
-            JsonObject opts = JsonUtil.parseObject(optionsJson, "Sample options");
+            JsonObject opts = JsonUtil.parseObject(optionsJson, LlmI18n.get("llm.ctx.sampleOptions"));
             String lStr = JsonUtil.optString(opts, "layer");
             if ((lStr != null) && !lStr.isBlank()) {
                 layer = parseEnum(MemoryBank.Layer.class, lStr, "layer");
                 if (layer == MemoryBank.Layer.INSTINCT) {
                     throw new IllegalArgumentException(
-                            "Use llm.memory().addInstinct() for immutable instincts");
+                            LlmI18n.get("llm.continual.useMemoryAddInstinct"));
                 }
             }
             String kStr = JsonUtil.optString(opts, "kind");
@@ -407,7 +408,7 @@ final class ContinualController {
             case EPISODIC -> learner.recordEpisodic(kind, scope, p, r, importance, 0.75d, source);
             case SEMANTIC -> learner.confirmSemantic(kind, scope, p, r, alternative, importance,
                     source);
-            case INSTINCT -> throw new IllegalStateException("Unreachable");
+            case INSTINCT -> throw new IllegalStateException(LlmI18n.get("llm.error.unreachable"));
         };
         scheduleIfReady(idleDelayMs_);
         return entryJson(entry);
@@ -416,7 +417,7 @@ final class ContinualController {
     String correct(String inferenceId, String prompt, String correction, String optionsJson) {
         String c = (correction == null) ? "" : correction.trim();
         if (c.isEmpty()) {
-            throw new IllegalArgumentException("Correction content must not be empty");
+            throw new IllegalArgumentException(LlmI18n.get("llm.continual.correctionEmpty"));
         }
         String resolvedPrompt = (prompt == null) ? "" : prompt.trim();
         String badResponse = "";
@@ -434,7 +435,7 @@ final class ContinualController {
         double importance = 0.95d;
         String source = "correction";
         if ((optionsJson != null) && !optionsJson.trim().isEmpty()) {
-            JsonObject opts = JsonUtil.parseObject(optionsJson, "Correction options");
+            JsonObject opts = JsonUtil.parseObject(optionsJson, LlmI18n.get("llm.ctx.correctionOptions"));
             String sStr = JsonUtil.optString(opts, "scope");
             if ((sStr != null) && !sStr.isBlank()) {
                 scope = sStr.trim();
@@ -461,10 +462,10 @@ final class ContinualController {
     }
 
     String feedback(String feedbackJson) {
-        JsonObject obj = JsonUtil.parseObject(feedbackJson, "Feedback JSON");
+        JsonObject obj = JsonUtil.parseObject(feedbackJson, LlmI18n.get("llm.ctx.feedbackJson"));
         String verdict = JsonUtil.optString(obj, "verdict");
         if ((verdict == null) || verdict.isBlank()) {
-            throw new IllegalArgumentException("Feedback requires \"verdict\" (accept|reject|correct)");
+            throw new IllegalArgumentException(LlmI18n.get("llm.continual.feedbackVerdictRequired"));
         }
         String infId = JsonUtil.optString(obj, "inferenceId");
         RecentInference inf = ((infId == null) || infId.isBlank())
@@ -490,7 +491,7 @@ final class ContinualController {
                     good = inf.response();
                 }
                 if ((good == null) || good.isBlank()) {
-                    throw new IllegalArgumentException("Feedback \"accept\" requires content or valid inferenceId");
+                    throw new IllegalArgumentException(LlmI18n.get("llm.continual.feedbackAcceptRequired"));
                 }
                 Boolean confirm = JsonUtil.optBoolean(obj, "confirm");
                 if ((confirm != null) && confirm.booleanValue()) {
@@ -507,7 +508,7 @@ final class ContinualController {
                     bad = inf.response();
                 }
                 if ((bad == null) || bad.isBlank()) {
-                    throw new IllegalArgumentException("Feedback \"reject\" requires content or valid inferenceId");
+                    throw new IllegalArgumentException(LlmI18n.get("llm.continual.feedbackRejectRequired"));
                 }
                 entry = learner.confirmSemantic(MemoryBank.Kind.AVOIDANCE, scope, prompt, bad, "",
                         Math.max(imp, 0.9d), "feedback_reject");
@@ -520,7 +521,7 @@ final class ContinualController {
                 return correct(infId, prompt, correction, feedbackJson);
             }
             default -> throw new IllegalArgumentException(
-                    "Unsupported feedback verdict: \"" + verdict + "\"");
+                    LlmI18n.get("llm.continual.feedbackUnsupported", verdict));
         }
         scheduleIfReady(idleDelayMs_);
         return entryJson(entry);
@@ -538,13 +539,13 @@ final class ContinualController {
         String source = "observation";
 
         if ((optionsJson != null) && !optionsJson.trim().isEmpty()) {
-            JsonObject opts = JsonUtil.parseObject(optionsJson, "Observe options");
+            JsonObject opts = JsonUtil.parseObject(optionsJson, LlmI18n.get("llm.ctx.observeOptions"));
             String lStr = JsonUtil.optString(opts, "layer");
             if ((lStr != null) && !lStr.isBlank()) {
                 layer = parseEnum(MemoryBank.Layer.class, lStr, "layer");
                 if (layer == MemoryBank.Layer.INSTINCT) {
                     throw new IllegalArgumentException(
-                            "Use llm.memory().addInstinct() for immutable instincts");
+                            LlmI18n.get("llm.continual.useMemoryAddInstinct"));
                 }
             }
             String sStr = JsonUtil.optString(opts, "scope");
@@ -572,7 +573,7 @@ final class ContinualController {
                     norm, importance, 0.7d, source);
             case SEMANTIC -> learner.confirmSemantic(MemoryBank.Kind.FACT, scope, subject, norm, "",
                     importance, source);
-            case INSTINCT -> throw new IllegalStateException("Unreachable");
+            case INSTINCT -> throw new IllegalStateException(LlmI18n.get("llm.error.unreachable"));
         }
         scheduleIfReady(idleDelayMs_);
         return true;
@@ -588,7 +589,7 @@ final class ContinualController {
         double importance = 0.6d;
         boolean confirm = false;
         if ((optionsJson != null) && !optionsJson.trim().isEmpty()) {
-            JsonObject opts = JsonUtil.parseObject(optionsJson, "Ladder options");
+            JsonObject opts = JsonUtil.parseObject(optionsJson, LlmI18n.get("llm.ctx.ladderOptions"));
             String sStr = JsonUtil.optString(opts, "scope");
             if ((sStr != null) && !sStr.isBlank()) {
                 scope = sStr.trim();
@@ -647,7 +648,8 @@ final class ContinualController {
         int limit = 8;
         boolean includeAvoidances = true;
         if ((optionsJson != null) && !optionsJson.trim().isEmpty()) {
-            JsonObject opts = JsonUtil.parseObject(optionsJson, "Memory search options");
+            JsonObject opts = JsonUtil.parseObject(optionsJson,
+                    LlmI18n.get("llm.ctx.memorySearchOptions"));
             String sc = JsonUtil.optString(opts, "scope");
             if ((sc != null) && !sc.isBlank()) {
                 scopes = List.of(sc.trim());
@@ -683,7 +685,8 @@ final class ContinualController {
         boolean includeSuperseded = false;
         int limit = 100;
         if ((optionsJson != null) && !optionsJson.trim().isEmpty()) {
-            JsonObject opts = JsonUtil.parseObject(optionsJson, "Memory list options");
+            JsonObject opts = JsonUtil.parseObject(optionsJson,
+                    LlmI18n.get("llm.ctx.memoryListOptions"));
             String o = JsonUtil.optString(opts, "origin");
             if ((o != null) && !o.isBlank()) {
                 origin = parseEnum(MemoryBank.Origin.class, o, "origin");
@@ -721,7 +724,7 @@ final class ContinualController {
     boolean forgetMemory(long id) {
         MemoryBank.Entry existing = service_.core().continual().memory().get(id);
         if ((existing != null) && (existing.origin() == MemoryBank.Origin.INSTINCT)) {
-            owner_.logError("Cannot forget immutable instinct memory " + id);
+            owner_.logError(LlmI18n.get(owner_, "llm.memory.cannotForgetInstinct", id));
             return false;
         }
         return service_.core().continual().forget(id);
@@ -932,7 +935,7 @@ final class ContinualController {
         try {
             return Enum.valueOf(type, value.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException("Invalid continual " + field + ": \"" + value + "\"");
+            throw new IllegalArgumentException(LlmI18n.get("llm.continual.invalidEnum", field, value));
         }
     }
 }

@@ -5,6 +5,7 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import io.netty.util.ReferenceCountUtil;
 import java.nio.charset.StandardCharsets;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 
 /**
  *
@@ -13,6 +14,7 @@ import java.nio.charset.StandardCharsets;
 public final class LinkBoxServerHandler extends ChannelInboundHandlerAdapter {
 
     private static final int MAX_BUFFER_LENGTH = 4096;
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(LinkBoxServerHandler.class);
 
     private final LinkBoxServer linkBoxServer_;
     private final StringBuilder buffer_ = new StringBuilder();
@@ -48,7 +50,8 @@ public final class LinkBoxServerHandler extends ChannelInboundHandlerAdapter {
                 } else if (data != 0x0a) {
                     if (buffer_.length() >= MAX_BUFFER_LENGTH) {
                         buffer_.setLength(0);
-                        linkBoxServer_.exceptionCaught(new IllegalStateException("LinkBox frame exceeds maximum length"));
+                        linkBoxServer_.exceptionCaught(
+                                new IllegalStateException(I18N.get("capai.server.frameTooLarge")));
                         ctx.close();
                         return;
                     }

@@ -17,6 +17,7 @@ import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
 import java.util.logging.Logger;
@@ -27,12 +28,16 @@ import javafx.scene.image.Image;
 import javafx.scene.web.WebEngine;
 import javafx.stage.Stage;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotEquals;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -54,6 +59,30 @@ class DbTest {
         recorder = new Recorder(tempDir);
         db = new Db();
         db.initialize(recorder);
+    }
+
+    @AfterEach
+    void restoreLocaleState() {
+        System.clearProperty(PluginI18n.PROPERTY_LANGUAGE);
+        Locale.setDefault(Locale.Category.DISPLAY, Locale.US);
+    }
+
+    @Test
+    void i18nBundleParityAndJapaneseMessages() throws Exception {
+        PluginI18n.Bundle bundle = PluginI18n.bundle(Db.class);
+        assertEquals(bundle.englishKeys(), bundle.japaneseKeys());
+        assertFalse(bundle.englishKeys().isEmpty());
+        for (String key : bundle.englishKeys()) {
+            assertNotNull(bundle.japaneseBundle().get(key));
+            assertFalse(bundle.japaneseBundle().get(key).isEmpty());
+        }
+
+        System.setProperty(PluginI18n.PROPERTY_LANGUAGE, "ja");
+        assertNull(db.connect(null, null, null, null));
+        assertNull(db.query("select 1"));
+        assertEquals(2, recorder.messages.size());
+        assertNotEquals("Incorrect database argument", recorder.messages.get(0));
+        assertNotEquals("Not connected", recorder.messages.get(1));
     }
 
     @Test

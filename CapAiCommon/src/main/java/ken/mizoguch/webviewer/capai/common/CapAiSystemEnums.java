@@ -1,5 +1,7 @@
 package ken.mizoguch.webviewer.capai.common;
 
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
+
 /**
  *
  * @author mizoguch-ken
@@ -31,7 +33,7 @@ public enum CapAiSystemEnums {
     LOCAL_COMMUNICATION_ABNORMAL_BCC("Local Communication: Abnormal BCC", "ローカル通信 BCC異常"),
     LOCAL_COMMUNICATION_ABNORMAL_RECEPTION_DENBUN_FORMAT("Local Communication: Abnormal Reception Denbun Format",
             "ローカル通信 受信伝文フォーマット異常"),
-    LOCAL_COMMUNICATION_ANN_CIRCUIT_STATUS_ERROR("Local Communication: Ann Circuit Etatus Error",
+    LOCAL_COMMUNICATION_ANN_CIRCUIT_STATUS_ERROR("Local Communication: Ann Circuit Status Error",
             "ローカル通信 アンサーキットステータス異常"),
     HOST_COMMUNICATION_NO_FREE_CONNECTION_PORT("Host Communication: No Free Connection Port", "ホスト通信 接続ポートに空きがない"),
     HOST_COMMUNICATION_DISABLE_COMMAND("Host Communication: Disable Command", "ホスト通信 無効コマンド"),
@@ -61,7 +63,7 @@ public enum CapAiSystemEnums {
     REQUEST("Request", "リクエスト"),
     RESPONSE("Response", "レスポンス");
 
-    private volatile int lang_ = 0;
+    private volatile int lang_ = -1;
     private final String[] text_ = new String[2];
 
     private CapAiSystemEnums(final String message) {
@@ -81,8 +83,13 @@ public enum CapAiSystemEnums {
         }
     }
 
+    void resetLang() {
+        lang_ = -1;
+    }
+
     @Override
     public String toString() {
-        return text_[lang_];
+        int resolved = (lang_ >= 0) ? lang_ : (PluginI18n.isJapanese() ? 1 : 0);
+        return text_[resolved];
     }
 }

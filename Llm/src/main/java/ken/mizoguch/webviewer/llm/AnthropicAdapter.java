@@ -46,7 +46,7 @@ final class AnthropicAdapter {
             throw LlmRemoteException.config(ex.getMessage());
         }
         if (maxTokens < 1) {
-            throw LlmRemoteException.config("\"max_tokens\" must be at least 1");
+            throw LlmRemoteException.config(LlmI18n.get("llm.anthropic.maxTokensMin"));
         }
         out.addProperty("max_tokens", maxTokens);
 
@@ -123,8 +123,7 @@ final class AnthropicAdapter {
             convertedMessages.remove(0);
         }
         if (convertedMessages.isEmpty()) {
-            throw LlmRemoteException.config(
-                    "Anthropic request requires at least one non-empty user message");
+            throw LlmRemoteException.config(LlmI18n.get("llm.anthropic.requireUserMessage"));
         }
         if (!systemText.isEmpty()) {
             out.addProperty("system", systemText.toString());

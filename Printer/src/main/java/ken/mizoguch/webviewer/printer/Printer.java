@@ -36,6 +36,7 @@ import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
 import javafx.stage.Stage;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
 import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
 import ken.mizoguch.webviewer.plugin.kit.ScriptNotifier;
@@ -65,6 +66,7 @@ import ken.mizoguch.webviewer.plugin.kit.ScriptValue;
 public class Printer extends PluginSupport {
 
     private static final String FUNCTION_NAME = "printer";
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(Printer.class);
 
     /**
      * the works of the plug-in, given back to the page at the end of the work
@@ -143,7 +145,7 @@ public class Printer extends PluginSupport {
      * a plug-in which prints on one printer of the computer
      */
     public Printer() {
-        done_ = new ScriptNotifier(this, "Notification of the end of a print is dropped");
+        done_ = new ScriptNotifier(this, () -> I18N.get(this, "printer.notify.done.dropped"));
         jobName_ = FUNCTION_NAME;
         fontSize_ = FONT_SIZE;
         lineWidth_ = PrintPages.LINE_CHARACTERS;
@@ -202,7 +204,7 @@ public class Printer extends PluginSupport {
         javafx.print.Printer printer = Printers.named(name);
 
         if (printer == null) {
-            write(FUNCTION_NAME, "Incorrect printer name [" + name + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.name.incorrect", name), true);
             return false;
         }
         printerName_ = printer.getName();
@@ -221,7 +223,7 @@ public class Printer extends PluginSupport {
         javafx.print.Printer printer = chosenPrinter();
 
         if (printer == null) {
-            write(FUNCTION_NAME, "Printer not found", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.notFound"), true);
             return gson_.toJson(names);
         }
         for (Paper paper : Printers.papers(printer)) {
@@ -258,7 +260,7 @@ public class Printer extends PluginSupport {
         javafx.print.Printer printer = chosenPrinter();
 
         if (printer == null) {
-            write(FUNCTION_NAME, "Printer not found", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.notFound"), true);
             return false;
         }
         if (name == null) {
@@ -268,7 +270,7 @@ public class Printer extends PluginSupport {
         Paper paper = Printers.paper(printer, name);
 
         if (paper == null) {
-            write(FUNCTION_NAME, "Incorrect paper name [" + name + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.paper.incorrect", name), true);
             return false;
         }
         paperName_ = paper.getName();
@@ -305,7 +307,7 @@ public class Printer extends PluginSupport {
         PageOrientation read = orientationOf(name);
 
         if (read == null) {
-            write(FUNCTION_NAME, "Incorrect orientation [" + name + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.orientation.incorrect", name), true);
             return false;
         }
         orientation_ = read;
@@ -342,13 +344,13 @@ public class Printer extends PluginSupport {
         PrintSides read = sidesOf(name);
 
         if (read == null) {
-            write(FUNCTION_NAME, "Incorrect sides [" + name + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.sides.incorrect", name), true);
             return false;
         }
         Set<PrintSides> supported = availableSides();
 
         if ((supported != null) && !supported.contains(read)) {
-            write(FUNCTION_NAME, "The printer prints on no such side [" + name + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.sides.unsupported", name), true);
             return false;
         }
         sides_ = read;
@@ -384,7 +386,7 @@ public class Printer extends PluginSupport {
         Set<PrintColor> supported = availableColors();
 
         if ((supported != null) && !supported.contains(read)) {
-            write(FUNCTION_NAME, "The printer prints with no such color [" + color + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.color.unsupported", color), true);
             return false;
         }
         color_ = read;
@@ -468,7 +470,7 @@ public class Printer extends PluginSupport {
             max = COPIES_MAX;
         }
         if ((value < 1) || (value > max)) {
-            write(FUNCTION_NAME, "Incorrect copies [" + value + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.copies.incorrect", value), true);
             return false;
         }
         copies_ = Integer.valueOf(value);
@@ -516,7 +518,7 @@ public class Printer extends PluginSupport {
 
         for (double margin : millimeters) {
             if (!Double.isFinite(margin) || (margin < 0d) || (margin > MARGIN_MM_MAX)) {
-                write(FUNCTION_NAME, "Incorrect margin [" + margin + "]", true);
+                write(FUNCTION_NAME, I18N.get(this, "printer.margin.incorrect", margin), true);
                 return false;
             }
         }
@@ -547,13 +549,13 @@ public class Printer extends PluginSupport {
             return true;
         }
         if ((first.intValue() < 1) || (last.intValue() < first.intValue())) {
-            write(FUNCTION_NAME, "Incorrect page range [" + first + "-" + last + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.pageRange.incorrect", first, last), true);
             return false;
         }
         PrinterAttributes attributes = attributes();
 
         if ((attributes != null) && !attributes.supportsPageRanges()) {
-            write(FUNCTION_NAME, "The printer prints no range of pages", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.pageRange.unsupported"), true);
             return false;
         }
         range_ = new PageRange(first.intValue(), last.intValue());
@@ -580,7 +582,7 @@ public class Printer extends PluginSupport {
         }
         String trimmed = name.trim();
         if (trimmed.isEmpty()) {
-            write(FUNCTION_NAME, "Incorrect job name", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.jobName.incorrect"), true);
             return false;
         }
         jobName_ = trimmed;
@@ -607,7 +609,7 @@ public class Printer extends PluginSupport {
         }
         double value = points.doubleValue();
         if (!Double.isFinite(value) || (value <= 0d) || (value > FONT_SIZE_MAX)) {
-            write(FUNCTION_NAME, "Incorrect font size [" + points + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.fontSize.incorrect", points), true);
             return false;
         }
         fontSize_ = value;
@@ -634,7 +636,7 @@ public class Printer extends PluginSupport {
         }
         int value = chars.intValue();
         if ((value <= 0) || (value > LINE_WIDTH_MAX)) {
-            write(FUNCTION_NAME, "Incorrect line width [" + chars + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.lineWidth.incorrect", chars), true);
             return false;
         }
         lineWidth_ = value;
@@ -649,7 +651,7 @@ public class Printer extends PluginSupport {
     public Boolean reset() {
         synchronized (workLock_) {
             if (working_) {
-                write(FUNCTION_NAME, "The plug-in prints already", true);
+                write(FUNCTION_NAME, I18N.get(this, "printer.alreadyPrinting"), true);
                 return false;
             }
             printerName_ = null;
@@ -750,7 +752,7 @@ public class Printer extends PluginSupport {
      */
     public Boolean printText(String text) {
         if ((text == null) || text.trim().isEmpty()) {
-            write(FUNCTION_NAME, "The page gives no text to print", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.text.empty"), true);
             return false;
         }
         return start(TEXT, text, null);
@@ -768,11 +770,11 @@ public class Printer extends PluginSupport {
         Path file = SandboxPath.resolve(webPath_, webPath_, path);
 
         if (file == null) {
-            write(FUNCTION_NAME, "Incorrect file path [" + path + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.path.incorrect", path), true);
             return false;
         }
         if (!Files.isRegularFile(file) || !Files.isReadable(file)) {
-            write(FUNCTION_NAME, "File not found [" + path + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.file.notFound", path), true);
             return false;
         }
         return start(IMAGE, null, file);
@@ -787,26 +789,26 @@ public class Printer extends PluginSupport {
      */
     public Boolean printDialog() {
         if (working_) {
-            write(FUNCTION_NAME, "The plug-in prints already", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.alreadyPrinting"), true);
             return false;
         }
         Stage stage = stage();
 
         if (stage == null) {
-            write(FUNCTION_NAME, "The plug-in holds no window of the page", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.window.missing"), true);
             return false;
         }
         if (chosenPrinter() == null) {
-            write(FUNCTION_NAME, "Printer not found", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.notFound"), true);
             return false;
         }
         if (pageNode() == null) {
-            write(FUNCTION_NAME, "The window of the page holds no content to print", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.window.noContent"), true);
             return false;
         }
         synchronized (workLock_) {
             if (working_) {
-                write(FUNCTION_NAME, "The plug-in prints already", true);
+                write(FUNCTION_NAME, I18N.get(this, "printer.alreadyPrinting"), true);
                 return false;
             }
             working_ = true;
@@ -827,7 +829,7 @@ public class Printer extends PluginSupport {
         PrinterJob job = job_;
 
         if (!working_ || (job == null)) {
-            write(FUNCTION_NAME, "The plug-in prints nothing to stop", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.nothingToStop"), true);
             return false;
         }
         job.cancelJob();
@@ -844,11 +846,11 @@ public class Printer extends PluginSupport {
     public Boolean printTextFile(String path, String charset) {
         Path file = SandboxPath.resolve(webPath_, webPath_, path);
         if (file == null) {
-            write(FUNCTION_NAME, "Incorrect file path [" + path + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.path.incorrect", path), true);
             return false;
         }
         if (!Files.isRegularFile(file) || !Files.isReadable(file)) {
-            write(FUNCTION_NAME, "File not found [" + path + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.file.notFound", path), true);
             return false;
         }
         Charset resolvedCharset;
@@ -858,13 +860,13 @@ public class Printer extends PluginSupport {
             try {
                 resolvedCharset = Charset.forName(charset);
             } catch (IllegalCharsetNameException | UnsupportedCharsetException ex) {
-                write(FUNCTION_NAME, "Incorrect charset [" + charset + "]", true);
+                write(FUNCTION_NAME, I18N.get(this, "printer.charset.incorrect", charset), true);
                 return false;
             }
         }
         try {
             if (Files.size(file) > TEXT_FILE_MAX_BYTES) {
-                write(FUNCTION_NAME, "Text is too long [" + path + "]", true);
+                write(FUNCTION_NAME, I18N.get(this, "printer.text.tooLong", path), true);
                 return false;
             }
             return printText(Files.readString(file, resolvedCharset));
@@ -890,21 +892,21 @@ public class Printer extends PluginSupport {
      */
     public Boolean pageSetupDialog() {
         if (working_) {
-            write(FUNCTION_NAME, "The plug-in prints already", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.alreadyPrinting"), true);
             return false;
         }
         Stage stage = stage();
         if (stage == null) {
-            write(FUNCTION_NAME, "The plug-in holds no window of the page", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.window.missing"), true);
             return false;
         }
         if (chosenPrinter() == null) {
-            write(FUNCTION_NAME, "Printer not found", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.notFound"), true);
             return false;
         }
         synchronized (workLock_) {
             if (working_) {
-                write(FUNCTION_NAME, "The plug-in prints already", true);
+                write(FUNCTION_NAME, I18N.get(this, "printer.alreadyPrinting"), true);
                 return false;
             }
             working_ = true;
@@ -926,25 +928,25 @@ public class Printer extends PluginSupport {
      */
     private Boolean start(String kind, String text, Path file) {
         if (working_) {
-            write(FUNCTION_NAME, "The plug-in prints already", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.alreadyPrinting"), true);
             return false;
         }
         if (stage() == null) {
-            write(FUNCTION_NAME, "The plug-in holds no window of the page", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.window.missing"), true);
             return false;
         }
         if (chosenPrinter() == null) {
-            write(FUNCTION_NAME, "Printer not found", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.notFound"), true);
             return false;
         }
         if ((PAGE.equals(kind) && (pageNode() == null))
                 || (WEB_PAGE.equals(kind) && (webEngine() == null))) {
-            write(FUNCTION_NAME, "The window of the page holds no content to print", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.window.noContent"), true);
             return false;
         }
         synchronized (workLock_) {
             if (working_) {
-                write(FUNCTION_NAME, "The plug-in prints already", true);
+                write(FUNCTION_NAME, I18N.get(this, "printer.alreadyPrinting"), true);
                 return false;
             }
             working_ = true;
@@ -972,12 +974,12 @@ public class Printer extends PluginSupport {
             javafx.print.Printer printer = chosenPrinter();
 
             if (printer == null) {
-                failed(kind, "Printer not found");
+                failed(kind, I18N.get(this, "printer.notFound"));
                 return;
             }
             job = PrinterJob.createPrinterJob(printer);
             if (job == null) {
-                failed(kind, "The printer refuses the job");
+                failed(kind, I18N.get(this, "printer.job.refused"));
                 return;
             }
             job_ = job;
@@ -985,11 +987,11 @@ public class Printer extends PluginSupport {
             pages = printPages(job, printer, kind, text, file);
             if (pages <= 0) {
                 job.cancelJob();
-                failed(kind, "Nothing printed");
+                failed(kind, I18N.get(this, "printer.nothingPrinted"));
                 return;
             }
             if (!job.endJob()) {
-                failed(kind, "The job is not spooled to the printer");
+                failed(kind, I18N.get(this, "printer.job.notSpooled"));
                 return;
             }
             ended(kind, pages, nameOf(job.getJobStatus()));
@@ -1060,12 +1062,12 @@ public class Printer extends PluginSupport {
         try {
             javafx.print.Printer printer = chosenPrinter();
             if (printer == null) {
-                failed(PAGE_SETUP, "Printer not found");
+                failed(PAGE_SETUP, I18N.get(this, "printer.notFound"));
                 return;
             }
             job = PrinterJob.createPrinterJob(printer);
             if (job == null) {
-                failed(PAGE_SETUP, "The printer refuses the job");
+                failed(PAGE_SETUP, I18N.get(this, "printer.job.refused"));
                 return;
             }
             job_ = job;
@@ -1122,12 +1124,12 @@ public class Printer extends PluginSupport {
             javafx.print.Printer printer = chosenPrinter();
 
             if (printer == null) {
-                failed(DIALOG, "Printer not found");
+                failed(DIALOG, I18N.get(this, "printer.notFound"));
                 return;
             }
             job = PrinterJob.createPrinterJob(printer);
             if (job == null) {
-                failed(DIALOG, "The printer refuses the job");
+                failed(DIALOG, I18N.get(this, "printer.job.refused"));
                 return;
             }
             job_ = job;
@@ -1140,11 +1142,11 @@ public class Printer extends PluginSupport {
 
             if ((node == null) || !job.printPage(node)) {
                 job.cancelJob();
-                failed(DIALOG, "Nothing printed");
+                failed(DIALOG, I18N.get(this, "printer.nothingPrinted"));
                 return;
             }
             if (!job.endJob()) {
-                failed(DIALOG, "The job is not spooled to the printer");
+                failed(DIALOG, I18N.get(this, "printer.job.notSpooled"));
                 return;
             }
             ended(DIALOG, 1, nameOf(job.getJobStatus()));
@@ -1267,7 +1269,7 @@ public class Printer extends PluginSupport {
                 page.getPrintableHeight(), true, false);
 
         if (image.isError() || (image.getWidth() <= 0d) || (image.getHeight() <= 0d)) {
-            write(FUNCTION_NAME, "The plug-in reads no image [" + file.getFileName() + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "printer.image.unreadable", file.getFileName()), true);
             return 0;
         }
         ImageView view = new ImageView(image);
@@ -1310,7 +1312,7 @@ public class Printer extends PluginSupport {
         end.addProperty("status", "error");
         end.addProperty("error", reason);
         result_ = gson_.toJson(end);
-        write(FUNCTION_NAME, "The plug-in prints nothing [" + kind + "] : " + reason, true);
+        write(FUNCTION_NAME, I18N.get(this, "printer.failed", kind, reason), true);
         done_.send("'" + kind + "'," + ScriptValue.literal(result_));
     }
 

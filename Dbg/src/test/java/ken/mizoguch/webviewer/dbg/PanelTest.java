@@ -644,4 +644,28 @@ public class PanelTest {
                 .contains("the page reads the pointing of the panel"),
                 "the panel tells that the page reads the pointing of the panel");
     }
+
+    @Test
+    public void thePanelSwitchesBetweenEnglishAndJapanese() {
+        WebEngine panel = read();
+
+        told(panel, "window.dbgUi.state('{\"version\":\"2026.10.11\",\"page\":\"about:blank\","
+                + "\"hook\":true,\"console\":1,\"network\":2,\"dropped\":0,\"lang\":\"ja\"}');");
+        assertEquals("ja", told(panel, "return document.documentElement.lang;"));
+        assertEquals("コンソール", told(panel, "return document.getElementById('tab-console').textContent;"));
+        assertTrue(told(panel, "return document.getElementById('state').textContent;").contains("1 件のメッセージ"));
+        assertTrue(told(panel, "return document.getElementById('about').textContent;").contains("ページデバッガー"));
+
+        told(panel, "window.dbgUi.notice('{\"k\":\"inspect\",\"on\":true,"
+                + "\"text\":\"the page reads the pointing of the panel\"}');");
+        assertTrue(told(panel, "return document.getElementById('log').textContent;")
+                .contains("ページが要素検証（インスペクト）のポインティングを有効にしました"));
+
+        told(panel, "window.dbgUi.state('{\"version\":\"2026.10.11\",\"page\":\"about:blank\","
+                + "\"hook\":true,\"console\":1,\"network\":2,\"dropped\":0,\"lang\":\"en\"}');");
+        assertEquals("en", told(panel, "return document.documentElement.lang;"));
+        assertEquals("Console", told(panel, "return document.getElementById('tab-console').textContent;"));
+        assertTrue(told(panel, "return document.getElementById('about').textContent;")
+                .contains("the debugger of the page"));
+    }
 }

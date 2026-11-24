@@ -20,6 +20,7 @@ import javax.print.PrintServiceLookup;
 import javax.print.attribute.HashPrintServiceAttributeSet;
 import javax.print.attribute.standard.PrinterName;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
 import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
 import net.sf.jasperreports.engine.JRDataSource;
@@ -52,6 +53,7 @@ import net.sf.jasperreports.json.data.JsonDataSource;
 public class Jasper extends PluginSupport {
 
     private static final String FUNCTION_NAME = "jasper";
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(Jasper.class);
 
     private enum DataKind {
         NONE,
@@ -99,7 +101,7 @@ public class Jasper extends PluginSupport {
         }
         Object loaded = JRLoader.loadObject(file.toFile());
         if (!(loaded instanceof JasperReport)) {
-            throw new JRException("Object is not a JasperReport: " + file.getFileName());
+            throw new JRException(I18N.get(this, "jasper.report.invalid", file.getFileName()));
         }
         report_ = (JasperReport) loaded;
     }
@@ -156,12 +158,12 @@ public class Jasper extends PluginSupport {
      */
     private Path getPath(String path) {
         if (path == null) {
-            write(FUNCTION_NAME, "Incorrect file path", true);
+            write(FUNCTION_NAME, I18N.get(this, "jasper.path.incorrectNull"), true);
             return null;
         }
         Path file = SandboxPath.resolve(webPath(), null, path);
         if (file == null) {
-            write(FUNCTION_NAME, "Incorrect file path [" + path + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "jasper.path.incorrect", path), true);
         }
         return file;
     }
@@ -179,12 +181,12 @@ public class Jasper extends PluginSupport {
      */
     public void setParameters(String jsonElement) throws JsonSyntaxException {
         if (jsonElement == null) {
-            write(FUNCTION_NAME, "Incorrect parameter", true);
+            write(FUNCTION_NAME, I18N.get(this, "jasper.param.incorrect"), true);
             return;
         }
         JsonElement parsed = JsonParser.parseString(jsonElement);
         if ((parsed == null) || parsed.isJsonNull()) {
-            write(FUNCTION_NAME, "Incorrect parameter", true);
+            write(FUNCTION_NAME, I18N.get(this, "jasper.param.incorrect"), true);
             return;
         }
         if (parsed.isJsonObject()) {
@@ -197,7 +199,7 @@ public class Jasper extends PluginSupport {
                 }
             }
         } else {
-            write(FUNCTION_NAME, "Incorrect parameter", true);
+            write(FUNCTION_NAME, I18N.get(this, "jasper.param.incorrect"), true);
         }
     }
 
@@ -276,7 +278,7 @@ public class Jasper extends PluginSupport {
      */
     public void setJsonDataWithSelect(String jsonElement, String selectExpression) throws JRException {
         if (jsonElement == null) {
-            write(FUNCTION_NAME, "Incorrect data", true);
+            write(FUNCTION_NAME, I18N.get(this, "jasper.data.incorrect"), true);
             return;
         }
         createJsonDataSource(jsonElement, selectExpression);
@@ -304,7 +306,7 @@ public class Jasper extends PluginSupport {
      */
     public void setCsvDataWithHeader(String csvElement, boolean useFirstRowAsHeader) throws JRException {
         if (csvElement == null) {
-            write(FUNCTION_NAME, "Incorrect data", true);
+            write(FUNCTION_NAME, I18N.get(this, "jasper.data.incorrect"), true);
             return;
         }
         createCsvDataSource(csvElement, useFirstRowAsHeader);
@@ -377,7 +379,7 @@ public class Jasper extends PluginSupport {
      */
     public void print(String printerName) throws JRException {
         if ((printerName == null) || printerName.isEmpty() || !hasPrintService(printerName)) {
-            write(FUNCTION_NAME, "Incorrect printer name", true);
+            write(FUNCTION_NAME, I18N.get(this, "jasper.printer.incorrect"), true);
             return;
         }
         JasperPrint jasperPrint = fillReport();
@@ -560,7 +562,7 @@ public class Jasper extends PluginSupport {
      */
     private JasperPrint fillReport() throws JRException {
         if (report_ == null) {
-            write(FUNCTION_NAME, "No report", true);
+            write(FUNCTION_NAME, I18N.get(this, "jasper.report.none"), true);
             return null;
         }
         Map<String, Object> params = new HashMap<>(parameters_);

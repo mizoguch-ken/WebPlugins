@@ -84,7 +84,7 @@ public final class TransformerModel {
     public TransformerModel(ModelConfig configuration) {
         config_ = new ModelConfig(configuration);
         if (!config_.isValid()) {
-            throw new LlmCoreException("Invalid model configuration");
+            throw new LlmCoreException(LlmCoreI18n.get("model.config.invalid"));
         }
         vocabulary_ = Math.max(config_.vocabSize(), ModelConfig.MIN_VOCAB);
         if (config_.vocabType() == ModelConfig.VOCAB_CHAR) {
@@ -179,15 +179,15 @@ public final class TransformerModel {
 
     void expandVocabulary(int newVocabSize) {
         if (config_.vocabType() != ModelConfig.VOCAB_CHAR) {
-            throw new LlmCoreException("Vocabulary expansion is only supported for char models");
+            throw new LlmCoreException(LlmCoreI18n.get("model.vocabExpand.charOnly"));
         }
         if ((newVocabSize <= vocabulary_) || (newVocabSize > ModelConfig.MAX_VOCAB)) {
-            throw new LlmCoreException("Expanded vocabulary size out of range: " + newVocabSize);
+            throw new LlmCoreException(LlmCoreI18n.get("model.vocabExpand.outOfRange", newVocabSize));
         }
         ModelConfig check = new ModelConfig(config_);
         if (!check.setVocabSize(newVocabSize) || !check.isTrainable()) {
-            throw new LlmCoreException("Expanded vocabulary of " + newVocabSize
-                    + " tokens exceeds model limits");
+            throw new LlmCoreException(
+                    LlmCoreI18n.get("model.vocabExpand.exceedsLimits", newVocabSize));
         }
         int oldVocab = vocabulary_;
         int d = width_;
@@ -236,12 +236,13 @@ public final class TransformerModel {
 
     void restoreWeights(int targetVocab, float[][] saved) {
         if ((saved == null) || (saved.length != weights_.length)) {
-            throw new LlmCoreException("Saved weights length mismatch");
+            throw new LlmCoreException(LlmCoreI18n.get("model.weights.savedLengthMismatch"));
         }
         synchronized (forwardLock_) {
             for (int i = 0; i < weights_.length; i++) {
                 if (saved[i] == null) {
-                    throw new LlmCoreException("Missing saved weight leaf " + i);
+                    throw new LlmCoreException(
+                            LlmCoreI18n.get("model.weights.savedMissingLeaf", i));
                 }
                 if (weights_[i].length != saved[i].length) {
                     weights_[i] = saved[i].clone();
@@ -669,15 +670,15 @@ public final class TransformerModel {
     float[] prefillInternal(int[] tokens, int length, KvCache cache) {
         if ((cache == null) || (cache.owner() != this)
                 || (cache.logits_.length != vocabulary_)) {
-            throw new LlmCoreException("KV cache does not match the active model");
+            throw new LlmCoreException(LlmCoreI18n.get("model.kvCache.mismatch"));
         }
         if ((tokens == null) || (length < 1) || (length > tokens.length) || (length > context_)) {
-            throw new LlmCoreException("Token sequence length out of range: " + length);
+            throw new LlmCoreException(LlmCoreI18n.get("model.tokens.lengthOutOfRange", length));
         }
         for (int i = 0; i < length; i++) {
             if ((tokens[i] < 0) || (tokens[i] >= vocabulary_)) {
-                throw new LlmCoreException("Token ID out of range at position " + i + ": "
-                        + tokens[i]);
+                throw new LlmCoreException(
+                        LlmCoreI18n.get("model.tokens.idOutOfRangeAt", i, tokens[i]));
             }
         }
         if (length == 1) {
@@ -709,13 +710,13 @@ public final class TransformerModel {
     float[] step(int token, int position, KvCache cache, boolean computeLogits) {
         if ((cache == null) || (cache.owner() != this)
                 || (cache.logits_.length != vocabulary_)) {
-            throw new LlmCoreException("KV cache does not match the active model");
+            throw new LlmCoreException(LlmCoreI18n.get("model.kvCache.mismatch"));
         }
         if ((token < 0) || (token >= vocabulary_)) {
-            throw new LlmCoreException("Token ID out of range: " + token);
+            throw new LlmCoreException(LlmCoreI18n.get("model.token.idOutOfRange", token));
         }
         if ((position < 0) || (position >= context_) || (position > cache.length_)) {
-            throw new LlmCoreException("KV cache position out of range: " + position);
+            throw new LlmCoreException(LlmCoreI18n.get("model.kvCache.posOutOfRange", position));
         }
         int d = width_;
         int f = feed_;
@@ -801,7 +802,7 @@ public final class TransformerModel {
 
     Step newStep(int length, boolean backward) {
         if ((length < 1) || (length > context_)) {
-            throw new LlmCoreException("Step length out of range: " + length);
+            throw new LlmCoreException(LlmCoreI18n.get("model.step.lengthOutOfRange", length));
         }
         if (backward) {
             Step cached = backwardStep_;
@@ -851,10 +852,11 @@ public final class TransformerModel {
     double backward(int[] tokens, int length, int lossStart, LossMode mode, Step step,
             boolean accumulate, double lossWeight) {
         if ((tokens == null) || (length < 2) || (length > tokens.length) || (length > context_)) {
-            throw new LlmCoreException("Backward sequence length out of range: " + length);
+            throw new LlmCoreException(
+                    LlmCoreI18n.get("model.backward.lengthOutOfRange", length));
         }
         if ((step == null) || !step.backward_ || (step.capacity_ < length)) {
-            throw new LlmCoreException("Invalid backward step buffer for length: " + length);
+            throw new LlmCoreException(LlmCoreI18n.get("model.backward.invalidStep", length));
         }
         LossMode lossMode = (mode == null) ? LossMode.CROSS_ENTROPY : mode;
         int d = width_;
@@ -1097,12 +1099,12 @@ public final class TransformerModel {
      */
     public float[] logits(int[] tokens, int length) {
         if ((tokens == null) || (length < 1) || (length > tokens.length) || (length > context_)) {
-            throw new LlmCoreException("Token sequence length out of range: " + length);
+            throw new LlmCoreException(LlmCoreI18n.get("model.tokens.lengthOutOfRange", length));
         }
         for (int i = 0; i < length; i++) {
             if ((tokens[i] < 0) || (tokens[i] >= vocabulary_)) {
-                throw new LlmCoreException("Token ID out of range at position " + i + ": "
-                        + tokens[i]);
+                throw new LlmCoreException(
+                        LlmCoreI18n.get("model.tokens.idOutOfRangeAt", i, tokens[i]));
             }
         }
         synchronized (forwardLock_) {

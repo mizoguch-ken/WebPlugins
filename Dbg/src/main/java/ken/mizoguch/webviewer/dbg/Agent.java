@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import javafx.scene.web.WebEngine;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 
 /**
  * the agent of the page : the plug-in writes its javascript in the page, where it reads the
@@ -21,6 +22,7 @@ final class Agent {
      * the file of the jar of the plug-in which holds the javascript of the agent of the page
      */
     static final String AGENT_FILE = "/dbg/agent.js";
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(Agent.class);
 
     private final Dbg host_;
 
@@ -46,7 +48,7 @@ final class Agent {
             try (InputStream in = Agent.class.getResourceAsStream(AGENT_FILE)) {
 
                 if (in == null) {
-                    throw new IOException("the plug-in holds no " + AGENT_FILE);
+                    throw new IOException(I18N.get(host_, "dbg.agent.notFound", AGENT_FILE));
                 }
                 source_ = new String(in.readAllBytes(), StandardCharsets.UTF_8);
             }

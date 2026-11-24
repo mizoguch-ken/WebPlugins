@@ -146,33 +146,34 @@ public final class ModelStore {
     public static String save(Path file, ModelConfig config, Tokenizer tokenizer,
             float[][] weights, Metadata metadata) {
         if ((file == null) || (config == null) || (tokenizer == null) || (weights == null)) {
-            return "Nothing to save";
+            return LlmCoreI18n.get("store.save.nothing");
         }
         if (!config.isTrainable()) {
-            return "Invalid or oversized model configuration";
+            return LlmCoreI18n.get("store.config.invalidOrOversized");
         }
         if (config.vocabType() == ModelConfig.VOCAB_BYTE) {
             if (!(tokenizer instanceof ByteTokenizer) || (tokenizer.size() != ByteTokenizer.SIZE)) {
-                return "Tokenizer does not match byte vocabulary configuration";
+                return LlmCoreI18n.get("store.tokenizer.byteMismatch");
             }
         } else if (config.vocabType() == ModelConfig.VOCAB_CHAR) {
             if (!(tokenizer instanceof CharTokenizer) || (config.vocabSize() < tokenizer.size())) {
-                return "Tokenizer does not match character vocabulary configuration";
+                return LlmCoreI18n.get("store.tokenizer.charMismatch");
             }
         } else {
-            return "Unknown vocabulary configuration";
+            return LlmCoreI18n.get("store.vocab.unknown");
         }
         Metadata meta = (metadata == null) ? Metadata.EMPTY : metadata;
         if (!isValidMetadata(meta)) {
-            return "Invalid metadata";
+            return LlmCoreI18n.get("store.metadata.invalid");
         }
-        String wErr = validateFloatArrays(weights, ModelConfig.MAX_PARAMETERS, "Weights");
+        String wErr = validateFloatArrays(weights, ModelConfig.MAX_PARAMETERS,
+                LlmCoreI18n.get("store.label.weights"));
         if (wErr != null) {
             return wErr;
         }
         Path directory = file.toAbsolutePath().getParent();
         if (directory == null) {
-            return "No folder to write the model in";
+            return LlmCoreI18n.get("store.save.noFolder");
         }
         Path temporary = null;
         try {
@@ -219,10 +220,10 @@ public final class ModelStore {
             return null;
         } catch (IOException failure) {
             delete(temporary);
-            return "Can not write [" + file + "] : " + failure.getMessage();
+            return LlmCoreI18n.get("store.save.cannotWrite", file, failure.getMessage());
         } catch (RuntimeException failure) {
             delete(temporary);
-            return "Can not write [" + file + "] : " + failure;
+            return LlmCoreI18n.get("store.save.cannotWrite", file, failure);
         }
     }
 
@@ -232,10 +233,10 @@ public final class ModelStore {
      */
     public static Content load(Path file) {
         if (file == null) {
-            return failure("No file given");
+            return failure(LlmCoreI18n.get("store.load.noFile"));
         }
         if (!Files.isRegularFile(file)) {
-            return failure("[" + file + "] is not a regular file");
+            return failure(LlmCoreI18n.get("store.load.notRegularFile", file));
         }
         CRC32 crc = new CRC32();
         try (BufferedInputStream rawIn = new BufferedInputStream(
@@ -244,35 +245,35 @@ public final class ModelStore {
             DataInputStream in = new DataInputStream(checkedIn);
 
             if (in.readInt() != MAGIC) {
-                return failure("[" + file + "] is not a model of the Llm plug-in");
+                return failure(LlmCoreI18n.get("store.load.notModel", file));
             }
             int version = in.readInt();
             if ((version != VERSION_V1) && (version != VERSION_V2)
                     && (version != VERSION_V3) && (version != VERSION_V4)) {
-                return failure("[" + file + "] is of an other shape");
+                return failure(LlmCoreI18n.get("store.load.unsupportedVersion", file));
             }
             ModelConfig config = new ModelConfig();
 
             if (!config.setVocabType(in.readInt())) {
-                return failure("Unknown vocabulary in [" + file + "]");
+                return failure(LlmCoreI18n.get("store.load.unknownVocab", file));
             }
             int size = in.readInt();
             if (config.vocabType() == ModelConfig.VOCAB_CHAR) {
                 if (!config.setVocabSize(size)) {
-                    return failure("Incorrect sizes in [" + file + "]");
+                    return failure(LlmCoreI18n.get("store.load.incorrectSizes", file));
                 }
             } else if (size != ByteTokenizer.SIZE) {
-                return failure("Incorrect sizes in [" + file + "]");
+                return failure(LlmCoreI18n.get("store.load.incorrectSizes", file));
             }
             if (!config.setDModel(in.readInt()) || !config.setHeads(in.readInt())) {
-                return failure("Incorrect sizes in [" + file + "]");
+                return failure(LlmCoreI18n.get("store.load.incorrectSizes", file));
             }
             if (!config.setLayers(in.readInt()) || !config.setContext(in.readInt())) {
-                return failure("Incorrect sizes in [" + file + "]");
+                return failure(LlmCoreI18n.get("store.load.incorrectSizes", file));
             }
             config.setSeed(in.readLong());
             if (!config.isTrainable()) {
-                return failure("Invalid or oversized model configuration in [" + file + "]");
+                return failure(LlmCoreI18n.get("store.load.invalidConfig", file));
             }
 
             Metadata metadata = Metadata.EMPTY;
@@ -284,7 +285,7 @@ public final class ModelStore {
                 double grad = in.readDouble();
                 Metadata candidate = new Metadata(steps, loss, lr, wd, grad);
                 if (!isValidMetadata(candidate)) {
-                    return failure("Invalid metadata in [" + file + "]");
+                    return failure(LlmCoreI18n.get("store.load.invalidMetadata", file));
                 }
                 metadata = candidate;
             }
@@ -294,9 +295,9 @@ public final class ModelStore {
                     : new ByteTokenizer();
             tokenizer.readVocab(in, size);
 
-            float[][] weights = readFloatArrays(in, file, "weights");
+            float[][] weights = readFloatArrays(in, file, LlmCoreI18n.get("store.label.weights"));
             if (weights == null) {
-                return failure("Incorrect weights in [" + file + "]");
+                return failure(LlmCoreI18n.get("store.load.incorrectWeights", file));
             }
 
             if (version >= VERSION_V3) {
@@ -308,15 +309,15 @@ public final class ModelStore {
                 DataInputStream trailer = new DataInputStream(rawIn);
                 long expectedCrc = trailer.readLong();
                 if (actualCrc != expectedCrc) {
-                    return failure("Corrupted model checksum in [" + file + "]");
+                    return failure(LlmCoreI18n.get("store.load.corruptedChecksum", file));
                 }
             }
             if (rawIn.read() != -1) {
-                return failure("Unexpected trailing data in [" + file + "]");
+                return failure(LlmCoreI18n.get("store.load.trailingData", file));
             }
             return new Content(config, tokenizer, weights, metadata, version, null);
         } catch (IOException | NegativeArraySizeException | IllegalArgumentException failure) {
-            return failure("Can not read [" + file + "] : " + failure.getMessage());
+            return failure(LlmCoreI18n.get("store.load.cannotRead", file, failure.getMessage()));
         }
     }
 
@@ -345,28 +346,31 @@ public final class ModelStore {
             if (version >= VERSION_V4) {
                 in.readLong(); // loraMergeCounter
             }
-            float[][] loraWeights = readFloatArrays(in, file, "LoRA weights");
+            float[][] loraWeights = readFloatArrays(in, file,
+                    LlmCoreI18n.get("store.label.loraWeights"));
             if ((loraRank < 1) || (loraRank > 64)
                     || !Double.isFinite(loraAlpha) || (loraAlpha <= 0d)) {
-                throw new IOException("Invalid LoRA metadata in [" + file + "]");
+                throw new IOException(LlmCoreI18n.get("store.lora.invalidMetadata", file));
             }
             boolean hasOpt = in.readBoolean();
             if (hasOpt) {
                 int optSteps = in.readInt();
-                float[][] first = readFloatArrays(in, file, "LoRA optimizer m");
-                float[][] second = readFloatArrays(in, file, "LoRA optimizer v");
+                float[][] first = readFloatArrays(in, file, LlmCoreI18n.get("store.label.loraM"));
+                float[][] second = readFloatArrays(in, file, LlmCoreI18n.get("store.label.loraV"));
                 if ((optSteps < 0) || (first.length != loraWeights.length)
                         || (second.length != loraWeights.length)) {
-                    throw new IOException("Invalid LoRA optimizer state in [" + file + "]");
+                    throw new IOException(LlmCoreI18n.get("store.lora.invalidOptimizer", file));
                 }
             }
         }
         boolean hasEwc = in.readBoolean();
         if (hasEwc) {
-            float[][] anchor = readFloatArrays(in, file, "EWC anchor");
-            float[][] fisher = readFloatArrays(in, file, "EWC Fisher");
+            float[][] anchor = readFloatArrays(in, file,
+                    LlmCoreI18n.get("store.label.ewcAnchor"));
+            float[][] fisher = readFloatArrays(in, file,
+                    LlmCoreI18n.get("store.label.ewcFisher"));
             if (anchor.length != fisher.length) {
-                throw new IOException("Mismatched EWC leaf count in [" + file + "]");
+                throw new IOException(LlmCoreI18n.get("store.ewc.mismatchedLeafCount", file));
             }
         }
         if (version >= VERSION_V4) {
@@ -375,11 +379,11 @@ public final class ModelStore {
                 in.readLong(); // hiddenMeanCount
                 int meanLen = in.readInt();
                 if ((meanLen <= 0) || (meanLen > MAX_VALUES)) {
-                    throw new IOException("Invalid hidden mean length in [" + file + "]");
+                    throw new IOException(LlmCoreI18n.get("store.hiddenMean.invalidLength", file));
                 }
                 for (int i = 0; i < meanLen; i++) {
                     if (!Float.isFinite(in.readFloat())) {
-                        throw new IOException("Non-finite hidden mean value in [" + file + "]");
+                        throw new IOException(LlmCoreI18n.get("store.hiddenMean.nonFinite", file));
                     }
                 }
             }
@@ -397,7 +401,7 @@ public final class ModelStore {
 
         int epCount = in.readInt();
         if ((epCount < 0) || (epCount > MAX_EPISODES)) {
-            throw new IOException("Invalid episode count in [" + file + "]");
+            throw new IOException(LlmCoreI18n.get("store.episode.invalidCount", file));
         }
         for (int i = 0; i < epCount; i++) {
             in.readLong(); // id
@@ -421,12 +425,13 @@ public final class ModelStore {
                 double difficulty = in.readDouble();
                 in.readLong(); // supersededById
                 if (!Double.isFinite(difficulty)) {
-                    throw new IOException("Non-finite episode difficulty in [" + file + "]");
+                    throw new IOException(
+                            LlmCoreI18n.get("store.episode.nonFiniteDifficulty", file));
                 }
             }
             if (!Double.isFinite(importance) || !Double.isFinite(surprise)
                     || !Double.isFinite(strength)) {
-                throw new IOException("Non-finite episode metrics in [" + file + "]");
+                throw new IOException(LlmCoreI18n.get("store.episode.nonFiniteMetrics", file));
             }
         }
 
@@ -436,21 +441,21 @@ public final class ModelStore {
 
     private static String validateFloatArrays(float[][] arrays, long maxTotal, String label) {
         if ((arrays.length < 1) || (arrays.length > 1000)) {
-            return "Incorrect " + label + " count";
+            return LlmCoreI18n.get("store.arrays.incorrectCount", label);
         }
         long totalValues = 0L;
         for (int leaf = 0; leaf < arrays.length; leaf++) {
             float[] values = arrays[leaf];
             if (values == null) {
-                return "Missing " + label + " array at index " + leaf;
+                return LlmCoreI18n.get("store.arrays.missingLeaf", label, leaf);
             }
             if ((values.length > MAX_VALUES) || ((totalValues + values.length) > maxTotal)) {
-                return label + " exceed model size limits";
+                return LlmCoreI18n.get("store.arrays.exceedLimits", label);
             }
             totalValues += values.length;
             for (float v : values) {
                 if (!Float.isFinite(v)) {
-                    return "Non-finite value in " + label + " cannot be saved";
+                    return LlmCoreI18n.get("store.arrays.nonFiniteSave", label);
                 }
             }
         }
@@ -471,7 +476,7 @@ public final class ModelStore {
             throws IOException {
         int count = in.readInt();
         if ((count < 1) || (count > 1000)) {
-            throw new IOException("Invalid " + label + " leaf count in [" + file + "]");
+            throw new IOException(LlmCoreI18n.get("store.arrays.invalidLeafCount", label, file));
         }
         float[][] arrays = new float[count][];
         long totalValues = 0L;
@@ -479,14 +484,16 @@ public final class ModelStore {
             int length = in.readInt();
             if ((length < 0) || (length > MAX_VALUES)
                     || ((totalValues + length) > ModelConfig.MAX_PARAMETERS)) {
-                throw new IOException("Invalid " + label + " leaf size in [" + file + "]");
+                throw new IOException(
+                        LlmCoreI18n.get("store.arrays.invalidLeafSize", label, file));
             }
             totalValues += length;
             float[] values = new float[length];
             for (int vi = 0; vi < length; vi++) {
                 float value = in.readFloat();
                 if (!Float.isFinite(value)) {
-                    throw new IOException("Non-finite " + label + " value in [" + file + "]");
+                    throw new IOException(
+                            LlmCoreI18n.get("store.arrays.nonFiniteLoad", label, file));
                 }
                 values[vi] = value;
             }
@@ -501,14 +508,14 @@ public final class ModelStore {
             return;
         }
         if ((len < 0) || (len > MAX_STRING_BYTES)) {
-            throw new IOException("Invalid string length in [" + file + "]");
+            throw new IOException(LlmCoreI18n.get("store.string.invalidLength", file));
         }
         if (len == 0) {
             return;
         }
         byte[] bytes = in.readNBytes(len);
         if (bytes.length != len) {
-            throw new IOException("Truncated string in [" + file + "]");
+            throw new IOException(LlmCoreI18n.get("store.string.truncated", file));
         }
     }
 
@@ -516,7 +523,7 @@ public final class ModelStore {
             throws IOException {
         int count = in.readInt();
         if ((count < 0) || (count > max)) {
-            throw new IOException("Invalid string list count in [" + file + "]");
+            throw new IOException(LlmCoreI18n.get("store.stringList.invalidCount", file));
         }
         for (int i = 0; i < count; i++) {
             skipString(in, file);

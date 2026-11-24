@@ -14,6 +14,7 @@ import java.util.Enumeration;
 import java.util.List;
 import javafx.concurrent.Worker.State;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
 import ken.mizoguch.webviewer.plugin.kit.ScriptNotifier;
 import ken.mizoguch.webviewer.plugin.kit.ScriptValue;
@@ -29,6 +30,8 @@ import ken.mizoguch.webviewer.plugin.kit.ScriptValue;
  * @author mizoguch-ken
  */
 public abstract class LinkBoxClientPlugin extends PluginSupport implements LinkBoxClientListener {
+
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(LinkBoxClientPlugin.class);
 
     private final LinkBoxClient linkBoxClient_;
 
@@ -49,11 +52,11 @@ public abstract class LinkBoxClientPlugin extends PluginSupport implements LinkB
     @SuppressWarnings("this-escape")
     protected LinkBoxClientPlugin() {
         linkBoxClient_ = new LinkBoxClient();
-        clientStart_ = new ScriptNotifier(this, "Notification of the start is dropped");
-        clientStop_ = new ScriptNotifier(this, "Notification of the stop is dropped");
-        clientRequest_ = new ScriptNotifier(this, "Notification of a request is dropped");
-        clientResponse_ = new ScriptNotifier(this, "Notification of a response is dropped");
-        clientError_ = new ScriptNotifier(this, "Notification of an error is dropped");
+        clientStart_ = new ScriptNotifier(this, () -> I18N.get(this, "capai.notify.start.dropped"));
+        clientStop_ = new ScriptNotifier(this, () -> I18N.get(this, "capai.notify.stop.dropped"));
+        clientRequest_ = new ScriptNotifier(this, () -> I18N.get(this, "capai.notify.request.dropped"));
+        clientResponse_ = new ScriptNotifier(this, () -> I18N.get(this, "capai.notify.response.dropped"));
+        clientError_ = new ScriptNotifier(this, () -> I18N.get(this, "capai.notify.error.dropped"));
         gson_ = new Gson();
     }
 

@@ -196,7 +196,7 @@
                     <version>3.6.0</version>
                     <configuration>
                         <!-- JavaFX comes from the JDK modules : they are not resolved by default -->
-                        <argLine>--add-modules ${javafx.modules}</argLine>
+                        <argLine>--add-modules ${javafx.modules} -Duser.language=en -Duser.country=US</argLine>
                         <!-- keep everything in the unnamed module : the tests use the plugin classes -->
                         <useModulePath>false</useModulePath>
                     </configuration>

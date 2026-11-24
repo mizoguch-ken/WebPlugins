@@ -127,7 +127,7 @@ public final class RemoteApi {
     private String submitRemote(String endpoint, String request, String profile) {
         if (!RemoteHttpClient.MODELS.equals(endpoint)
                 && ((request == null) || request.trim().isEmpty())) {
-            owner_.logError("Remote request must not be empty");
+            owner_.logError(LlmI18n.get(owner_, "llm.remote.requestEmpty"));
             return null;
         }
         final RemoteConfig snapshot;
@@ -142,8 +142,7 @@ public final class RemoteApi {
         if ((snapshot.provider() == RemoteConfig.Provider.ANTHROPIC)
                 && !RemoteHttpClient.CHAT.equals(endpoint)
                 && !RemoteHttpClient.MODELS.equals(endpoint)) {
-            owner_.logError("Endpoint \"" + endpoint
-                    + "\" is not supported by Anthropic provider (use \"chat\" or \"models\")");
+            owner_.logError(LlmI18n.get(owner_, "llm.remote.anthropicEndpointUnsupported", endpoint));
             return null;
         }
 
@@ -156,7 +155,7 @@ public final class RemoteApi {
                     return new TaskManager.TaskOutcome(res.bodyJson(), res.stoppedEarly());
                 });
         if (taskId == null) {
-            owner_.logError("Remote task queue limit reached or plug-in is closed");
+            owner_.logError(LlmI18n.get(owner_, "llm.remote.queueFullOrClosed"));
         }
         return taskId;
     }

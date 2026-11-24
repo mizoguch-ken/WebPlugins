@@ -27,7 +27,7 @@ public final class Dataset {
      */
     public Dataset(Tokenizer tokenizer) {
         if (tokenizer == null) {
-            throw new LlmCoreException("Tokenizer is required");
+            throw new LlmCoreException(LlmCoreI18n.get("dataset.tokenizer.required"));
         }
         tokenizer_ = tokenizer;
         texts_ = new ArrayList<>();
@@ -139,7 +139,7 @@ public final class Dataset {
      */
     public List<int[]> windows(int index, int context) {
         if (context < 2) {
-            throw new LlmCoreException("Context length must be at least 2: " + context);
+            throw new LlmCoreException(LlmCoreI18n.get("dataset.context.tooSmall", context));
         }
         List<int[]> windows = new ArrayList<>();
         int[] tokens = texts_.get(index);

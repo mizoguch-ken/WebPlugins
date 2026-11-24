@@ -35,17 +35,17 @@ public final class AdamW {
      */
     public AdamW(float[][] weights, boolean[] decayMask) {
         if (weights == null) {
-            throw new LlmCoreException("Model weights are required");
+            throw new LlmCoreException(LlmCoreI18n.get("adamw.weights.required"));
         }
         if ((decayMask != null) && (decayMask.length != weights.length)) {
-            throw new LlmCoreException("Decay mask length (" + decayMask.length
-                    + ") does not match weights length (" + weights.length + ")");
+            throw new LlmCoreException(LlmCoreI18n.get("adamw.decayMask.mismatch",
+                    decayMask.length, weights.length));
         }
         first_ = new float[weights.length][];
         second_ = new float[weights.length][];
         for (int index = 0; index < weights.length; index++) {
             if (weights[index] == null) {
-                throw new LlmCoreException("Missing weight array at index " + index);
+                throw new LlmCoreException(LlmCoreI18n.get("adamw.weights.missing", index));
             }
             first_[index] = new float[weights[index].length];
             second_[index] = new float[weights[index].length];
@@ -146,7 +146,7 @@ public final class AdamW {
     void restore(Snapshot snap) {
         if ((snap == null) || (snap.first_.length != first_.length)
                 || (snap.second_.length != second_.length)) {
-            throw new LlmCoreException("Invalid AdamW snapshot");
+            throw new LlmCoreException(LlmCoreI18n.get("adamw.snapshot.invalid"));
         }
         steps_ = snap.steps_;
         for (int i = 0; i < first_.length; i++) {
@@ -171,13 +171,13 @@ public final class AdamW {
     void loadState(int steps, float[][] first, float[][] second) {
         if ((first == null) || (second == null) || (first.length != first_.length)
                 || (second.length != second_.length)) {
-            throw new LlmCoreException("Invalid AdamW state length");
+            throw new LlmCoreException(LlmCoreI18n.get("adamw.stateLength.invalid"));
         }
         for (int i = 0; i < first_.length; i++) {
             if ((first[i] == null) || (second[i] == null)
                     || (first[i].length != first_[i].length)
                     || (second[i].length != second_[i].length)) {
-                throw new LlmCoreException("Mismatched AdamW moment shape at leaf " + i);
+                throw new LlmCoreException(LlmCoreI18n.get("adamw.momentShape.mismatch", i));
             }
         }
         steps_ = Math.max(0, steps);
@@ -256,19 +256,20 @@ public final class AdamW {
             double gradientScale) {
         if ((weights == null) || (gradients == null) || (weights.length != first_.length)
                 || (gradients.length != first_.length)) {
-            throw new LlmCoreException("Weight or gradient array count does not match optimizer");
+            throw new LlmCoreException(LlmCoreI18n.get("adamw.arrayCount.mismatch"));
         }
         if (!Double.isFinite(effectiveLearningRate) || (effectiveLearningRate < 0d)) {
-            throw new LlmCoreException("Invalid effective learning rate: " + effectiveLearningRate);
+            throw new LlmCoreException(
+                    LlmCoreI18n.get("adamw.effectiveLr.invalid", effectiveLearningRate));
         }
         if (!Double.isFinite(gradientScale) || (gradientScale <= 0d)) {
-            throw new LlmCoreException("Invalid gradient scale: " + gradientScale);
+            throw new LlmCoreException(LlmCoreI18n.get("adamw.gradientScale.invalid", gradientScale));
         }
         for (int leaf = 0; leaf < first_.length; leaf++) {
             if ((weights[leaf] == null) || (gradients[leaf] == null)
                     || (weights[leaf].length != first_[leaf].length)
                     || (gradients[leaf].length != first_[leaf].length)) {
-                throw new LlmCoreException("Mismatched weight or gradient array at index " + leaf);
+                throw new LlmCoreException(LlmCoreI18n.get("adamw.arrayShape.mismatch", leaf));
             }
         }
         double rawNorm = Tensor.norm(gradients);

@@ -118,7 +118,7 @@ final class StreamAccumulator {
                     totalArgs += argsDelta.length();
                     if (totalArgs > MAX_TOOL_ARGS_CHARS) {
                         throw LlmRemoteException.stream(
-                                "Streamed tool call arguments exceed limit",
+                                LlmI18n.get("llm.stream.toolArgsExceedLimit"),
                                 "stream_limit_exceeded", null);
                     }
                     String prev = text(fnOut, "arguments");
@@ -166,8 +166,8 @@ final class StreamAccumulator {
             JsonObject chunk = parseObjectQuietly(payload);
             if (chunk == null) {
                 if (listener_ != null) {
-                    listener_.onLog("Non-JSON SSE chunk ignored: "
-                            + JsonUtil.truncate(payload, 256));
+                    listener_.onLog(LlmI18n.get("llm.stream.nonJsonChunkIgnored",
+                            JsonUtil.truncate(payload, 256)));
                 }
                 return true;
             }
@@ -404,8 +404,8 @@ final class StreamAccumulator {
             JsonObject event = parseObjectQuietly(payload);
             if (event == null) {
                 if (listener_ != null) {
-                    listener_.onLog("Non-JSON SSE event ignored: "
-                            + JsonUtil.truncate(payload, 256));
+                    listener_.onLog(LlmI18n.get("llm.stream.nonJsonEventIgnored",
+                            JsonUtil.truncate(payload, 256)));
                 }
                 return true;
             }
@@ -537,7 +537,7 @@ final class StreamAccumulator {
                 if (finalArgs != null) {
                     if (finalArgs.length() > MAX_TOOL_ARGS_CHARS) {
                         throw LlmRemoteException.stream(
-                                "Streamed tool call arguments exceed limit",
+                                LlmI18n.get("llm.stream.toolArgsExceedLimit"),
                                 "stream_limit_exceeded", null);
                     }
                     item.addProperty("arguments", finalArgs);
@@ -549,7 +549,7 @@ final class StreamAccumulator {
                 totalToolArgChars_ += delta.length();
                 if (totalToolArgChars_ > MAX_TOOL_ARGS_CHARS) {
                     throw LlmRemoteException.stream(
-                            "Streamed tool call arguments exceed limit",
+                            LlmI18n.get("llm.stream.toolArgsExceedLimit"),
                             "stream_limit_exceeded", null);
                 }
                 String prev = text(item, "arguments");
@@ -783,8 +783,8 @@ final class StreamAccumulator {
             JsonObject event = parseObjectQuietly(payload);
             if (event == null) {
                 if (listener_ != null) {
-                    listener_.onLog("Non-JSON Anthropic SSE event ignored: "
-                            + JsonUtil.truncate(payload, 256));
+                    listener_.onLog(LlmI18n.get("llm.stream.nonJsonAnthropicEventIgnored",
+                            JsonUtil.truncate(payload, 256)));
                 }
                 return true;
             }
@@ -881,7 +881,7 @@ final class StreamAccumulator {
                                 totalToolArgChars_ += partial.length();
                                 if (totalToolArgChars_ > MAX_TOOL_ARGS_CHARS) {
                                     throw LlmRemoteException.stream(
-                                            "Streamed tool call arguments exceed limit",
+                                            LlmI18n.get("llm.stream.toolArgsExceedLimit"),
                                             "stream_limit_exceeded", null);
                                 }
                                 tb.appendArgs(partial);
@@ -1003,7 +1003,7 @@ final class StreamAccumulator {
             }
         }
         if ((message == null) || message.isEmpty()) {
-            message = "Remote model returned an error";
+            message = LlmI18n.get("llm.stream.remoteError");
         }
         if (statusCode != null) {
             return LlmRemoteException.http(statusCode.intValue(), message, errType, errCode, false,

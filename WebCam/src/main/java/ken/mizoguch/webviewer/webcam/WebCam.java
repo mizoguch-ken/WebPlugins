@@ -33,6 +33,7 @@ import javafx.stage.Stage;
 import javafx.stage.StageStyle;
 import javax.imageio.ImageIO;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
 import ken.mizoguch.webviewer.plugin.kit.ScriptValue;
 import ken.mizoguch.webviewer.plugin.kit.ServiceSupport;
@@ -61,6 +62,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class WebCam extends ServiceSupport<Void> {
 
     private static final String FUNCTION_NAME = "webcam";
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(WebCam.class);
 
     private volatile WebEngine webEngine_;
     private volatile Worker.State state_;
@@ -137,7 +139,7 @@ public class WebCam extends ServiceSupport<Void> {
         webcamImageView_ = new ImageView();
         webcamImageView_.setPreserveRatio(true);
         webcamPane_.setCenter(webcamImageView_);
-        webcamStage_.setTitle("WebCam");
+        webcamStage_.setTitle(I18N.get(this, "webcam.title"));
         webcamStage_.setScene(new Scene(webcamPane_));
         webcamStage_.setResizable(false);
         imageProperty_ = new SimpleObjectProperty<>();
@@ -216,7 +218,8 @@ public class WebCam extends ServiceSupport<Void> {
                     int width = size.getAsJsonPrimitive("width").getAsInt();
                     int height = size.getAsJsonPrimitive("height").getAsInt();
                     if ((width < 0) || (height < 0)) {
-                        throw new IllegalArgumentException("Incorrect blob size [" + width + "x" + height + "]");
+                        throw new IllegalArgumentException(
+                                I18N.get(this, "webcam.blobSize.incorrect", width, height));
                     }
                     next.size = new Size(width, height);
                 }
@@ -356,7 +359,7 @@ public class WebCam extends ServiceSupport<Void> {
      */
     public void setImageSize(int width, int height) {
         if ((width <= 0) || (height <= 0)) {
-            write(FUNCTION_NAME, "Incorrect image size [" + width + "x" + height + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "webcam.imageSize.incorrect", width, height), true);
             return;
         }
         if (webcamImageSize_ == null) {
@@ -379,7 +382,7 @@ public class WebCam extends ServiceSupport<Void> {
         if (webcam != null) {
             return webcam.getImageWidth();
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return null;
     }
 
@@ -392,7 +395,7 @@ public class WebCam extends ServiceSupport<Void> {
         if (webcam != null) {
             return webcam.getImageHeight();
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return null;
     }
 
@@ -403,7 +406,7 @@ public class WebCam extends ServiceSupport<Void> {
      */
     public Boolean setFrameRate(Double fps) {
         if ((fps == null) || !Double.isFinite(fps) || (fps < 0.0)) {
-            write(FUNCTION_NAME, "Incorrect frame rate [" + fps + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "webcam.frameRate.incorrect", fps), true);
             return false;
         }
         frameRate_ = fps;
@@ -1121,7 +1124,7 @@ public class WebCam extends ServiceSupport<Void> {
             isPlay_ = false;
             return true;
         } else {
-            write(FUNCTION_NAME, "Camera device is already open", true);
+            write(FUNCTION_NAME, I18N.get(this, "webcam.alreadyOpen"), true);
         }
         return false;
     }
@@ -1134,7 +1137,7 @@ public class WebCam extends ServiceSupport<Void> {
         if (webcam_ != null) {
             return isPlay_;
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return false;
     }
 
@@ -1154,7 +1157,7 @@ public class WebCam extends ServiceSupport<Void> {
             }
             return true;
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return false;
     }
 
@@ -1178,7 +1181,7 @@ public class WebCam extends ServiceSupport<Void> {
         if (webcam_ != null) {
             Path file = SandboxPath.resolve(webPath(), path);
             if ((file == null) || Files.isDirectory(file)) {
-                write(FUNCTION_NAME, "Incorrect file path [" + path + "]", true);
+                write(FUNCTION_NAME, I18N.get(this, "webcam.path.incorrect", path), true);
                 return false;
             }
             if (isPlay_) {
@@ -1222,7 +1225,7 @@ public class WebCam extends ServiceSupport<Void> {
     public String captureBase64() throws FrameGrabber.Exception {
         OpenCVFrameGrabber webcam = webcam_;
         if (webcam == null) {
-            write(FUNCTION_NAME, "Camera device is not open", true);
+            write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
             return null;
         }
         if (isPlay_) {
@@ -1371,7 +1374,7 @@ public class WebCam extends ServiceSupport<Void> {
         if (webcam_ != null) {
             return webcamStage_.isShowing();
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return false;
     }
 
@@ -1384,7 +1387,7 @@ public class WebCam extends ServiceSupport<Void> {
             webcamStage_.show();
             return true;
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return false;
     }
 
@@ -1397,7 +1400,7 @@ public class WebCam extends ServiceSupport<Void> {
             webcamStage_.hide();
             return true;
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return false;
     }
 
@@ -1409,7 +1412,7 @@ public class WebCam extends ServiceSupport<Void> {
         if (webcam_ != null) {
             return webcamStage_.getWidth();
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return null;
     }
 
@@ -1421,7 +1424,7 @@ public class WebCam extends ServiceSupport<Void> {
         if (webcam_ != null) {
             return webcamStage_.getHeight();
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return null;
     }
 
@@ -1433,7 +1436,7 @@ public class WebCam extends ServiceSupport<Void> {
         if (webcam_ != null) {
             return webcamStage_.isFocused();
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return false;
     }
 
@@ -1446,7 +1449,7 @@ public class WebCam extends ServiceSupport<Void> {
             webcamStage_.requestFocus();
             return true;
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return false;
     }
 
@@ -1458,7 +1461,7 @@ public class WebCam extends ServiceSupport<Void> {
         if (webcam_ != null) {
             return webcamStage_.getOpacity();
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return null;
     }
 
@@ -1472,7 +1475,7 @@ public class WebCam extends ServiceSupport<Void> {
             webcamStage_.setOpacity(value);
             return true;
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return false;
     }
 
@@ -1484,7 +1487,7 @@ public class WebCam extends ServiceSupport<Void> {
         if (webcam_ != null) {
             return webcamStage_.isAlwaysOnTop();
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return false;
     }
 
@@ -1498,7 +1501,7 @@ public class WebCam extends ServiceSupport<Void> {
             webcamStage_.setAlwaysOnTop(state);
             return true;
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return false;
     }
 
@@ -1510,7 +1513,7 @@ public class WebCam extends ServiceSupport<Void> {
         if (webcam_ != null) {
             return webcamStage_.getX();
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return null;
     }
 
@@ -1524,7 +1527,7 @@ public class WebCam extends ServiceSupport<Void> {
             webcamStage_.setX(x);
             return true;
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return false;
     }
 
@@ -1536,7 +1539,7 @@ public class WebCam extends ServiceSupport<Void> {
         if (webcam_ != null) {
             return webcamStage_.getY();
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return null;
     }
 
@@ -1550,7 +1553,7 @@ public class WebCam extends ServiceSupport<Void> {
             webcamStage_.setY(y);
             return true;
         }
-        write(FUNCTION_NAME, "Camera device is not open", true);
+        write(FUNCTION_NAME, I18N.get(this, "webcam.notOpen"), true);
         return false;
     }
 
@@ -1823,6 +1826,16 @@ public class WebCam extends ServiceSupport<Void> {
         return true;
     }
 
+    @Override
+    public void onLanguageChanged(Locale locale) {
+        String title = I18N.get(locale, "webcam.title");
+        if (Platform.isFxApplicationThread()) {
+            webcamStage_.setTitle(title);
+        } else {
+            Platform.runLater(() -> webcamStage_.setTitle(title));
+        }
+    }
+
     /**
      *
      */
@@ -1837,7 +1850,7 @@ public class WebCam extends ServiceSupport<Void> {
         // the camera is freed only when no capture task reads it anymore : a task which never
         // ends keeps the device open, so the task does not read a freed grabber
         if (!awaitTermination(TASK_TERMINATION_MILLIS)) {
-            write(FUNCTION_NAME, "WebCam is still running : the webcam is not closed", true);
+            write(FUNCTION_NAME, I18N.get(this, "webcam.stillRunning"), true);
             return;
         }
         if (webcam_ != null) {

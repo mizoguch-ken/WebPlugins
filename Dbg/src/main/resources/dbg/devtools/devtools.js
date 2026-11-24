@@ -10,6 +10,9 @@
 (function () {
     'use strict';
 
+    /* the current language of the panel */
+    var lang = 'en';
+
     /* the number of the messages the panel keeps in its own lists */
     var MAX_ROWS = 1000;
 
@@ -22,6 +25,7 @@
 
     /* the state of the plug-in, which the panel reads when it is opened */
     var plugin = { version: 'dev', page: '', hook: false, dropped: 0 };
+    var lastState = { ready: false, console: 0, network: 0, dropped: 0 };
 
     /* the page and its engine, read of the page for the about tab of the panel */
     var engine = null;
@@ -33,6 +37,522 @@
     var pointing = false;
     var asked = [];
     var askedAt = 0;
+
+    var I18N = {
+        en: {
+            'title': 'DevTools',
+            'tab.console': 'Console',
+            'tab.elements': 'Elements',
+            'tab.sources': 'Sources',
+            'tab.network': 'Network',
+            'tab.storage': 'Storage',
+            'tab.about': 'About',
+            'ph.filter': 'filter',
+            'ph.ask': 'an expression of the page',
+            'ph.query': 'a selector of the page',
+            'ph.srcWord': 'a word of the sources',
+            'ph.key': 'key',
+            'ph.value': 'value',
+            'ph.cookie': 'cookie',
+            'ph.name': 'name',
+            'ph.addInside': 'an element to add inside the element',
+            'ph.styleName': 'a style of the element',
+            'ph.styleValue': 'its value',
+            'level.all': 'all',
+            'console.time': 'time',
+            'btn.clear': 'Clear',
+            'btn.save': 'Save',
+            'btn.inspect': 'Inspect',
+            'btn.reload': 'Reload',
+            'btn.find': 'Find',
+            'btn.srcApply': 'Write in the page',
+            'btn.srcRun': 'Run in the page',
+            'btn.netFiles': 'Files of the page',
+            'btn.set': 'Set',
+            'btn.cookies': 'Cookies',
+            'btn.writeHtml': 'Write HTML',
+            'btn.addInside': 'Add inside',
+            'btn.remove': 'Remove',
+            'btn.copyHtml': 'Copy HTML',
+            'btn.showInPage': 'Show in page',
+            'net.kind.all': 'all kinds',
+            'net.kind.js': 'js of the page',
+            'net.kind.css': 'css of the page',
+            'net.kind.img': 'img of the page',
+            'net.kind.iframe': 'iframe of the page',
+            'net.kind.media': 'media of the page',
+            'net.kind.file': 'files of the engine',
+            'net.errorsOnly': 'errors only',
+            'net.col.time': 'Time',
+            'net.col.method': 'Method',
+            'net.col.url': 'URL',
+            'net.col.status': 'Status',
+            'net.col.kind': 'Kind',
+            'net.col.ms': 'ms',
+            'net.col.size': 'Size',
+            'net.hint': 'the row of a request holds its answer when the user clicks it, and hides it again',
+            'storage.col.key': 'Key',
+            'storage.col.value': 'Value',
+            'storage.col.cookie': 'Cookie',
+            'err.pluginRefused': 'the plug-in refused the work',
+            'err.noAgent': 'the page holds no agent of the plug-in',
+            'val.circle': '(circle)',
+            'val.yes': 'yes',
+            'val.no': 'no',
+            'val.none': 'none',
+            'val.read': 'read',
+            'val.notRead': 'not read',
+            'dom.moreShort': '{0} more',
+            'dom.moreElements': '{0} more elements of the page',
+            'dom.noLonger': 'the page holds this element no more',
+            'dom.noElements': 'the page holds no elements',
+            'el.node': 'node',
+            'el.box': 'box of the element',
+            'el.place': 'place (x , y)',
+            'el.size': 'size (w x h)',
+            'el.seen': 'seen by the page',
+            'el.padding': 'padding',
+            'el.border': 'border',
+            'el.margin': 'margin',
+            'el.inside': 'inside (w x h)',
+            'el.scrolled': 'scrolled (up , left)',
+            'el.content': 'content (w x h)',
+            'el.ofEngine': 'of the engine',
+            'el.attributes': 'attributes',
+            'el.text': 'text',
+            'el.htmlHeading': 'html of the element, which the user may write again',
+            'el.htmlCopied': 'HTML copied to clipboard',
+            'el.styleHeading': 'style of the element, which the user may write again',
+            'el.computedStyles': 'styles of the engine of the page',
+            'el.searchHits': '{0} elements answer [{1}]',
+            'box.top': 'top',
+            'box.right': 'right',
+            'box.bottom': 'bottom',
+            'box.left': 'left',
+            'net.contentType': 'content-type of the answer: {0}',
+            'net.pageWrote': 'the page wrote: {0}',
+            'net.askedHeader': '--- what the page asked for ---',
+            'net.answeredHeader': '--- what the page answered ---',
+            'net.noHeader': '(no header read)',
+            'net.fetchJsOnly': '(the page gives the text of a fetch to its javascript only)',
+            'net.noText': '(no text read)',
+            'net.noAnswer': 'no answer',
+            'net.filesAdded': '{0} files of the page read by the engine of the page',
+            'net.noNewFiles': 'the page holds no file the panel does not know yet',
+            'src.line': 'line {0}',
+            'src.kindPage': 'page',
+            'src.noMatch': 'the sources of the page hold no [{0}]',
+            'src.thePage': 'the page',
+            'src.inline': '(inline)',
+            'src.noFiles': 'the page holds no files',
+            'src.noText': 'the page holds no text',
+            'src.cannotRead': 'the page can not read this file',
+            'src.cannotReadText': 'the page can not read the text of this file',
+            'src.note.none': 'the panel holds no file of the page',
+            'src.note.page': 'the page reads the text the panel writes, its own file keeps its text',
+            'src.note.scriptExternal': 'the file of the script keeps its text : the panel writes in the page only',
+            'src.note.scriptInline': 'the page reads the text of the script the panel writes',
+            'src.note.link': 'the file of the style keeps its text : the page reads a style the panel writes',
+            'src.note.style': 'the page reads the style the panel writes',
+            'storage.keys': '{0} keys',
+            'storage.keyLength': '{0} holds {1} characters',
+            'storage.cookiesNote': 'cookies of the page: {0}',
+            'storage.cookiesCount': '{0} cookies',
+            'action.edit': 'edit',
+            'action.del': 'del',
+            'about.title': 'the debugger of the page',
+            'about.intro': 'the panel of the Dbg plug-in reads the page of the WebViewer through the agent the plug-in\n'
+                    + 'writes in the page. The panel and the page speak only through the plug-in, so no port is\n'
+                    + 'opened and no other program can read the page.',
+            'about.pluginVersion': 'version of the plug-in',
+            'about.pageAddress': 'address of the page',
+            'about.pageAgent': 'agent of the page',
+            'about.consoleMessages': 'messages of the console',
+            'about.networkRequests': 'requests of the page',
+            'about.droppedMessages': 'messages the plug-in forgot',
+            'about.engineTitle': 'the engine of the page',
+            'about.userAgent': 'user agent',
+            'about.json': 'json',
+            'about.selectors': 'selectors of the styles',
+            'about.engineStyles': 'styles of the engine',
+            'about.xhr': 'requests of the page',
+            'about.fetch': 'fetch of the page',
+            'about.storage': 'storage of the page',
+            'about.sheets': 'styles of the page',
+            'about.nowTitle': 'the page now',
+            'about.pageTitle': 'title of the page',
+            'about.referrer': 'page which wrote this page',
+            'about.ready': 'state of the page',
+            'about.language': 'language of the page',
+            'about.charset': 'characters of the page',
+            'about.platform': 'computer of the page',
+            'about.online': 'the page is on line',
+            'about.viewport': 'view of the page',
+            'about.viewportFormat': '{0}  at  {1} pixels',
+            'about.screen': 'screen of the page',
+            'about.scrolled': 'the page is scrolled to',
+            'about.elements': 'elements of the page',
+            'about.scripts': 'files of javascript of the page',
+            'about.styleFiles': 'files of style of the page',
+            'about.cookiesCount': 'cookies the page reads',
+            'about.canRead': 'what the panel reads',
+            'about.canReadBody': 'Console : the messages of the console of the page, the errors of the page and the text the\n'
+                    + 'user writes, read by the page.\n'
+                    + 'Elements : the elements of the page, their attributes, their styles, their box and their text,\n'
+                    + 'which the user may write again, with the html of an element and the styles the page wrote on\n'
+                    + 'it. The pointing of the panel marks the element under the cursor of the user.\n'
+                    + 'Sources : the files of the page which carry javascript and styles, read as text, and the\n'
+                    + 'word the user writes, read in those files. The text the user writes again is read by the\n'
+                    + 'page for its run.\n'
+                    + 'Network : the requests the page asks for with XMLHttpRequest or fetch, with what the page\n'
+                    + 'asked for and what the page answered, and the files the page holds.\n'
+                    + 'Storage : the storage of the page and the cookies the page reads, which the user may\n'
+                    + 'write again. The messages of the console and the requests are saved in a file.',
+            'about.cannotRead': 'what the panel can not read',
+            'about.cannotReadBody': 'No break point, no step and no watch : the web engine of the WebViewer keeps its\n'
+                    + 'javascript out of the reach of a plug-in.\n'
+                    + 'No answer of the files the page reads by itself : the images, the styles and the pages inside\n'
+                    + 'the page are read by the engine of the page, which tells nothing of their answers to the\n'
+                    + 'plug-in. The panel shows their address, their kind and, when the engine keeps them, their\n'
+                    + 'times and their lengths. Only the requests the javascript of the page asks for are read.\n'
+                    + 'No file of the computer written by the panel : the text the panel writes in a file of the page\n'
+                    + 'is read by the page until the page is loaded again, and the file of the page keeps its text.\n'
+                    + 'No javascript of the panel inside the page : the panel asks a work and reads its answer.\n'
+                    + 'No cookies the engine of the page keeps for itself and no cookies the page hides from\n'
+                    + 'its javascript : the panel reads the cookies of the javascript of the page.\n'
+                    + 'No debugger of a browser : the panel of the plug-in holds no protocol of a browser.',
+            'about.licenses': 'licenses of the libraries of the jar',
+            'notice.agentReady': 'the agent of the page is read ({0})',
+            'notice.agentReading': 'reading',
+            'notice.agentIdle': 'idle',
+            'notice.readingPage': 'the plug-in reads the page [{0}]',
+            'state.noPage': 'no page',
+            'state.noAddress': 'no address',
+            'state.messages': '{0} messages',
+            'state.requests': '{0} requests',
+            'state.forgotten': '{0} forgotten',
+            'save.consoleOk': 'the plug-in wrote the messages of the page in [{0}]',
+            'save.networkOk': 'the plug-in wrote the requests of the page in [{0}]',
+            'save.nothing': 'the plug-in wrote nothing'
+        },
+        ja: {
+            'title': '開発者ツール',
+            'tab.console': 'コンソール',
+            'tab.elements': '要素',
+            'tab.sources': 'ソース',
+            'tab.network': 'ネットワーク',
+            'tab.storage': 'ストレージ',
+            'tab.about': '情報',
+            'ph.filter': 'フィルター',
+            'ph.ask': 'ページ上で実行する式',
+            'ph.query': 'CSS セレクター',
+            'ph.srcWord': 'ソース内を検索',
+            'ph.key': 'キー',
+            'ph.value': '値',
+            'ph.cookie': 'Cookie 名',
+            'ph.name': '名前',
+            'ph.addInside': '内部に追加する HTML 要素',
+            'ph.styleName': 'CSS プロパティ',
+            'ph.styleValue': '値',
+            'level.all': 'すべて',
+            'console.time': '時刻',
+            'btn.clear': 'クリア',
+            'btn.save': '保存',
+            'btn.inspect': '要素を検証',
+            'btn.reload': '再読込',
+            'btn.find': '検索',
+            'btn.srcApply': 'ページに反映',
+            'btn.srcRun': 'ページで実行',
+            'btn.netFiles': 'ページ内リソース',
+            'btn.set': '設定',
+            'btn.cookies': 'Cookie 再読込',
+            'btn.writeHtml': 'HTML を書込',
+            'btn.addInside': '内部に追加',
+            'btn.remove': '削除',
+            'btn.copyHtml': 'HTML をコピー',
+            'btn.showInPage': 'ページ上で表示',
+            'net.kind.all': 'すべての種類',
+            'net.kind.js': 'ページ JS',
+            'net.kind.css': 'ページ CSS',
+            'net.kind.img': 'ページ画像',
+            'net.kind.iframe': 'ページ iframe',
+            'net.kind.media': 'ページメディア',
+            'net.kind.file': 'エンジン読込リソース',
+            'net.errorsOnly': 'エラーのみ',
+            'net.col.time': '時刻',
+            'net.col.method': 'メソッド',
+            'net.col.url': 'URL',
+            'net.col.status': 'ステータス',
+            'net.col.kind': '種類',
+            'net.col.ms': 'ms',
+            'net.col.size': 'サイズ',
+            'net.hint': '行をクリックするとレスポンスの詳細を表示し、もう一度クリックすると閉じます',
+            'storage.col.key': 'キー',
+            'storage.col.value': '値',
+            'storage.col.cookie': 'Cookie',
+            'err.pluginRefused': 'プラグインが処理を拒否しました',
+            'err.noAgent': 'ページにプラグインのエージェントがありません',
+            'val.circle': '(循環参照)',
+            'val.yes': 'はい',
+            'val.no': 'いいえ',
+            'val.none': 'なし',
+            'val.read': '有効',
+            'val.notRead': '未適用',
+            'dom.moreShort': '他 {0} 件',
+            'dom.moreElements': '他 {0} 個の要素があります',
+            'dom.noLonger': 'ページにこの要素はもうありません',
+            'dom.noElements': 'ページに要素がありません',
+            'el.node': 'ノード',
+            'el.box': '要素のボックス',
+            'el.place': '位置 (x , y)',
+            'el.size': 'サイズ (幅 x 高さ)',
+            'el.seen': '表示状態',
+            'el.padding': 'パディング',
+            'el.border': 'ボーダー',
+            'el.margin': 'マージン',
+            'el.inside': '内側 (幅 x 高さ)',
+            'el.scrolled': 'スクロール (上 , 左)',
+            'el.content': 'コンテンツ (幅 x 高さ)',
+            'el.ofEngine': 'エンジン算出値',
+            'el.attributes': '属性',
+            'el.text': 'テキスト',
+            'el.htmlHeading': '要素の HTML（再編集可能）',
+            'el.htmlCopied': 'HTML をクリップボードにコピーしました',
+            'el.styleHeading': '要素のインラインスタイル（再編集可能）',
+            'el.computedStyles': '計算済みスタイル',
+            'el.searchHits': '[{1}] に一致する要素が {0} 件見つかりました',
+            'box.top': '上',
+            'box.right': '右',
+            'box.bottom': '下',
+            'box.left': '左',
+            'net.contentType': 'レスポンスの Content-Type: {0}',
+            'net.pageWrote': '送信ボディ: {0}',
+            'net.askedHeader': '--- リクエストヘッダー ---',
+            'net.answeredHeader': '--- レスポンス ---',
+            'net.noHeader': '(ヘッダーなし)',
+            'net.fetchJsOnly': '(fetch の本文はページの JavaScript にのみ返されます)',
+            'net.noText': '(本文なし)',
+            'net.noAnswer': 'レスポンスなし',
+            'net.filesAdded': 'エンジンが読み込んだリソース {0} 件を追加しました',
+            'net.noNewFiles': '未登録のページ内リソースはありません',
+            'src.line': '{0} 行目',
+            'src.kindPage': 'ページ',
+            'src.noMatch': 'ソース内に [{0}] は見つかりませんでした',
+            'src.thePage': 'ページ',
+            'src.inline': '(インライン)',
+            'src.noFiles': 'ページにファイルがありません',
+            'src.noText': 'ページにテキストがありません',
+            'src.cannotRead': 'このファイルは読み取れません',
+            'src.cannotReadText': 'このファイルのテキストは読み取れません',
+            'src.note.none': 'ページのファイルが選択されていません',
+            'src.note.page': '書き込んだテキストがページに反映されます（元のファイルは変更されません）',
+            'src.note.scriptExternal': '元のスクリプトファイルは保持され、パネル上の編集内容のみページに適用されます',
+            'src.note.scriptInline': '書き込んだスクリプトのテキストがページに反映されます',
+            'src.note.link': '元のスタイルファイルは保持され、パネル上の編集内容のみページに適用されます',
+            'src.note.style': '書き込んだスタイルがページに反映されます',
+            'storage.keys': '{0} 件のキー',
+            'storage.keyLength': '{0} ({1} 文字)',
+            'storage.cookiesNote': 'ページの Cookie: {0}',
+            'storage.cookiesCount': '{0} 件の Cookie',
+            'action.edit': '編集',
+            'action.del': '削除',
+            'about.title': 'ページデバッガー',
+            'about.intro': 'Dbg プラグインのパネルは、ページに挿入されたエージェントを介して WebViewer のページを読み取ります。\n'
+                    + 'パネルとページはプラグイン経由でのみ通信するため、ネットワークポートは開かず外部から参照されません。',
+            'about.pluginVersion': 'プラグインバージョン',
+            'about.pageAddress': 'ページ URL',
+            'about.pageAgent': 'ページエージェント',
+            'about.consoleMessages': 'コンソールメッセージ数',
+            'about.networkRequests': 'リクエスト数',
+            'about.droppedMessages': '破棄されたメッセージ数',
+            'about.engineTitle': 'ページエンジン',
+            'about.userAgent': 'ユーザーエージェント',
+            'about.json': 'JSON',
+            'about.selectors': 'CSS セレクター',
+            'about.engineStyles': '計算済みスタイル',
+            'about.xhr': 'XHR リクエスト',
+            'about.fetch': 'fetch API',
+            'about.storage': 'Web ストレージ',
+            'about.sheets': 'スタイルシート数',
+            'about.nowTitle': '現在のページ情報',
+            'about.pageTitle': 'ページタイトル',
+            'about.referrer': 'リファラー',
+            'about.ready': '読み込み状態',
+            'about.language': 'ページの言語',
+            'about.charset': '文字コード',
+            'about.platform': 'プラットフォーム',
+            'about.online': 'オンライン状態',
+            'about.viewport': 'ビューポート',
+            'about.viewportFormat': '{0}  (ピクセル比 {1})',
+            'about.screen': '画面解像度',
+            'about.scrolled': 'スクロール位置',
+            'about.elements': 'DOM 要素数',
+            'about.scripts': 'JavaScript ファイル数',
+            'about.styleFiles': 'CSS ファイル数',
+            'about.cookiesCount': '読み取り可能な Cookie 数',
+            'about.canRead': 'パネルで確認できること',
+            'about.canReadBody': 'コンソール: ページのコンソール出力・エラーおよび式の評価結果を表示します。\n'
+                    + '要素: DOM 要素、属性、スタイル、ボックス、テキストを閲覧・編集し、要素インスペクトを行えます。\n'
+                    + 'ソース: ページの HTML・スクリプト・スタイルを閲覧・検索し、ページ上で一時的に書き換えて実行できます。\n'
+                    + 'ネットワーク: XMLHttpRequest / fetch の通信内容やページが読み込んだリソース一覧を確認できます。\n'
+                    + 'ストレージ: localStorage / sessionStorage と Cookie の確認・編集、ログのファイル保存が行えます。',
+            'about.cannotRead': 'パネルの制約事項',
+            'about.cannotReadBody': 'ブレークポイント・ステップ実行・ウォッチ式: WebViewer のエンジン仕様によりプラグインからデバッガプロトコルには接続できません。\n'
+                    + 'エンジン自動読込リソースの本文: 画像・CSS・iframe などのレスポンス本文は JS フック外のため URL と種別のみ表示されます。\n'
+                    + '元ファイルの永続書き換え: パネルでの編集はページ再読込まで有効で、ディスク上の元ファイルは変更されません。\n'
+                    + 'エンジン管理の HttpOnly Cookie 等: ページの JavaScript から参照可能な Cookie のみ扱います。',
+            'about.licenses': '同梱ライブラリのライセンス一覧',
+            'notice.agentReady': 'ページエージェント準備完了 ({0})',
+            'notice.agentReading': 'フック有効',
+            'notice.agentIdle': '待機中',
+            'notice.readingPage': 'プラグインがページを読み取っています [{0}]',
+            'state.noPage': 'ページなし',
+            'state.noAddress': 'URL なし',
+            'state.messages': '{0} 件のメッセージ',
+            'state.requests': '{0} 件のリクエスト',
+            'state.forgotten': '{0} 件破棄',
+            'save.consoleOk': 'ページコンソール履歴をファイルへ保存しました [{0}]',
+            'save.networkOk': 'ページネットワーク履歴をファイルへ保存しました [{0}]',
+            'save.nothing': '保存されたデータはありません'
+        }
+    };
+
+    var AGENT_JA = {
+        'the page holds this element no more': 'ページにこの要素はもうありません',
+        'the page reads the pointing of the panel': 'ページが要素検証（インスペクト）のポインティングを有効にしました',
+        'the page forgets the pointing of the panel': 'ページが要素検証（インスペクト）のポインティングを解除しました',
+        'the engine of the page refuses the styles': 'ページエンジンがスタイル取得を拒否しました',
+        'the page hides the element': 'ページがこの要素を非表示にしています',
+        'the element holds no size': 'この要素のサイズは 0 です',
+        'the engine of the page refused the cookie': 'ページエンジンが Cookie の設定を拒否しました',
+        'a cookie holds no = nor ; in its name': 'Cookie 名に = や ; を含めることはできません',
+        'the page refuses the cookies': 'ページが Cookie へのアクセスを拒否しています',
+        'the page reads the cookies of its javascript only': 'ページは JavaScript から参照可能な Cookie のみ読み取ります',
+        'the page refuses the storage': 'ページがストレージへのアクセスを拒否しています',
+        'the page refuses the text the panel wrote': 'パネルが書き込んだ内容をページが拒否しました',
+        'the page keeps this answer no more': 'ページはこのレスポンスを保持していません',
+        'the engine of the page read this file by itself': 'このファイルはページエンジンが直接読み込みました',
+        'the page reads the text the panel writes, its own file keeps its text': '書き込んだテキストがページに反映されます（元のファイルは変更されません）',
+        'the file of the script keeps its own text, the page reads the text the panel wrote': 'スクリプトの元ファイルは保持され、書き込んだテキストがページに反映されます',
+        'the page reads the text of the script the panel writes': '書き込んだスクリプトのテキストがページに反映されます',
+        'the page reads the style the panel wrote': '書き込んだスタイルがページに反映されます',
+        'the file of the style keeps its text': 'スタイルの元ファイルは保持されます',
+        'the page reads the style the panel writes, its file keeps its text': '書き込んだスタイルがページに反映されます（元ファイルは保持されます）'
+    };
+
+    var AGENT_PREFIX_WORK = 'the page holds no work [';
+    var AGENT_PREFIX_KIND = 'the panel writes no file of that kind [';
+
+    /**
+     * translates a message key for the active panel language
+     *
+     * @param key message bundle key
+     * @param a0 optional first argument
+     * @param a1 optional second argument
+     * @return translated text
+     */
+    function tr(key, a0, a1) {
+        var dict = I18N[lang] || I18N.en;
+        var text = dict[key];
+        var args = [a0, a1];
+        var out = '';
+        var index;
+
+        if ((text === null) || (typeof text === 'undefined')) {
+            text = I18N.en[key];
+        }
+        if ((text === null) || (typeof text === 'undefined')) {
+            return String(key);
+        }
+        for (index = 0; index < text.length; index++) {
+            if ((text.charAt(index) === '{') && ((index + 2) < text.length) && (text.charAt(index + 2) === '}')) {
+                var argIndex = Number(text.charAt(index + 1));
+
+                if (!isNaN(argIndex) && (argIndex >= 0) && (argIndex < args.length) && (typeof args[argIndex] !== 'undefined')) {
+                    out += String(args[argIndex]);
+                    index += 2;
+                    continue;
+                }
+            }
+            out += text.charAt(index);
+        }
+        return out;
+    }
+
+    /**
+     * translates fixed wire messages coming from agent.js when the panel language is japanese
+     *
+     * @param text raw message text
+     * @return localized text
+     */
+    function trAgent(text) {
+        if ((text === null) || (typeof text === 'undefined')) {
+            return '';
+        }
+        var raw = String(text);
+
+        if (lang !== 'ja') {
+            return raw;
+        }
+        if (Object.prototype.hasOwnProperty.call(AGENT_JA, raw)) {
+            return AGENT_JA[raw];
+        }
+        if ((raw.indexOf(AGENT_PREFIX_WORK) === 0) && (raw.charAt(raw.length - 1) === ']')) {
+            return 'ページに未定義の操作です [' + raw.slice(AGENT_PREFIX_WORK.length, -1) + ']';
+        }
+        if ((raw.indexOf(AGENT_PREFIX_KIND) === 0) && (raw.charAt(raw.length - 1) === ']')) {
+            return 'その種類のファイルには書き込めません [' + raw.slice(AGENT_PREFIX_KIND.length, -1) + ']';
+        }
+        return raw;
+    }
+
+    /**
+     * updates static DOM labels and placeholders for the active panel language
+     */
+    function applyStaticI18n() {
+        var items = document.querySelectorAll('[data-i18n]');
+        var placeholders = document.querySelectorAll('[data-i18n-placeholder]');
+        var index;
+
+        document.title = tr('title');
+        for (index = 0; index < items.length; index++) {
+            items[index].textContent = tr(items[index].getAttribute('data-i18n'));
+        }
+        for (index = 0; index < placeholders.length; index++) {
+            placeholders[index].placeholder = tr(placeholders[index].getAttribute('data-i18n-placeholder'));
+        }
+    }
+
+    /**
+     * updates the state summary text when state counts have been received
+     */
+    function showState() {
+        if (!lastState.ready) {
+            return;
+        }
+        el('state').textContent = (plugin.page || tr('state.noPage')) + '  |  ' + tr('state.messages', lastState.console)
+                + '  |  ' + tr('state.requests', lastState.network) + '  |  ' + tr('state.forgotten', lastState.dropped);
+    }
+
+    /**
+     * switches panel UI language without issuing asynchronous agent calls
+     *
+     * @param nextLang requested language code ('ja' or 'en')
+     */
+    function setLang(nextLang) {
+        var normalized = (nextLang === 'ja') ? 'ja' : 'en';
+
+        if (lang === normalized) {
+            return;
+        }
+        lang = normalized;
+        if (document.documentElement) {
+            document.documentElement.lang = lang;
+        }
+        applyStaticI18n();
+        showState();
+        about();
+    }
 
     /**
      * an element of the panel
@@ -92,13 +612,13 @@
 
         if (!head) {
             if (done) {
-                done({ error: 'the plug-in refused the work' });
+                done({ error: tr('err.pluginRefused') });
             }
             return;
         }
         if (head.error || head.unavailable) {
             if (done) {
-                done({ error: head.error || 'the page holds no agent of the plug-in' });
+                done({ error: head.error ? trAgent(head.error) : tr('err.noAgent') });
             }
             return;
         }
@@ -124,7 +644,7 @@
             return;
         }
         if (data.error) {
-            done({ error: data.error });
+            done({ error: trAgent(data.error) });
             return;
         }
         var answer = data.value;
@@ -133,7 +653,7 @@
             answer = {};
         }
         if (data.unavailable) {
-            answer.error = 'the page holds no agent of the plug-in';
+            answer.error = tr('err.noAgent');
         }
         done(answer);
     }
@@ -281,7 +801,7 @@
             return holder;
         }
         if (value.t === 'circle') {
-            holder.textContent = '(circle)';
+            holder.textContent = tr('val.circle');
             return holder;
         }
         var list = (value.t === 'array');
@@ -477,7 +997,7 @@
             }
             row.appendChild(make('span', 'tag', (data.n > 0) ? '>' : ' />'));
             if (data.more) {
-                row.appendChild(make('span', 'v-more', ' \u2026 ' + data.more + ' more'));
+                row.appendChild(make('span', 'v-more', ' \u2026 ' + tr('dom.moreShort', data.more)));
             }
         }
         row.onclick = function (event) {
@@ -519,11 +1039,11 @@
             kept.loaded = true;
             ask('children', { id: id, depth: 1 }, function (answer) {
                 if (answer.error) {
-                    kept.holder.appendChild(make('div', 'src', answer.error));
+                    kept.holder.appendChild(make('div', 'src', trAgent(answer.error)));
                     return;
                 }
                 if (answer.none) {
-                    kept.holder.appendChild(make('div', 'src', 'the page holds this element no more'));
+                    kept.holder.appendChild(make('div', 'src', tr('dom.noLonger')));
                     return;
                 }
                 var index;
@@ -535,7 +1055,7 @@
                     kept.holder.appendChild(part.holder);
                 }
                 if (answer.more) {
-                    kept.holder.appendChild(make('div', 'src', answer.more + ' more elements of the page'));
+                    kept.holder.appendChild(make('div', 'src', tr('dom.moreElements', answer.more)));
                 }
             });
         } else {
@@ -560,7 +1080,7 @@
             tree.removeChild(tree.firstChild);
         }
         if (!root) {
-            tree.appendChild(make('div', 'src', 'the page holds no elements'));
+            tree.appendChild(make('div', 'src', tr('dom.noElements')));
             return;
         }
         var part = branch(root);
@@ -578,7 +1098,7 @@
         ask('unhighlight', {}, null);
         ask('page', {}, function (answer) {
             if (answer.error) {
-                el('tree').appendChild(make('div', 'src', answer.error));
+                el('tree').appendChild(make('div', 'src', trAgent(answer.error)));
                 return;
             }
             roots(answer.root);
@@ -624,7 +1144,7 @@
     function again(id) {
         ask('node', { id: id }, function (answer) {
             if (answer.none || answer.error) {
-                props(answer.error || 'the page holds this element no more');
+                props(answer.error ? trAgent(answer.error) : tr('dom.noLonger'));
                 return;
             }
             crumbs(answer.path);
@@ -679,26 +1199,26 @@
         while (box.firstChild) {
             box.removeChild(box.firstChild);
         }
-        box.appendChild(make('h3', '', 'node'));
+        box.appendChild(make('h3', '', tr('el.node')));
         box.appendChild(make('div', 'attr', answer.name));
 
         if (answer.box) {
-            box.appendChild(make('h3', '', 'box of the element'));
-            box.appendChild(declared(['place (x , y)', answer.box.x + ' , ' + answer.box.y]));
-            box.appendChild(declared(['size (w x h)', answer.box.w + ' x ' + answer.box.h]));
-            box.appendChild(declared(['seen by the page',
-                    answer.box.shown ? 'yes' : ('no : ' + answer.box.why)]));
-            box.appendChild(declared(['padding', sidesOf(answer.box.padding)]));
-            box.appendChild(declared(['border', sidesOf(answer.box.border)]));
-            box.appendChild(declared(['margin', sidesOf(answer.box.margin)]));
-            box.appendChild(declared(['inside (w x h)', sized(answer.box.client)]));
-            box.appendChild(declared(['scrolled (up , left)', sized(answer.box.scrolled)]));
-            box.appendChild(declared(['content (w x h)', sized(answer.box.size)]));
-            box.appendChild(declared(['of the engine', answer.box.display + ' , ' + answer.box.position
+            box.appendChild(make('h3', '', tr('el.box')));
+            box.appendChild(declared([tr('el.place'), answer.box.x + ' , ' + answer.box.y]));
+            box.appendChild(declared([tr('el.size'), answer.box.w + ' x ' + answer.box.h]));
+            box.appendChild(declared([tr('el.seen'),
+                    answer.box.shown ? tr('val.yes') : (tr('val.no') + ' : ' + trAgent(answer.box.why))]));
+            box.appendChild(declared([tr('el.padding'), sidesOf(answer.box.padding)]));
+            box.appendChild(declared([tr('el.border'), sidesOf(answer.box.border)]));
+            box.appendChild(declared([tr('el.margin'), sidesOf(answer.box.margin)]));
+            box.appendChild(declared([tr('el.inside'), sized(answer.box.client)]));
+            box.appendChild(declared([tr('el.scrolled'), sized(answer.box.scrolled)]));
+            box.appendChild(declared([tr('el.content'), sized(answer.box.size)]));
+            box.appendChild(declared([tr('el.ofEngine'), answer.box.display + ' , ' + answer.box.position
                     + ' , ' + answer.box.visibility + ' , ' + answer.box.opacity]));
         }
 
-        box.appendChild(make('h3', '', 'attributes'));
+        box.appendChild(make('h3', '', tr('el.attributes')));
         for (index = 0; answer.attributes && (index < answer.attributes.length); index++) {
             (function (name, value) {
                 var line = make('div', 'attr');
@@ -728,12 +1248,12 @@
         var key = make('input', '');
         var val = make('input', '');
 
-        key.placeholder = 'name';
-        val.placeholder = 'value';
+        key.placeholder = tr('ph.name');
+        val.placeholder = tr('ph.value');
         add.appendChild(make('span', 'name', ''));
         add.appendChild(key);
         add.appendChild(val);
-        var put = make('button', '', 'Set');
+        var put = make('button', '', tr('btn.set'));
 
         put.onclick = function () {
             if (!key.value) {
@@ -746,7 +1266,7 @@
         add.appendChild(put);
         box.appendChild(add);
 
-        box.appendChild(make('h3', '', 'text'));
+        box.appendChild(make('h3', '', tr('el.text')));
         var area = make('textarea', '');
 
         area.id = 'elText';
@@ -757,7 +1277,7 @@
         };
         box.appendChild(area);
 
-        box.appendChild(make('h3', '', 'html of the element, which the user may write again'));
+        box.appendChild(make('h3', '', tr('el.htmlHeading')));
         var html = make('textarea', '');
 
         html.id = 'elHtml';
@@ -766,13 +1286,13 @@
         box.appendChild(html);
 
         var htmlTools = make('div', 'tools');
-        var htmlWrite = make('button', '', 'Write HTML');
+        var htmlWrite = make('button', '', tr('btn.writeHtml'));
 
         htmlWrite.id = 'elWrite';
         htmlWrite.onclick = function () {
             ask('setHtml', { id: answer.id, html: html.value }, function (held) {
                 if (held.read) {
-                    box.appendChild(make('div', 'src', held.read));
+                    box.appendChild(make('div', 'src', trAgent(held.read)));
                     return;
                 }
                 /* the page holds an other element now : the tree and the element are read again */
@@ -781,11 +1301,11 @@
             });
         };
         var htmlIn = make('input', '');
-        var htmlAdd = make('button', '', 'Add inside');
+        var htmlAdd = make('button', '', tr('btn.addInside'));
 
         htmlIn.id = 'elIn';
         htmlAdd.id = 'elAdd';
-        htmlIn.placeholder = 'an element to add inside the element';
+        htmlIn.placeholder = tr('ph.addInside');
         htmlIn.onkeydown = function (event) {
             if (event.keyCode === 13) {
                 htmlAdd.onclick();
@@ -797,7 +1317,7 @@
             }
             ask('insertChild', { id: answer.id, html: htmlIn.value }, function (held) {
                 if (held.read) {
-                    box.appendChild(make('div', 'src', held.read));
+                    box.appendChild(make('div', 'src', trAgent(held.read)));
                     return;
                 }
                 htmlIn.value = '';
@@ -811,7 +1331,7 @@
         box.appendChild(htmlTools);
 
         var tools = make('div', 'tools');
-        var remove = make('button', '', 'Remove');
+        var remove = make('button', '', tr('btn.remove'));
 
         remove.onclick = function () {
             ask('removeNode', { id: answer.id }, function (held) {
@@ -828,13 +1348,13 @@
                 }
             });
         };
-        var copy = make('button', '', 'Copy HTML');
+        var copy = make('button', '', tr('btn.copyHtml'));
 
         copy.onclick = function () {
             ask('html', { id: answer.id }, function (held) {
                 var html = held.html || '';
                 if (dbg.copyText && dbg.copyText(html)) {
-                    told({ text: 'HTML copied to clipboard' });
+                    told({ text: tr('el.htmlCopied') });
                 }
                 var code = make('pre', '', html);
 
@@ -843,7 +1363,7 @@
                 box.appendChild(code);
             });
         };
-        var show = make('button', '', 'Show in page');
+        var show = make('button', '', tr('btn.showInPage'));
 
         show.onclick = function () {
             ask('scrollIntoView', { id: answer.id }, null);
@@ -900,10 +1420,10 @@
         var index;
 
         if (answer.read) {
-            box.appendChild(make('div', 'src', answer.read));
+            box.appendChild(make('div', 'src', trAgent(answer.read)));
         }
         if (answer.inline) {
-            box.appendChild(make('h3', '', 'style of the element, which the user may write again'));
+            box.appendChild(make('h3', '', tr('el.styleHeading')));
             for (index = 0; index < answer.inline.length; index++) {
                 (function (pair) {
                     var line = make('div', 'attr sty');
@@ -915,7 +1435,7 @@
                         ask('setStyle', { id: answer.id, name: pair[0], value: text.value },
                                 function (held) {
                                     if (held.read) {
-                                        box.appendChild(make('div', 'src', held.read));
+                                        box.appendChild(make('div', 'src', trAgent(held.read)));
                                         return;
                                     }
                                     again(answer.id);
@@ -939,12 +1459,12 @@
 
             key.id = 'elStyle';
             val.id = 'elStyleValue';
-            key.placeholder = 'a style of the element';
-            val.placeholder = 'its value';
+            key.placeholder = tr('ph.styleName');
+            val.placeholder = tr('ph.styleValue');
             add.appendChild(make('span', 'name', ''));
             add.appendChild(key);
             add.appendChild(val);
-            var put = make('button', '', 'Set');
+            var put = make('button', '', tr('btn.set'));
 
             put.id = 'elStylePut';
             put.onclick = function () {
@@ -953,7 +1473,7 @@
                 }
                 ask('setStyle', { id: answer.id, name: key.value, value: val.value }, function (held) {
                     if (held.read) {
-                        box.appendChild(make('div', 'src', held.read));
+                        box.appendChild(make('div', 'src', trAgent(held.read)));
                         return;
                     }
                     again(answer.id);
@@ -971,7 +1491,7 @@
                 box.appendChild(declared(rules[part]));
             }
         }
-        box.appendChild(make('h3', '', 'styles of the engine of the page'));
+        box.appendChild(make('h3', '', tr('el.computedStyles')));
         for (index = 0; answer.computed && (index < answer.computed.length); index++) {
             box.appendChild(declared(answer.computed[index]));
         }
@@ -998,8 +1518,8 @@
      * @return the four sides of the box, as one text
      */
     function sidesOf(values) {
-        return String(values[0]) + ' top , ' + String(values[1]) + ' right , ' + String(values[2])
-                + ' bottom , ' + String(values[3]) + ' left';
+        return String(values[0]) + ' ' + tr('box.top') + ' , ' + String(values[1]) + ' ' + tr('box.right')
+                + ' , ' + String(values[2]) + ' ' + tr('box.bottom') + ' , ' + String(values[3]) + ' ' + tr('box.left');
     }
 
     /**
@@ -1027,13 +1547,13 @@
             out += '  ' + request.text;
         }
         if (request.mime) {
-            out += '\ncontent-type of the answer: ' + request.mime;
+            out += '\n' + tr('net.contentType', request.mime);
         }
         if (request.note) {
-            out += '\n' + request.note;
+            out += '\n' + trAgent(request.note);
         }
         if (request.body) {
-            out += '\nthe page wrote: ' + request.body;
+            out += '\n' + tr('net.pageWrote', request.body);
         }
         return out;
     }
@@ -1052,25 +1572,25 @@
         var askOf = held.ask;
 
         if (askOf && askOf.headers && askOf.headers.length) {
-            out += '\n--- what the page asked for ---';
+            out += '\n' + tr('net.askedHeader');
             for (index = 0; index < askOf.headers.length; index++) {
                 out += '\n' + askOf.headers[index][0] + ': ' + askOf.headers[index][1];
             }
         }
-        out += '\n--- what the page answered ---';
+        out += '\n' + tr('net.answeredHeader');
         if (held.headers && held.headers.length) {
             for (index = 0; index < held.headers.length; index++) {
                 out += '\n' + held.headers[index][0] + ': ' + held.headers[index][1];
             }
         } else {
-            out += '\n(no header read)';
+            out += '\n' + tr('net.noHeader');
         }
         if (held.text) {
             out += '\n' + held.text;
         } else if (request.kind === 'fetch') {
-            out += '\n(the page gives the text of a fetch to its javascript only)';
+            out += '\n' + tr('net.fetchJsOnly');
         } else {
-            out += '\n(no text read)';
+            out += '\n' + tr('net.noText');
         }
         return out;
     }
@@ -1110,10 +1630,10 @@
                 box.removeChild(box.firstChild);
             }
             if (answer.error) {
-                box.appendChild(make('div', 'src', answer.error));
+                box.appendChild(make('div', 'src', trAgent(answer.error)));
                 return;
             }
-            box.appendChild(make('h3', '', answer.n + ' elements answer [' + answer.query + ']'));
+            box.appendChild(make('h3', '', tr('el.searchHits', answer.n, answer.query)));
             for (index = 0; answer.hits && (index < answer.hits.length); index++) {
                 (function (hit) {
                     var line = make('div', 'item', hit.name);
@@ -1160,8 +1680,8 @@
                 (function (hit) {
                     var line = make('div', 'item');
 
-                    line.appendChild(make('span', 'size', 'line ' + hit.line));
-                    line.appendChild(make('span', '', (hit.kind === 'page') ? hit.kind : short(hit.name)));
+                    line.appendChild(make('span', 'size', tr('src.line', hit.line)));
+                    line.appendChild(make('span', '', (hit.kind === 'page') ? tr('src.kindPage') : short(hit.name)));
                     line.appendChild(make('span', 'src', '  ' + hit.text));
                     line.onclick = function () {
                         textOf({ kind: hit.kind, i: hit.i }, pageHtml);
@@ -1171,7 +1691,7 @@
                 })(answer.hits[index]);
             }
             if (!box.firstChild) {
-                box.appendChild(make('div', 'src', 'the sources of the page hold no [' + word + ']'));
+                box.appendChild(make('div', 'src', tr('src.noMatch', word)));
             }
         });
     }
@@ -1184,7 +1704,7 @@
             ask('sheets', {}, function (sheets) {
                 files = [];
                 files.push({
-                    kind: 'page', name: plugin.page || 'the page', src: '',
+                    kind: 'page', name: plugin.page || tr('src.thePage'), src: '',
                     size: (sheets.html ? sheets.html.length : 0)
                 });
                 var index;
@@ -1193,7 +1713,7 @@
                     files.push({
                         kind: 'script',
                         i: scripts.scripts[index].i,
-                        name: scripts.scripts[index].src ? short(scripts.scripts[index].src) : '(inline)',
+                        name: scripts.scripts[index].src ? short(scripts.scripts[index].src) : tr('src.inline'),
                         src: scripts.scripts[index].src,
                         size: scripts.scripts[index].size
                     });
@@ -1202,7 +1722,7 @@
                     files.push({
                         kind: sheets.sheets[index].kind,
                         i: sheets.sheets[index].i,
-                        name: sheets.sheets[index].src ? short(sheets.sheets[index].src) : '(inline)',
+                        name: sheets.sheets[index].src ? short(sheets.sheets[index].src) : tr('src.inline'),
                         src: sheets.sheets[index].src,
                         size: sheets.sheets[index].size
                     });
@@ -1249,7 +1769,7 @@
             })(files[index], index);
         }
         if (!box.firstChild) {
-            box.appendChild(make('div', 'src', 'the page holds no files'));
+            box.appendChild(make('div', 'src', tr('src.noFiles')));
         }
     }
 
@@ -1266,14 +1786,14 @@
         opened = item;
         code.value = '';
         if (item.kind === 'page') {
-            code.value = html || 'the page holds no text';
+            code.value = html || tr('src.noText');
             noteOf(item, '');
             return;
         }
         if (item.kind === 'link') {
             ask('sheetText', { i: item.i, kind: 'link' }, function (answer) {
-                code.value = answer.text || (answer.none ? '' : 'the page can not read this file');
-                noteOf(item, answer.text ? '' : 'the page can not read the text of this file');
+                code.value = answer.text || (answer.none ? '' : tr('src.cannotRead'));
+                noteOf(item, answer.text ? '' : tr('src.cannotReadText'));
             });
             return;
         }
@@ -1285,8 +1805,8 @@
             return;
         }
         ask('scriptText', { i: item.i }, function (answer) {
-            code.value = answer.text || 'the page can not read this file';
-            noteOf(item, answer.text ? '' : 'the page can not read the text of this file');
+            code.value = answer.text || tr('src.cannotRead');
+            noteOf(item, answer.text ? '' : tr('src.cannotReadText'));
         });
     }
 
@@ -1301,19 +1821,17 @@
         var word;
 
         if (!item) {
-            word = 'the panel holds no file of the page';
+            word = tr('src.note.none');
         } else if (item.kind === 'page') {
-            word = 'the page reads the text the panel writes, its own file keeps its text';
+            word = tr('src.note.page');
         } else if (item.kind === 'script') {
-            word = item.src
-                    ? 'the file of the script keeps its text : the panel writes in the page only'
-                    : 'the page reads the text of the script the panel writes';
+            word = item.src ? tr('src.note.scriptExternal') : tr('src.note.scriptInline');
         } else if (item.kind === 'link') {
-            word = 'the file of the style keeps its text : the page reads a style the panel writes';
+            word = tr('src.note.link');
         } else {
-            word = 'the page reads the style the panel writes';
+            word = tr('src.note.style');
         }
-        el('srcNote').textContent = extra ? (word + '   ' + extra) : word;
+        el('srcNote').textContent = extra ? (word + '   ' + trAgent(extra)) : word;
     }
 
     /**
@@ -1431,7 +1949,7 @@
                     return;
                 }
                 if (back.none) {
-                    cell2.textContent = askedText(request) + '\n' + (back.note || 'no answer');
+                    cell2.textContent = askedText(request) + '\n' + (back.note ? trAgent(back.note) : tr('net.noAnswer'));
                     return;
                 }
                 cell2.textContent = heldText(request, back);
@@ -1490,9 +2008,7 @@
                 netted(held, true);
                 line(held);
             }
-            told({ text: (added > 0)
-                    ? (added + ' files of the page read by the engine of the page')
-                    : 'the page holds no file the panel does not know yet' });
+            told({ text: (added > 0) ? tr('net.filesAdded', added) : tr('net.noNewFiles') });
         });
     }
 
@@ -1509,7 +2025,7 @@
             while (body.firstChild) {
                 body.removeChild(body.firstChild);
             }
-            el('stNote').textContent = answer.read || ((answer.n || 0) + ' keys');
+            el('stNote').textContent = answer.read ? trAgent(answer.read) : tr('storage.keys', answer.n || 0);
             for (index = 0; answer.items && (index < answer.items.length); index++) {
                 (function (pair) {
                     var row = document.createElement('tr');
@@ -1517,7 +2033,7 @@
                     row.appendChild(make('td', '', pair[0]));
                     row.appendChild(make('td', '', pair[1]));
                     var act = make('td', 'act', '');
-                    var edit = make('span', '', 'edit  ');
+                    var edit = make('span', '', tr('action.edit') + '  ');
 
                     edit.onclick = function () {
                         /* the list of the storage keeps its values shorter than the text of the
@@ -1527,12 +2043,12 @@
                             el('stValue').value = (held && !held.none && !held.error && held.value)
                                     ? held.value : pair[1];
                             if (held && held.n) {
-                                el('stNote').textContent = pair[0] + ' holds ' + held.n + ' characters';
+                                el('stNote').textContent = tr('storage.keyLength', pair[0], held.n);
                             }
                             el('stValue').focus();
                         });
                     };
-                    var gone = make('span', '', 'del');
+                    var gone = make('span', '', tr('action.del'));
 
                     gone.onclick = function () {
                         ask('writeStorage', { area: answer.area, key: pair[0], value: null }, null);
@@ -1547,9 +2063,9 @@
             var notes = '';
 
             if (answer.read) {
-                notes = answer.read;
+                notes = trAgent(answer.read);
             } else if (answer.cookie) {
-                notes = 'cookies of the page: ' + answer.cookie;
+                notes = tr('storage.cookiesNote', trAgent(answer.cookie));
             }
             if (notes) {
                 var told2 = document.createElement('tr');
@@ -1576,8 +2092,10 @@
             while (body.firstChild) {
                 body.removeChild(body.firstChild);
             }
-            el('coNote').textContent = answer.error || ((answer.n || 0) + ' cookies'
-                    + (answer.note ? ' : ' + answer.note : ''));
+            el('coNote').textContent = answer.error
+                    ? trAgent(answer.error)
+                    : (tr('storage.cookiesCount', answer.n || 0)
+                            + (answer.note ? ' : ' + trAgent(answer.note) : ''));
             for (index = 0; answer.items && (index < answer.items.length); index++) {
                 (function (pair) {
                     var row = document.createElement('tr');
@@ -1585,13 +2103,13 @@
                     row.appendChild(make('td', '', pair[0]));
                     row.appendChild(make('td', '', pair[1]));
                     var act = make('td', 'act', '');
-                    var edit = make('span', '', 'edit  ');
+                    var edit = make('span', '', tr('action.edit') + '  ');
 
                     edit.onclick = function () {
                         el('coKey').value = pair[0];
                         el('coValue').value = pair[1];
                     };
-                    var gone = make('span', '', 'del');
+                    var gone = make('span', '', tr('action.del'));
 
                     gone.onclick = function () {
                         writeCookie(pair[0], null);
@@ -1650,92 +2168,67 @@
      */
     function about() {
         var box = el('about');
-        var index;
 
         while (box.firstChild) {
             box.removeChild(box.firstChild);
         }
-        box.appendChild(make('h2', '', 'Dbg \u2014 the debugger of the page'));
-        box.appendChild(make('pre', '', 'the panel of the Dbg plug-in reads the page of the WebViewer through the agent the plug-in\n'
-                + 'writes in the page. The panel and the page speak only through the plug-in, so no port is\n'
-                + 'opened and no other program can read the page.'));
+        box.appendChild(make('h2', '', 'Dbg \u2014 ' + tr('about.title')));
+        box.appendChild(make('pre', '', tr('about.intro')));
 
         var table = document.createElement('table');
 
-        said(table, 'version of the plug-in', plugin.version);
-        said(table, 'address of the page', plugin.page);
-        said(table, 'agent of the page', plugin.hook ? 'read' : 'not read');
-        said(table, 'messages of the console', String(logRows.length));
-        said(table, 'requests of the page', String(netRows.length));
-        said(table, 'messages the plug-in forgot', String(plugin.dropped));
+        said(table, tr('about.pluginVersion'), plugin.version);
+        said(table, tr('about.pageAddress'), plugin.page);
+        said(table, tr('about.pageAgent'), plugin.hook ? tr('val.read') : tr('val.notRead'));
+        said(table, tr('about.consoleMessages'), String(logRows.length));
+        said(table, tr('about.networkRequests'), String(netRows.length));
+        said(table, tr('about.droppedMessages'), String(plugin.dropped));
         box.appendChild(table);
 
         if (engine) {
-            box.appendChild(make('h2', '', 'the engine of the page'));
+            box.appendChild(make('h2', '', tr('about.engineTitle')));
             table = document.createElement('table');
-            said(table, 'agent of the page', engine.agent || '');
-            said(table, 'user agent', engine.userAgent || '');
-            said(table, 'json', engine.json ? 'yes' : 'no');
-            said(table, 'selectors of the styles', engine.querySelector ? 'yes' : 'no');
-            said(table, 'styles of the engine', engine.computedStyle ? 'yes' : 'no');
-            said(table, 'requests of the page', engine.xhr ? 'yes' : 'no');
-            said(table, 'fetch of the page', engine.fetch ? 'yes' : 'no');
-            said(table, 'storage of the page', engine.storage ? 'yes' : 'no');
-            said(table, 'styles of the page', String(engine.sheets));
+            said(table, tr('about.pageAgent'), engine.agent || '');
+            said(table, tr('about.userAgent'), engine.userAgent || '');
+            said(table, tr('about.json'), engine.json ? tr('val.yes') : tr('val.no'));
+            said(table, tr('about.selectors'), engine.querySelector ? tr('val.yes') : tr('val.no'));
+            said(table, tr('about.engineStyles'), engine.computedStyle ? tr('val.yes') : tr('val.no'));
+            said(table, tr('about.xhr'), engine.xhr ? tr('val.yes') : tr('val.no'));
+            said(table, tr('about.fetch'), engine.fetch ? tr('val.yes') : tr('val.no'));
+            said(table, tr('about.storage'), engine.storage ? tr('val.yes') : tr('val.no'));
+            said(table, tr('about.sheets'), String(engine.sheets));
             box.appendChild(table);
         }
 
         if (info) {
-            box.appendChild(make('h2', '', 'the page now'));
+            box.appendChild(make('h2', '', tr('about.nowTitle')));
             table = document.createElement('table');
-            said(table, 'title of the page', info.title || '');
-            said(table, 'address of the page', info.url || '');
-            said(table, 'page which wrote this page', info.referrer || 'none');
-            said(table, 'state of the page', info.ready || '');
-            said(table, 'language of the page', info.language || '');
-            said(table, 'characters of the page', info.characterSet || '');
-            said(table, 'computer of the page', info.platform || '');
-            said(table, 'the page is on line', info.online ? 'yes' : 'no');
-            said(table, 'view of the page', String(info.viewport[0]) + ' x ' + String(info.viewport[1])
-                    + '  at  ' + String(info.pixels) + ' pixels');
-            said(table, 'screen of the page', String(info.screen[0]) + ' x ' + String(info.screen[1]));
-            said(table, 'the page is scrolled to', String(info.scrolled[0]) + ' , ' + String(info.scrolled[1]));
-            said(table, 'elements of the page', String(info.nodes));
-            said(table, 'files of javascript of the page', String(info.scripts));
-            said(table, 'files of style of the page', String(info.sheets));
-            said(table, 'cookies the page reads', String(info.cookies));
+            said(table, tr('about.pageTitle'), info.title || '');
+            said(table, tr('about.pageAddress'), info.url || '');
+            said(table, tr('about.referrer'), info.referrer || tr('val.none'));
+            said(table, tr('about.ready'), info.ready || '');
+            said(table, tr('about.language'), info.language || '');
+            said(table, tr('about.charset'), info.characterSet || '');
+            said(table, tr('about.platform'), info.platform || '');
+            said(table, tr('about.online'), info.online ? tr('val.yes') : tr('val.no'));
+            said(table, tr('about.viewport'), tr('about.viewportFormat',
+                    String(info.viewport[0]) + ' x ' + String(info.viewport[1]), String(info.pixels)));
+            said(table, tr('about.screen'), String(info.screen[0]) + ' x ' + String(info.screen[1]));
+            said(table, tr('about.scrolled'), String(info.scrolled[0]) + ' , ' + String(info.scrolled[1]));
+            said(table, tr('about.elements'), String(info.nodes));
+            said(table, tr('about.scripts'), String(info.scripts));
+            said(table, tr('about.styleFiles'), String(info.sheets));
+            said(table, tr('about.cookiesCount'), String(info.cookies));
             box.appendChild(table);
         }
 
-        box.appendChild(make('h2', '', 'what the panel reads'));
-        box.appendChild(make('pre', '', 'Console : the messages of the console of the page, the errors of the page and the text the\n'
-                + 'user writes, read by the page.\n'
-                + 'Elements : the elements of the page, their attributes, their styles, their box and their text,\n'
-                + 'which the user may write again, with the html of an element and the styles the page wrote on\n'
-                + 'it. The pointing of the panel marks the element under the cursor of the user.\n'
-                + 'Sources : the files of the page which carry javascript and styles, read as text, and the\n'
-                + 'word the user writes, read in those files. The text the user writes again is read by the\n'
-                + 'page for its run.\n'
-                + 'Network : the requests the page asks for with XMLHttpRequest or fetch, with what the page\n'
-                + 'asked for and what the page answered, and the files the page holds.\n'
-                + 'Storage : the storage of the page and the cookies the page reads, which the user may\n'
-                + 'write again. The messages of the console and the requests are saved in a file.'));
+        box.appendChild(make('h2', '', tr('about.canRead')));
+        box.appendChild(make('pre', '', tr('about.canReadBody')));
 
-        box.appendChild(make('h2', '', 'what the panel can not read'));
-        box.appendChild(make('pre', '', 'No break point, no step and no watch : the web engine of the WebViewer keeps its\n'
-                + 'javascript out of the reach of a plug-in.\n'
-                + 'No answer of the files the page reads by itself : the images, the styles and the pages inside\n'
-                + 'the page are read by the engine of the page, which tells nothing of their answers to the\n'
-                + 'plug-in. The panel shows their address, their kind and, when the engine keeps them, their\n'
-                + 'times and their lengths. Only the requests the javascript of the page asks for are read.\n'
-                + 'No file of the computer written by the panel : the text the panel writes in a file of the page\n'
-                + 'is read by the page until the page is loaded again, and the file of the page keeps its text.\n'
-                + 'No javascript of the panel inside the page : the panel asks a work and reads its answer.\n'
-                + 'No cookies the engine of the page keeps for itself and no cookies the page hides from\n'
-                + 'its javascript : the panel reads the cookies of the javascript of the page.\n'
-                + 'No debugger of a browser : the panel of the plug-in holds no protocol of a browser.'));
+        box.appendChild(make('h2', '', tr('about.cannotRead')));
+        box.appendChild(make('pre', '', tr('about.cannotReadBody')));
 
-        var licenses = make('button', '', 'licenses of the libraries of the jar');
+        var licenses = make('button', '', tr('about.licenses'));
 
         licenses.onclick = function () {
             dbg.licenses();
@@ -1772,7 +2265,7 @@
         if (data.k === 'ready') {
             plugin.hook = !!data.hooked;
             plugin.page = data.url || plugin.page;
-            told({ text: 'the agent of the page is read (' + (data.hooked ? 'reading' : 'idle') + ')' });
+            told({ text: tr('notice.agentReady', data.hooked ? tr('notice.agentReading') : tr('notice.agentIdle')) });
             return;
         }
         if (!data.text) {
@@ -1781,7 +2274,7 @@
         var row = make('div', 'row hint');
         var body = make('div', 'body');
 
-        body.appendChild(make('span', 'src', data.text));
+        body.appendChild(make('span', 'src', trAgent(data.text)));
         row.appendChild(body);
         el('log').appendChild(row);
     }
@@ -1825,8 +2318,20 @@
         plugin.page = data.page || '';
         plugin.hook = !!data.hook;
         plugin.dropped = data.dropped || 0;
-        el('state').textContent = (plugin.page || 'no page') + '  |  ' + (data.console || 0) + ' messages  |  '
-                + (data.network || 0) + ' requests  |  ' + (data.dropped || 0) + ' forgotten';
+        lastState = {
+            ready: true,
+            console: (data.console || 0),
+            network: (data.network || 0),
+            dropped: (data.dropped || 0)
+        };
+        if (data.lang) {
+            lang = (data.lang === 'ja') ? 'ja' : 'en';
+            if (document.documentElement) {
+                document.documentElement.lang = lang;
+            }
+            applyStaticI18n();
+        }
+        showState();
 
         emptied();
         var held = read(dbg.journal('console', '2000'));
@@ -1841,7 +2346,7 @@
             netted(held[index], true);
         }
         networks();
-        told({ text: 'the plug-in reads the page [' + (plugin.page || 'no address') + ']' });
+        told({ text: tr('notice.readingPage', plugin.page || tr('state.noAddress')) });
         askAbout();
     }
 
@@ -2020,9 +2525,9 @@
 
         if (held && held.file) {
             el('saved').textContent = held.file + ' (' + held.count + ')';
-            told({ text: 'the plug-in wrote the messages of the page in [' + held.file + ']' });
+            told({ text: tr('save.consoleOk', held.file) });
         } else {
-            el('saved').textContent = (held && held.error) ? held.error : 'the plug-in wrote nothing';
+            el('saved').textContent = (held && held.error) ? trAgent(held.error) : tr('save.nothing');
         }
     };
 
@@ -2038,9 +2543,9 @@
         var held = read(dbg.save('network', 'network.txt'));
 
         if (held && held.file) {
-            told({ text: 'the plug-in wrote the requests of the page in [' + held.file + ']' });
+            told({ text: tr('save.networkOk', held.file) });
         } else {
-            told({ text: (held && held.error) ? held.error : 'the plug-in wrote nothing' });
+            told({ text: (held && held.error) ? trAgent(held.error) : tr('save.nothing') });
         }
     };
 
@@ -2071,6 +2576,7 @@
         writeCookie(el('coKey').value, el('coValue').value);
     };
 
+    applyStaticI18n();
     askAbout();
     el('ask').focus();
 }());

@@ -172,6 +172,17 @@ function setup() {
 
 ---
 
+## Localization Hooks / 多言語対応フック
+
+`WebViewerPlugin` provides two `default` methods so existing plug-ins remain source- and binary-compatible while supporting `en`/`ja` localization and live language switching:
+
+* `default Locale locale()`: Returns the active UI `Locale`. By default, resolves system property `"decotofu.language"` (returning `Locale.JAPANESE` when `"ja"`, otherwise `Locale.ENGLISH` when set) or falls back to `Locale.getDefault(Locale.Category.DISPLAY)` (`Locale.JAPANESE` for `"ja"`, else `Locale.ENGLISH`). Host `WebViewer` implementations override this to expose the live host language.
+  * ホスト側の現在の表示ロケールを返します。デフォルト実装はシステムプロパティ `"decotofu.language"` または `Locale.getDefault(Locale.Category.DISPLAY)` から `ja` / `en` を解決します。
+* `default void onLanguageChanged(Locale locale)`: Default no-op hook called by the host when the user changes language at runtime, allowing plug-ins to refresh open UI windows or panels immediately.
+  * 実行時に言語設定が変更された際ホストから呼び出されるフックです（デフォルトは空実装）。開いているウィンドウやパネルの表示更新に使用します。
+
+---
+
 ## Requirements / 要件
 
 * **Java**: JDK 21 or later with JavaFX modules (`javafx.base`, `javafx.graphics`, `javafx.web`).

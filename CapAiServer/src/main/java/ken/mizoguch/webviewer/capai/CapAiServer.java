@@ -9,6 +9,7 @@ import java.net.SocketException;
 import java.util.Enumeration;
 import javafx.concurrent.Worker.State;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
 import ken.mizoguch.webviewer.plugin.kit.ScriptNotifier;
 import ken.mizoguch.webviewer.plugin.kit.ScriptValue;
@@ -20,6 +21,7 @@ import ken.mizoguch.webviewer.plugin.kit.ScriptValue;
 public class CapAiServer extends PluginSupport implements LinkBoxServerListener {
 
     private static final String FUNCTION_NAME = "capaiserver";
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(CapAiServer.class);
 
     private final LinkBoxServer linkBoxServer_;
 
@@ -35,11 +37,11 @@ public class CapAiServer extends PluginSupport implements LinkBoxServerListener 
      */
     public CapAiServer() {
         linkBoxServer_ = new LinkBoxServer();
-        serverStart_ = new ScriptNotifier(this, "Notification of the start is dropped");
-        serverStop_ = new ScriptNotifier(this, "Notification of the stop is dropped");
-        serverRequest_ = new ScriptNotifier(this, "Notification of a request is dropped");
-        serverResponse_ = new ScriptNotifier(this, "Notification of a response is dropped");
-        serverError_ = new ScriptNotifier(this, "Notification of an error is dropped");
+        serverStart_ = new ScriptNotifier(this, () -> I18N.get(this, "capai.notify.start.dropped"));
+        serverStop_ = new ScriptNotifier(this, () -> I18N.get(this, "capai.notify.stop.dropped"));
+        serverRequest_ = new ScriptNotifier(this, () -> I18N.get(this, "capai.notify.request.dropped"));
+        serverResponse_ = new ScriptNotifier(this, () -> I18N.get(this, "capai.notify.response.dropped"));
+        serverError_ = new ScriptNotifier(this, () -> I18N.get(this, "capai.notify.error.dropped"));
         gson_ = new Gson();
     }
 

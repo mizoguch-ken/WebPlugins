@@ -92,6 +92,15 @@ java --add-modules javafx.controls,javafx.web -cp "Dbg/target/Dbg.jar:PluginApi/
 
 ---
 
+## Internationalization / 多言語対応
+
+* **Bilingual UI & Live Language Switching (`en` / `ja`)**: Both the DevTools window title / Java console messages (`Dbg.java`) and the WebView panel (`devtools/index.html` + `devtools/devtools.js`) support English (`en`, fallback) and Japanese (`ja`) resolved via `-Ddecotofu.language`, `WebViewerPlugin.locale()`, and `Locale.getDefault(Locale.Category.DISPLAY)`.
+  * **日英UI・動的切り替え**: DevTools の Stage ウィンドウタイトルや Java コンソールエラーだけでなく、DevTools パネル内のラベル・メッセージ（`index.html` / `devtools.js`）も英語（フォールバック）および日本語に対応しています。
+* **Runtime Sync (`onLanguageChanged`)**: Calling `onLanguageChanged(Locale)` updates any open DevTools window title immediately and pushes `"lang": "en" | "ja"` in `window.dbgUi.state(...)` so all panel UI strings update dynamically without closing or reloading DevTools (`agent.js` bridge payloads remain protocol-fixed).
+  * **実行時同期 (`onLanguageChanged`)**: `onLanguageChanged(Locale)` により、開いている DevTools ウィンドウのタイトルを即座に更新し、`dbgUi.state` の `"lang"` 経由でパネル表示を動的に切り替えます（ページ側 `agent.js` の通信プロトコルは不変）。
+
+---
+
 ## Requirements & Build / 要件とビルド
 
 * **Requirements**: JDK 21 or later (with `javafx.controls`, `javafx.web`, `jdk.jsobject`), Apache Maven 3.8 or later.

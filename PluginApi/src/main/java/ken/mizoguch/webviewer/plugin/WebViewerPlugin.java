@@ -2,6 +2,7 @@ package ken.mizoguch.webviewer.plugin;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import javafx.concurrent.Worker;
 import javafx.scene.image.Image;
 import javafx.scene.web.WebEngine;
@@ -39,4 +40,20 @@ public interface WebViewerPlugin {
     void writeStackTrace(String name, Throwable throwable);
 
     void write(String name, String msg, boolean err);
+
+    // localization
+    default Locale locale() {
+        String prop = System.getProperty("decotofu.language");
+        if (prop != null) {
+            return "ja".equalsIgnoreCase(prop.trim()) ? Locale.JAPANESE : Locale.ENGLISH;
+        }
+        Locale display = Locale.getDefault(Locale.Category.DISPLAY);
+        if ((display != null) && "ja".equalsIgnoreCase(display.getLanguage())) {
+            return Locale.JAPANESE;
+        }
+        return Locale.ENGLISH;
+    }
+
+    default void onLanguageChanged(Locale locale) {
+    }
 }

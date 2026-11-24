@@ -126,12 +126,12 @@ public enum LinkBoxEnums {
 
     private LinkBoxEnums(Integer number) {
         number_ = number;
-        string_ = Integer.toHexString(number_).toUpperCase(Locale.getDefault());
+        string_ = Integer.toHexString(number_).toUpperCase(Locale.ROOT);
     }
 
     private LinkBoxEnums(String string) {
         number_ = Integer.parseInt(string, 16);
-        string_ = string.toUpperCase(Locale.getDefault());
+        string_ = string.toUpperCase(Locale.ROOT);
     }
 
     public int getNumber() {

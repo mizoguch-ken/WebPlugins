@@ -81,6 +81,15 @@ Library modules produce plain (unshaded) JARs. They are **not** placed in `web/p
 
 ---
 
+## Internationalization / 多言語対応
+
+* **Supported Languages (`en` / `ja`)**: All modules (`PluginKit`, `LlmCore`, `Llm`, `Dbg`, and all host plug-ins) provide English (`en`, fallback for all unsupported locales) and Japanese (`ja`) messages for UI elements (`LicenseDialog`, `Dbg` DevTools window/panel, `WebCam` window title) as well as console logs, validation errors, and exceptions.
+  * **対応言語 (`en` / `ja`)**: 全モジュール（`PluginKit`, `LlmCore`, `Llm`, `Dbg` および各プラグイン）で、UI（`LicenseDialog`、`Dbg` DevTools ウィンドウ/パネル、`WebCam` ウィンドウタイトル）とコンソールログ・エラー・例外メッセージの両方について英語（未対応ロケール時のフォールバック）および日本語に対応しています。
+* **Locale Resolution & Live Switching**: Language selection checks system property `-Ddecotofu.language=auto|en|ja`, host `WebViewerPlugin.locale()`, and `Locale.getDefault(Locale.Category.DISPLAY)`. Hosts notify plug-ins of runtime language switches via `WebViewerPlugin.onLanguageChanged(Locale)` (for example, `Dbg` updates its open DevTools window title and web panel dynamically).
+  * **ロケール解決と動的切り替え**: システムプロパティ `-Ddecotofu.language=auto|en|ja`、ホストの `WebViewerPlugin.locale()`、および `Locale.getDefault(Locale.Category.DISPLAY)` を参照して言語を決定します。実行時に言語が変更されると `WebViewerPlugin.onLanguageChanged(Locale)` によりプラグインへ通知されます。
+
+---
+
 ## Build & Test / ビルドとテスト
 
 * **Requirements**: JDK 21 or later (with JavaFX modules) and Apache Maven 3.8 or later.

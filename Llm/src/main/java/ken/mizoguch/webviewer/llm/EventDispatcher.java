@@ -39,7 +39,7 @@ final class EventDispatcher {
     EventDispatcher(WebViewerPlugin host, EventSink sink) {
         host_ = host;
         sink_ = sink;
-        eventNotifier_ = new ScriptNotifier(host, "Notification of an event is dropped");
+        eventNotifier_ = new ScriptNotifier(host, () -> LlmI18n.get(host, "llm.event.dropped"));
     }
 
     void setEventFunction(String func) {
@@ -200,7 +200,8 @@ final class EventDispatcher {
         err.addProperty("taskId", taskId);
         String msg = (failure == null) ? null : failure.getMessage();
         err.addProperty("error", ((msg == null) || msg.isEmpty())
-                ? ((failure == null) ? "Unknown error" : failure.getClass().getSimpleName())
+                ? ((failure == null) ? LlmI18n.get(host_, "llm.error.unknown")
+                        : failure.getClass().getSimpleName())
                 : msg);
         if (cancelled) {
             err.addProperty("cancelled", true);

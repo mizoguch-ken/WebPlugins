@@ -21,15 +21,14 @@ final class TextChunker {
 
     static List<String> chunk(String text, int chunkSize, int overlap) {
         if (text == null) {
-            throw new IllegalArgumentException("Text to chunk must not be null");
+            throw new IllegalArgumentException(LlmI18n.get("llm.chunk.nullText"));
         }
         if ((chunkSize < MIN_CHUNK_SIZE) || (chunkSize > MAX_CHUNK_SIZE)) {
-            throw new IllegalArgumentException("\"chunkSize\" must be between "
-                    + MIN_CHUNK_SIZE + " and " + MAX_CHUNK_SIZE);
+            throw new IllegalArgumentException(
+                    LlmI18n.get("llm.chunk.chunkSizeRange", MIN_CHUNK_SIZE, MAX_CHUNK_SIZE));
         }
         if ((overlap < 0) || (overlap > (chunkSize / 2))) {
-            throw new IllegalArgumentException(
-                    "\"overlap\" must be between 0 and " + (chunkSize / 2));
+            throw new IllegalArgumentException(LlmI18n.get("llm.chunk.overlapRange", chunkSize / 2));
         }
 
         int len = text.length();

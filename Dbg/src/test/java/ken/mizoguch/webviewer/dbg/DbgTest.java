@@ -9,7 +9,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import javafx.application.Platform;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 
 /**
  * test of the names the page of the WebViewer uses on the plug-in : the page writes the names
@@ -257,6 +259,36 @@ public class DbgTest {
             assertFalse(plugin.copyText(null));
             assertTrue(plugin.copyText("dbg copy check"));
         } finally {
+            plugin.close();
+        }
+    }
+
+    @Test
+    public void i18nBundleAndDynamicLanguageAreSupported() {
+        PluginI18n.Bundle bundle = PluginI18n.bundle(Dbg.class);
+
+        assertFalse(bundle.englishKeys().isEmpty());
+        assertEquals(bundle.englishKeys(), bundle.japaneseKeys());
+        for (String key : bundle.englishKeys()) {
+            assertFalse(bundle.englishBundle().get(key).isBlank(), key);
+            assertFalse(bundle.japaneseBundle().get(key).isBlank(), key);
+        }
+
+        Dbg plugin = new Dbg();
+
+        try {
+            System.setProperty(PluginI18n.PROPERTY_LANGUAGE, PluginI18n.LANG_JA);
+            assertTrue(plugin.panelState().contains("\"lang\":\"ja\""));
+            assertTrue(plugin.save("console", "../bad.txt").contains("ファイルパスが不正です"));
+            assertTrue(plugin.cmd("bad name!", "{}").contains("ページの処理名が不正です"));
+
+            System.setProperty(PluginI18n.PROPERTY_LANGUAGE, PluginI18n.LANG_EN);
+            assertTrue(plugin.panelState().contains("\"lang\":\"en\""));
+            assertTrue(plugin.save("console", "../bad.txt").contains("Incorrect file path"));
+            assertTrue(plugin.cmd("bad name!", "{}").contains("incorrect name of the work of the page"));
+        } finally {
+            System.clearProperty(PluginI18n.PROPERTY_LANGUAGE);
+            Locale.setDefault(Locale.Category.DISPLAY, Locale.US);
             plugin.close();
         }
     }

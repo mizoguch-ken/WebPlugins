@@ -3,6 +3,7 @@ package ken.mizoguch.webviewer.plugin.kit;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Supplier;
 import javafx.application.Platform;
 import javafx.concurrent.Worker;
 import javafx.scene.web.WebEngine;
@@ -38,6 +39,7 @@ public final class ScriptNotifier {
 
     private final WebViewerPlugin host_;
     private final String dropped_;
+    private final Supplier<String> droppedSupplier_;
     private final BlockingQueue<String> queue_;
     private final AtomicBoolean drainScheduled_ = new AtomicBoolean(false);
     private final AtomicBoolean pendingNoArg_ = new AtomicBoolean(false);
@@ -53,8 +55,23 @@ public final class ScriptNotifier {
      * @param dropped message written in the console of the WebViewer when a notification is dropped
      */
     public ScriptNotifier(WebViewerPlugin host, String dropped) {
+        this(host, dropped, null);
+    }
+
+    /**
+     * a notification of a plug-in whose dropped-notification message is resolved dynamically
+     *
+     * @param host the WebViewer which loaded the plug-in, the plug-in itself
+     * @param droppedSupplier supplier producing the localized dropped message when needed
+     */
+    public ScriptNotifier(WebViewerPlugin host, Supplier<String> droppedSupplier) {
+        this(host, null, droppedSupplier);
+    }
+
+    private ScriptNotifier(WebViewerPlugin host, String dropped, Supplier<String> droppedSupplier) {
         host_ = host;
         dropped_ = dropped;
+        droppedSupplier_ = droppedSupplier;
         queue_ = new LinkedBlockingQueue<>(QUEUE_MAX);
     }
 
@@ -220,7 +237,8 @@ public final class ScriptNotifier {
 
     private boolean enqueueArguments(String arguments) {
         if ((arguments != null) && !queue_.offer(arguments)) {
-            host_.write(host_.functionName(), dropped_, true);
+            String message = (droppedSupplier_ != null) ? droppedSupplier_.get() : dropped_;
+            host_.write(host_.functionName(), message, true);
             return false;
         }
         return true;

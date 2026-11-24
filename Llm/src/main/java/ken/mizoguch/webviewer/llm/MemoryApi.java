@@ -90,7 +90,7 @@ public final class MemoryApi {
             ContinualLearner learner = core_.continual();
             ContinualConfig.Builder builder = learner.config().toBuilder();
             if ((optionsJson != null) && !optionsJson.trim().isEmpty()) {
-                JsonObject opts = JsonUtil.parseObject(optionsJson, "Memory configuration");
+                JsonObject opts = JsonUtil.parseObject(optionsJson, LlmI18n.get("llm.ctx.memoryConfig"));
                 Integer vInt;
                 Long vLong;
                 Double vDbl;
@@ -164,7 +164,7 @@ public final class MemoryApi {
      */
     public String addInstinct(String entryJson) {
         try {
-            JsonObject obj = JsonUtil.parseObject(entryJson, "Instinct memory entry");
+            JsonObject obj = JsonUtil.parseObject(entryJson, LlmI18n.get("llm.ctx.instinctEntry"));
             String content = JsonUtil.optString(obj, "content");
             MemoryBank.Kind kind = parseEnumOr(MemoryBank.Kind.class,
                     JsonUtil.optString(obj, "kind"), MemoryBank.Kind.RULE, "kind");
@@ -188,13 +188,12 @@ public final class MemoryApi {
      */
     public String observe(String entryJson) {
         try {
-            JsonObject obj = JsonUtil.parseObject(entryJson, "Observed memory entry");
+            JsonObject obj = JsonUtil.parseObject(entryJson, LlmI18n.get("llm.ctx.observedEntry"));
             String content = JsonUtil.optString(obj, "content");
             MemoryBank.Layer layer = parseEnumOr(MemoryBank.Layer.class,
                     JsonUtil.optString(obj, "layer"), MemoryBank.Layer.WORKING, "layer");
             if (layer == MemoryBank.Layer.INSTINCT) {
-                throw new IllegalArgumentException(
-                        "Use addInstinct() to register immutable INSTINCT entries");
+                throw new IllegalArgumentException(LlmI18n.get("llm.memory.useAddInstinct"));
             }
             MemoryBank.Kind kind = parseEnumOr(MemoryBank.Kind.class,
                     JsonUtil.optString(obj, "kind"),
@@ -217,7 +216,7 @@ public final class MemoryApi {
                         (conf == null) ? 0.7d : conf.doubleValue(), source);
                 case SEMANTIC -> learner.confirmSemantic(kind, scope, subject, content, alt,
                         (imp == null) ? 0.85d : imp.doubleValue(), source);
-                case INSTINCT -> throw new IllegalStateException("Unreachable");
+                case INSTINCT -> throw new IllegalStateException(LlmI18n.get("llm.error.unreachable"));
             };
             return entryJson(entry);
         } catch (IllegalArgumentException ex) {
@@ -232,7 +231,7 @@ public final class MemoryApi {
      */
     public String learn(String entryJson) {
         try {
-            JsonObject obj = JsonUtil.parseObject(entryJson, "Learned semantic entry");
+            JsonObject obj = JsonUtil.parseObject(entryJson, LlmI18n.get("llm.ctx.semanticEntry"));
             String content = JsonUtil.optString(obj, "content");
             MemoryBank.Kind kind = parseEnumOr(MemoryBank.Kind.class,
                     JsonUtil.optString(obj, "kind"), MemoryBank.Kind.FACT, "kind");
@@ -257,7 +256,7 @@ public final class MemoryApi {
      */
     public String correct(String entryJson) {
         try {
-            JsonObject obj = JsonUtil.parseObject(entryJson, "Correction memory entry");
+            JsonObject obj = JsonUtil.parseObject(entryJson, LlmI18n.get("llm.ctx.correctionEntry"));
             String content = JsonUtil.optString(obj, "content");
             String scope = JsonUtil.optString(obj, "scope");
             String subject = JsonUtil.optString(obj, "subject");
@@ -281,7 +280,7 @@ public final class MemoryApi {
      */
     public String avoid(String entryJson) {
         try {
-            JsonObject obj = JsonUtil.parseObject(entryJson, "Avoidance memory entry");
+            JsonObject obj = JsonUtil.parseObject(entryJson, LlmI18n.get("llm.ctx.avoidanceEntry"));
             String content = JsonUtil.optString(obj, "content");
             String scope = JsonUtil.optString(obj, "scope");
             String subject = JsonUtil.optString(obj, "subject");
@@ -321,7 +320,7 @@ public final class MemoryApi {
     public Boolean forget(long id) {
         MemoryBank.Entry existing = core_.continual().memory().get(id);
         if ((existing != null) && (existing.origin() == MemoryBank.Origin.INSTINCT)) {
-            owner_.logError("Cannot forget immutable instinct memory " + id);
+            owner_.logError(LlmI18n.get(owner_, "llm.memory.cannotForgetInstinct", id));
             return false;
         }
         return core_.continual().forget(id);
@@ -352,7 +351,8 @@ public final class MemoryApi {
             boolean includeAvoidances = true;
 
             if ((optionsJson != null) && !optionsJson.trim().isEmpty()) {
-                JsonObject opts = JsonUtil.parseObject(optionsJson, "Memory recall options");
+                JsonObject opts = JsonUtil.parseObject(optionsJson,
+                        LlmI18n.get("llm.ctx.memoryRecallOptions"));
                 scopes = parseScopesOption(opts);
                 String layerStr = JsonUtil.optString(opts, "maxLayer");
                 if (layerStr != null) {
@@ -361,7 +361,7 @@ public final class MemoryApi {
                 Integer lim = JsonUtil.optInt(opts, "limit");
                 if (lim != null) {
                     if ((lim.intValue() < 1) || (lim.intValue() > 200)) {
-                        throw new IllegalArgumentException("recall limit out of range (1..200)");
+                        throw new IllegalArgumentException(LlmI18n.get("llm.memory.recallLimitRange"));
                     }
                     limit = lim.intValue();
                 }
@@ -399,7 +399,8 @@ public final class MemoryApi {
             int limit = 100;
 
             if ((optionsJson != null) && !optionsJson.trim().isEmpty()) {
-                JsonObject opts = JsonUtil.parseObject(optionsJson, "Memory list options");
+                JsonObject opts = JsonUtil.parseObject(optionsJson,
+                        LlmI18n.get("llm.ctx.memoryListOptions"));
                 String oStr = JsonUtil.optString(opts, "origin");
                 if (oStr != null) {
                     origin = parseEnumOr(MemoryBank.Origin.class, oStr, null, "origin");
@@ -416,7 +417,7 @@ public final class MemoryApi {
                 Integer lim = JsonUtil.optInt(opts, "limit");
                 if (lim != null) {
                     if ((lim.intValue() < 0) || (lim.intValue() > 10000)) {
-                        throw new IllegalArgumentException("list limit out of range (0..10000)");
+                        throw new IllegalArgumentException(LlmI18n.get("llm.memory.listLimitRange"));
                     }
                     limit = lim.intValue();
                 }
@@ -580,7 +581,7 @@ public final class MemoryApi {
         try {
             return Enum.valueOf(type, value.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException("Invalid memory " + field + ": \"" + value + "\"");
+            throw new IllegalArgumentException(LlmI18n.get("llm.memory.invalidEnum", field, value));
         }
     }
 }

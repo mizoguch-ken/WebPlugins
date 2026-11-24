@@ -59,8 +59,7 @@ record RemoteConfig(
                 case "openai" -> OPENAI;
                 case "anthropic" -> ANTHROPIC;
                 default -> throw LlmRemoteException.config(
-                        "Unsupported remote provider \"" + raw
-                                + "\": use \"openai\" or \"anthropic\"");
+                        LlmI18n.get("llm.remoteCfg.unsupportedProvider", raw));
             };
         }
     }
@@ -100,7 +99,7 @@ record RemoteConfig(
 
     static RemoteConfig parseAndMerge(RemoteConfig base, String configInput) {
         if ((configInput == null) || configInput.trim().isEmpty()) {
-            throw LlmRemoteException.config("Remote endpoint configuration must not be empty");
+            throw LlmRemoteException.config(LlmI18n.get("llm.remoteCfg.empty"));
         }
         String trimmed = configInput.trim();
         if (!trimmed.startsWith("{")) {
@@ -126,7 +125,7 @@ record RemoteConfig(
 
         JsonObject json;
         try {
-            json = JsonUtil.parseObject(trimmed, "Remote configuration");
+            json = JsonUtil.parseObject(trimmed, LlmI18n.get("llm.ctx.remoteConfig"));
         } catch (IllegalArgumentException ex) {
             throw LlmRemoteException.config(ex.getMessage());
         }
@@ -184,20 +183,19 @@ record RemoteConfig(
         }
 
         if ((timeoutSeconds < 1) || (timeoutSeconds > MAX_TIMEOUT_SECONDS)) {
-            throw LlmRemoteException.config("Remote \"timeout\" must be between 1 and "
-                    + MAX_TIMEOUT_SECONDS + " seconds");
+            throw LlmRemoteException.config(
+                    LlmI18n.get("llm.remoteCfg.timeoutRange", MAX_TIMEOUT_SECONDS));
         }
         if ((connectTimeoutSeconds < 1) || (connectTimeoutSeconds > MAX_CONNECT_TIMEOUT_SECONDS)) {
-            throw LlmRemoteException.config("Remote \"connectTimeout\" must be between 1 and "
-                    + MAX_CONNECT_TIMEOUT_SECONDS + " seconds");
+            throw LlmRemoteException.config(
+                    LlmI18n.get("llm.remoteCfg.connectTimeoutRange", MAX_CONNECT_TIMEOUT_SECONDS));
         }
         if ((streamIdleTimeoutSeconds < 1) || (streamIdleTimeoutSeconds > MAX_TIMEOUT_SECONDS)) {
-            throw LlmRemoteException.config("Remote \"streamIdleTimeout\" must be between 1 and "
-                    + MAX_TIMEOUT_SECONDS + " seconds");
+            throw LlmRemoteException.config(
+                    LlmI18n.get("llm.remoteCfg.streamIdleTimeoutRange", MAX_TIMEOUT_SECONDS));
         }
         if ((maxRetries < 0) || (maxRetries > MAX_RETRIES)) {
-            throw LlmRemoteException.config("Remote \"retries\" must be between 0 and "
-                    + MAX_RETRIES);
+            throw LlmRemoteException.config(LlmI18n.get("llm.remoteCfg.retriesRange", MAX_RETRIES));
         }
 
         URI baseUri;
@@ -210,7 +208,7 @@ record RemoteConfig(
             baseUri = base.baseUri();
             urlQueryParams = (queryObj == null) ? base.queryParams() : Map.of();
         } else {
-            throw LlmRemoteException.config("Remote configuration requires \"baseUrl\"");
+            throw LlmRemoteException.config(LlmI18n.get("llm.remoteCfg.baseUrlRequired"));
         }
 
         Map<String, String> resolvedQueryParams;
@@ -251,8 +249,8 @@ record RemoteConfig(
                 : ((base != null) ? base.headers() : Map.of());
 
         if ((resolvedKey != null) && hasHeaderIgnoreCase(resolvedHeaders, resolvedAuthHeader)) {
-            throw LlmRemoteException.config("Cannot specify both \"apiKey\" and custom header \""
-                    + resolvedAuthHeader + "\"");
+            throw LlmRemoteException.config(
+                    LlmI18n.get("llm.remoteCfg.conflictApiKeyHeader", resolvedAuthHeader));
         }
 
         return new RemoteConfig(
@@ -313,24 +311,23 @@ record RemoteConfig(
     private static ParsedUrl parseUrlAndQuery(String rawUrl) {
         String trimmed = rawUrl.trim();
         if (trimmed.isEmpty()) {
-            throw LlmRemoteException.config("Remote \"baseUrl\" must not be empty");
+            throw LlmRemoteException.config(LlmI18n.get("llm.remoteCfg.baseUrlEmpty"));
         }
         URI uri;
         try {
             uri = new URI(trimmed);
         } catch (URISyntaxException ex) {
-            throw LlmRemoteException.config("Invalid remote \"baseUrl\": " + trimmed);
+            throw LlmRemoteException.config(LlmI18n.get("llm.remoteCfg.invalidBaseUrl", trimmed));
         }
         String scheme = (uri.getScheme() == null) ? null : uri.getScheme().toLowerCase(Locale.ROOT);
         if (!"http".equals(scheme) && !"https".equals(scheme)) {
-            throw LlmRemoteException.config("Remote \"baseUrl\" must use http:// or https://");
+            throw LlmRemoteException.config(LlmI18n.get("llm.remoteCfg.baseUrlScheme"));
         }
         if ((uri.getHost() == null) || uri.getHost().isEmpty()) {
-            throw LlmRemoteException.config("Remote \"baseUrl\" must specify a host: " + trimmed);
+            throw LlmRemoteException.config(LlmI18n.get("llm.remoteCfg.baseUrlHost", trimmed));
         }
         if ((uri.getRawUserInfo() != null) || (uri.getRawFragment() != null)) {
-            throw LlmRemoteException.config(
-                    "Remote \"baseUrl\" must not contain userinfo or fragment");
+            throw LlmRemoteException.config(LlmI18n.get("llm.remoteCfg.baseUrlUserinfoOrFragment"));
         }
         String path = (uri.getRawPath() == null) ? "" : uri.getRawPath();
         while (path.endsWith("/")) {
@@ -341,7 +338,7 @@ record RemoteConfig(
             URI baseOnly = new URI(scheme, null, uri.getHost(), uri.getPort(), path, null, null);
             return new ParsedUrl(baseOnly, parsedQuery);
         } catch (URISyntaxException ex) {
-            throw LlmRemoteException.config("Invalid remote \"baseUrl\": " + trimmed);
+            throw LlmRemoteException.config(LlmI18n.get("llm.remoteCfg.invalidBaseUrl", trimmed));
         }
     }
 
@@ -357,7 +354,7 @@ record RemoteConfig(
             }
             if (map.size() >= MAX_QUERY_PARAMS) {
                 throw LlmRemoteException.config(
-                        "Too many URL query parameters (max " + MAX_QUERY_PARAMS + ")");
+                        LlmI18n.get("llm.remoteCfg.tooManyUrlQueryParams", MAX_QUERY_PARAMS));
             }
             int eq = pair.indexOf('=');
             String rawKey = (eq < 0) ? pair : pair.substring(0, eq);
@@ -368,13 +365,13 @@ record RemoteConfig(
                 key = URLDecoder.decode(rawKey, StandardCharsets.UTF_8).trim();
                 val = URLDecoder.decode(rawVal, StandardCharsets.UTF_8);
             } catch (IllegalArgumentException ex) {
-                throw LlmRemoteException.config("Invalid URL query encoding in \"baseUrl\"");
+                throw LlmRemoteException.config(LlmI18n.get("llm.remoteCfg.invalidQueryEncoding"));
             }
             if (key.isEmpty()) {
-                throw LlmRemoteException.config("Query parameter name must not be empty");
+                throw LlmRemoteException.config(LlmI18n.get("llm.remoteCfg.queryParamNameEmpty"));
             }
-            validateControlChars("Query parameter name", key);
-            validateControlChars("Query parameter \"" + key + "\"", val);
+            validateControlChars(LlmI18n.get("llm.ctx.queryParamName"), key);
+            validateControlChars(LlmI18n.get("llm.ctx.queryParamNamed", key), val);
             map.put(key, val);
         }
         return map;
@@ -383,7 +380,7 @@ record RemoteConfig(
     private static Map<String, String> validateQueryParams(JsonObject queryObj) {
         if (queryObj.size() > MAX_QUERY_PARAMS) {
             throw LlmRemoteException.config(
-                    "Too many query parameters (max " + MAX_QUERY_PARAMS + ")");
+                    LlmI18n.get("llm.remoteCfg.tooManyQueryParams", MAX_QUERY_PARAMS));
         }
         Map<String, String> map = new LinkedHashMap<>();
         for (Map.Entry<String, JsonElement> entry : queryObj.entrySet()) {
@@ -393,15 +390,15 @@ record RemoteConfig(
             }
             if (!rawVal.isJsonPrimitive() || !rawVal.getAsJsonPrimitive().isString()) {
                 throw LlmRemoteException.config(
-                        "Query parameter \"" + entry.getKey() + "\" value must be a string");
+                        LlmI18n.get("llm.remoteCfg.queryParamMustBeString", entry.getKey()));
             }
             String name = entry.getKey().trim();
             if (name.isEmpty()) {
-                throw LlmRemoteException.config("Query parameter name must not be empty");
+                throw LlmRemoteException.config(LlmI18n.get("llm.remoteCfg.queryParamNameEmpty"));
             }
-            validateControlChars("Query parameter name", name);
+            validateControlChars(LlmI18n.get("llm.ctx.queryParamName"), name);
             String val = rawVal.getAsString();
-            validateControlChars("Query parameter \"" + name + "\"", val);
+            validateControlChars(LlmI18n.get("llm.ctx.queryParamNamed", name), val);
             map.put(name, val);
         }
         return map;
@@ -416,14 +413,15 @@ record RemoteConfig(
         merged.putAll(second);
         if (merged.size() > MAX_QUERY_PARAMS) {
             throw LlmRemoteException.config(
-                    "Too many query parameters (max " + MAX_QUERY_PARAMS + ")");
+                    LlmI18n.get("llm.remoteCfg.tooManyQueryParams", MAX_QUERY_PARAMS));
         }
         return merged;
     }
 
     private static Map<String, String> validateHeaders(JsonObject headerObj) {
         if (headerObj.size() > MAX_HEADERS) {
-            throw LlmRemoteException.config("Too many custom headers (max " + MAX_HEADERS + ")");
+            throw LlmRemoteException.config(
+                    LlmI18n.get("llm.remoteCfg.tooManyCustomHeaders", MAX_HEADERS));
         }
         Map<String, String> map = new LinkedHashMap<>();
         for (Map.Entry<String, JsonElement> entry : headerObj.entrySet()) {
@@ -433,12 +431,12 @@ record RemoteConfig(
             }
             if (!rawVal.isJsonPrimitive() || !rawVal.getAsJsonPrimitive().isString()) {
                 throw LlmRemoteException.config(
-                        "Header \"" + entry.getKey() + "\" value must be a string");
+                        LlmI18n.get("llm.remoteCfg.headerMustBeString", entry.getKey()));
             }
             String name = entry.getKey().trim();
             validateHeaderName(name, name);
             String val = rawVal.getAsString();
-            validateControlChars("Header \"" + name + "\"", val);
+            validateControlChars(LlmI18n.get("llm.ctx.headerNamed", name), val);
             map.put(name, val);
         }
         return map;
@@ -446,11 +444,10 @@ record RemoteConfig(
 
     private static void validateHeaderName(String label, String name) {
         if (!isValidHeaderName(name)) {
-            throw LlmRemoteException.config("Invalid HTTP header name for " + label + ": \"" + name + "\"");
+            throw LlmRemoteException.config(LlmI18n.get("llm.remoteCfg.invalidHeaderName", label, name));
         }
         if (RESTRICTED_HEADERS.contains(name.toLowerCase(Locale.ROOT))) {
-            throw LlmRemoteException.config(
-                    "Restricted HTTP header cannot be overridden: \"" + name + "\"");
+            throw LlmRemoteException.config(LlmI18n.get("llm.remoteCfg.restrictedHeader", name));
         }
     }
 
@@ -482,13 +479,13 @@ record RemoteConfig(
 
     private static void validateControlChars(String label, String value) {
         if (value.length() > MAX_VALUE_LENGTH) {
-            throw LlmRemoteException.config(label + " exceeds maximum length of "
-                    + MAX_VALUE_LENGTH + " characters");
+            throw LlmRemoteException.config(
+                    LlmI18n.get("llm.remoteCfg.exceedsMaxLength", label, MAX_VALUE_LENGTH));
         }
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
             if ((c == '\r') || (c == '\n') || (c == '\0')) {
-                throw LlmRemoteException.config(label + " must not contain control line breaks");
+                throw LlmRemoteException.config(LlmI18n.get("llm.remoteCfg.controlLineBreaks", label));
             }
         }
     }
@@ -511,7 +508,7 @@ record RemoteConfig(
         try {
             return new URI(url.toString());
         } catch (URISyntaxException ex) {
-            throw LlmRemoteException.config("Invalid endpoint path: " + url);
+            throw LlmRemoteException.config(LlmI18n.get("llm.remoteCfg.invalidEndpointPath", url));
         }
     }
 

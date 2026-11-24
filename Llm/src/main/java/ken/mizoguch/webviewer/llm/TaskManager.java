@@ -228,8 +228,7 @@ final class TaskManager {
 
     int cancelLane(String lane) {
         if (!LANE_LOCAL.equals(lane) && !LANE_REMOTE.equals(lane)) {
-            throw new IllegalArgumentException(
-                    "Invalid lane \"" + lane + "\": use \"local\" or \"remote\"");
+            throw new IllegalArgumentException(LlmI18n.get("llm.task.invalidLane", lane));
         }
         List<ActiveTask> targets = new ArrayList<>();
         synchronized (stateLock_) {

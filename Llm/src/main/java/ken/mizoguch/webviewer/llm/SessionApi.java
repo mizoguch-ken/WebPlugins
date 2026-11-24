@@ -283,7 +283,7 @@ public final class SessionApi {
                 });
         if (taskId == null) {
             sessions_.finishChatTurn(sessionId, null, null, false);
-            owner_.logError("Remote task queue limit reached or plug-in is closed");
+            owner_.logError(LlmI18n.get(owner_, "llm.remote.queueFullOrClosed"));
         }
         return taskId;
     }
@@ -292,7 +292,7 @@ public final class SessionApi {
         if ((optionsJson == null) || optionsJson.trim().isEmpty()) {
             return null;
         }
-        JsonObject opts = JsonUtil.parseObject(optionsJson, "Session chat options");
+        JsonObject opts = JsonUtil.parseObject(optionsJson, LlmI18n.get("llm.ctx.sessionChatOptions"));
         if (!opts.has("rag") || opts.get("rag").isJsonNull()) {
             return null;
         }
@@ -306,11 +306,10 @@ public final class SessionApi {
         } else if (ragEl.isJsonObject()) {
             plan = ragApi_.prepareRetrieve(ragEl.getAsJsonObject(), true);
         } else {
-            throw new IllegalArgumentException("\"rag\" option must be a boolean or JSON object");
+            throw new IllegalArgumentException(LlmI18n.get("llm.session.ragOptionType"));
         }
         if ((userText == null) || userText.trim().isEmpty()) {
-            throw new IllegalArgumentException(
-                    "RAG-augmented session turn requires non-empty userText");
+            throw new IllegalArgumentException(LlmI18n.get("llm.session.ragUserTextRequired"));
         }
         return plan;
     }
@@ -319,7 +318,7 @@ public final class SessionApi {
         if ((optionsJson == null) || optionsJson.trim().isEmpty()) {
             return null;
         }
-        JsonObject opts = JsonUtil.parseObject(optionsJson, "Session chat options");
+        JsonObject opts = JsonUtil.parseObject(optionsJson, LlmI18n.get("llm.ctx.sessionChatOptions"));
         if (!opts.has("memory") || opts.get("memory").isJsonNull()) {
             return null;
         }
@@ -331,8 +330,7 @@ public final class SessionApi {
             return new MemoryPlan(List.of(), null, 6, true, false, 3000);
         }
         if (!memEl.isJsonObject()) {
-            throw new IllegalArgumentException(
-                    "\"memory\" option must be a boolean or JSON object");
+            throw new IllegalArgumentException(LlmI18n.get("llm.session.memoryOptionType"));
         }
         JsonObject memObj = memEl.getAsJsonObject();
         List<String> scopes = new ArrayList<>();
@@ -359,7 +357,7 @@ public final class SessionApi {
                 maxLayer = MemoryBank.Layer.valueOf(layerStr.trim().toUpperCase(Locale.ROOT));
             } catch (IllegalArgumentException ex) {
                 throw new IllegalArgumentException(
-                        "Invalid memory maxLayer: \"" + layerStr + "\"");
+                        LlmI18n.get("llm.session.invalidMemoryMaxLayer", layerStr));
             }
         }
         Integer limObj = JsonUtil.optInt(memObj, "limit");
@@ -368,7 +366,7 @@ public final class SessionApi {
         }
         int limit = (limObj == null) ? 6 : limObj.intValue();
         if ((limit < 1) || (limit > 50)) {
-            throw new IllegalArgumentException("memory limit out of range (1..50): " + limit);
+            throw new IllegalArgumentException(LlmI18n.get("llm.session.memoryLimitRange", limit));
         }
         Boolean incAvoid = JsonUtil.optBoolean(memObj, "includeAvoidances");
         boolean includeAvoidances = (incAvoid == null) || incAvoid.booleanValue();
@@ -378,7 +376,7 @@ public final class SessionApi {
         int maxChars = (maxCharsObj == null) ? 3000 : maxCharsObj.intValue();
         if ((maxChars < 128) || (maxChars > 32000)) {
             throw new IllegalArgumentException(
-                    "memory maxChars out of range (128..32000): " + maxChars);
+                    LlmI18n.get("llm.session.memoryMaxCharsRange", maxChars));
         }
         return new MemoryPlan(List.copyOf(scopes), maxLayer, limit, includeAvoidances,
                 recordTurn, maxChars);

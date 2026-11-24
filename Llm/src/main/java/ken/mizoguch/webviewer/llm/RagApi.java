@@ -176,11 +176,11 @@ public final class RagApi {
      */
     public String indexText(String docId, String text, String optionsJson) {
         if ((docId == null) || docId.trim().isEmpty()) {
-            owner_.logError("Document \"docId\" must not be empty");
+            owner_.logError(LlmI18n.get(owner_, "llm.rag.docIdEmpty"));
             return null;
         }
         if ((text == null) || text.trim().isEmpty()) {
-            owner_.logError("Document \"text\" must not be empty");
+            owner_.logError(LlmI18n.get(owner_, "llm.rag.docTextEmpty"));
             return null;
         }
         return submitIndex(docId.trim(), text, null, optionsJson);
@@ -207,13 +207,14 @@ public final class RagApi {
      */
     public String retrieve(String queryText, String optionsJson) {
         if ((queryText == null) || queryText.trim().isEmpty()) {
-            owner_.logError("Retrieve \"queryText\" must not be empty");
+            owner_.logError(LlmI18n.get(owner_, "llm.rag.queryTextEmpty"));
             return null;
         }
         final RetrievePlan plan;
         try {
             JsonObject opts = ((optionsJson == null) || optionsJson.trim().isEmpty())
-                    ? new JsonObject() : JsonUtil.parseObject(optionsJson, "RAG retrieve options");
+                    ? new JsonObject()
+                    : JsonUtil.parseObject(optionsJson, LlmI18n.get("llm.ctx.ragRetrieveOptions"));
             plan = prepareRetrieve(opts, false);
         } catch (IllegalArgumentException | LlmRemoteException ex) {
             owner_.logException(ex);
@@ -237,7 +238,7 @@ public final class RagApi {
                     return new TaskManager.TaskOutcome(JsonUtil.GSON.toJson(out), false);
                 });
         if (taskId == null) {
-            owner_.logError("Remote task queue limit reached or plug-in is closed");
+            owner_.logError(LlmI18n.get(owner_, "llm.remote.queueFullOrClosed"));
         }
         return taskId;
     }
@@ -254,25 +255,25 @@ public final class RagApi {
             if (!"hybrid".equals(requestedMode) && !"vector".equals(requestedMode)
                     && !"lexical".equals(requestedMode)) {
                 throw new IllegalArgumentException(
-                        "Unsupported mode \"" + rawMode + "\": use auto/hybrid/vector/lexical");
+                        LlmI18n.get("llm.rag.unsupportedMode", rawMode));
             }
         }
         Integer tk = JsonUtil.optInt(safeOpts, "topK");
         int topK = (tk == null) ? RagStore.DEFAULT_TOP_K : tk.intValue();
         if (topK < 1) {
-            throw new IllegalArgumentException("\"topK\" must be at least 1");
+            throw new IllegalArgumentException(LlmI18n.get("llm.rag.topKMin"));
         }
         Double minScore = JsonUtil.optDouble(safeOpts, "minScore");
         Integer rk = JsonUtil.optInt(safeOpts, "rrfK");
         int rrfK = (rk == null) ? RagStore.DEFAULT_RRF_K : rk.intValue();
         if (rrfK < 1) {
-            throw new IllegalArgumentException("\"rrfK\" must be at least 1");
+            throw new IllegalArgumentException(LlmI18n.get("llm.rag.rrfKMin"));
         }
         Integer mcc = JsonUtil.optInt(safeOpts, "maxContextChars");
         int maxContextChars = (mcc == null) ? DEFAULT_MAX_CONTEXT_CHARS : mcc.intValue();
         if ((maxContextChars < MIN_CONTEXT_CHARS) || (maxContextChars > MAX_CONTEXT_CHARS)) {
-            throw new IllegalArgumentException("\"maxContextChars\" must be between "
-                    + MIN_CONTEXT_CHARS + " and " + MAX_CONTEXT_CHARS);
+            throw new IllegalArgumentException(
+                    LlmI18n.get("llm.rag.maxContextCharsRange", MIN_CONTEXT_CHARS, MAX_CONTEXT_CHARS));
         }
         JsonObject filter = JsonUtil.optObject(safeOpts, "filter");
         String profile = JsonUtil.optString(safeOpts, "profile");
@@ -323,8 +324,7 @@ public final class RagApi {
     private RemoteConfig requireEmbeddingProfile(String profile) {
         RemoteConfig cfg = profiles_.require(profile);
         if (cfg.provider() == RemoteConfig.Provider.ANTHROPIC) {
-            throw LlmRemoteException.config(
-                    "Embeddings endpoint is not supported by Anthropic provider");
+            throw LlmRemoteException.config(LlmI18n.get("llm.rag.anthropicEmbeddingsUnsupported"));
         }
         return cfg;
     }
@@ -342,7 +342,8 @@ public final class RagApi {
         }
         String hitsJson = store_.executeSearch(queryText, queryVec, plan.mode(), plan.topK(),
                 plan.minScore(), plan.rrfK(), plan.filter());
-        return new RetrieveOutcome(plan.mode(), JsonUtil.parseArray(hitsJson, "hits"));
+        return new RetrieveOutcome(plan.mode(),
+                JsonUtil.parseArray(hitsJson, LlmI18n.get("llm.ctx.hits")));
     }
 
     static String formatContextBlock(JsonArray hits, int maxChars) {
@@ -422,7 +423,8 @@ public final class RagApi {
 
         try {
             JsonObject opts = ((optionsJson == null) || optionsJson.trim().isEmpty())
-                    ? new JsonObject() : JsonUtil.parseObject(optionsJson, "RAG index options");
+                    ? new JsonObject()
+                    : JsonUtil.parseObject(optionsJson, LlmI18n.get("llm.ctx.ragIndexOptions"));
             Integer cs = JsonUtil.optInt(opts, "chunkSize");
             chunkSize = (cs == null) ? TextChunker.DEFAULT_CHUNK_SIZE : cs.intValue();
             Integer ov = JsonUtil.optInt(opts, "overlap");
@@ -433,7 +435,7 @@ public final class RagApi {
             } else if ((chunkSize < TextChunker.MIN_CHUNK_SIZE)
                     || (chunkSize > TextChunker.MAX_CHUNK_SIZE)
                     || (overlap < 0) || (overlap > (chunkSize / 2))) {
-                throw new IllegalArgumentException("Invalid chunkSize or overlap parameters");
+                throw new IllegalArgumentException(LlmI18n.get("llm.rag.invalidChunkOrOverlap"));
             }
             Boolean emb = JsonUtil.optBoolean(opts, "embed");
             embed = (emb == null) || emb.booleanValue();
@@ -443,7 +445,7 @@ public final class RagApi {
             batchSize = (bs == null) ? DEFAULT_BATCH_SIZE : bs.intValue();
             if ((batchSize < 1) || (batchSize > MAX_BATCH_SIZE)) {
                 throw new IllegalArgumentException(
-                        "\"batchSize\" must be between 1 and " + MAX_BATCH_SIZE);
+                        LlmI18n.get("llm.rag.batchSizeRange", MAX_BATCH_SIZE));
             }
             metadata = JsonUtil.optObject(opts, "metadata");
             profile = JsonUtil.optString(opts, "profile");
@@ -461,7 +463,8 @@ public final class RagApi {
                 (id, cancel) -> {
                     String sourceText = (inlineText != null) ? inlineText
                             : SandboxFiles.readUtf8Bounded(file,
-                                    LocalModelService.MAX_CORPUS_BYTES, "RAG document file");
+                                    LocalModelService.MAX_CORPUS_BYTES,
+                                    LlmI18n.get("llm.ctx.ragDocumentFile"));
                     List<String> chunks = TextChunker.chunk(sourceText, chunkSize, overlap);
                     List<float[]> vectors = new ArrayList<>(chunks.size());
 
@@ -504,7 +507,7 @@ public final class RagApi {
                     return new TaskManager.TaskOutcome(JsonUtil.GSON.toJson(out), false);
                 });
         if (taskId == null) {
-            owner_.logError("Remote task queue limit reached or plug-in is closed");
+            owner_.logError(LlmI18n.get(owner_, "llm.remote.queueFullOrClosed"));
         }
         return taskId;
     }
@@ -524,30 +527,32 @@ public final class RagApi {
         RemoteHttpClient.RemoteExecutionResult res = client_.execute(
                 snapshot, RemoteHttpClient.EMBEDDINGS, JsonUtil.GSON.toJson(req), listener,
                 cancel);
-        JsonObject resp = JsonUtil.parseObject(res.bodyJson(), "Embeddings response");
+        JsonObject resp = JsonUtil.parseObject(res.bodyJson(), LlmI18n.get("llm.ctx.embeddingsResponse"));
         JsonArray data = JsonUtil.optArray(resp, "data");
         if ((data == null) || (data.size() != inputs.size())) {
-            throw LlmRemoteException.parse("Embeddings response count mismatch: expected "
-                    + inputs.size() + ", got " + ((data == null) ? 0 : data.size()));
+            throw LlmRemoteException.parse(
+                    LlmI18n.get("llm.rag.embeddingsCountMismatch",
+                            inputs.size(), ((data == null) ? 0 : data.size())));
         }
         float[][] ordered = new float[inputs.size()][];
         for (int i = 0; i < data.size(); i++) {
             JsonElement itemEl = data.get(i);
             if ((itemEl == null) || !itemEl.isJsonObject()) {
-                throw LlmRemoteException.parse("Malformed embedding entry at index " + i);
+                throw LlmRemoteException.parse(LlmI18n.get("llm.rag.malformedEmbeddingEntry", i));
             }
             JsonObject item = itemEl.getAsJsonObject();
             Integer idxObj = JsonUtil.optInt(item, "index");
             int idx = (idxObj == null) ? i : idxObj.intValue();
             if ((idx < 0) || (idx >= inputs.size())) {
-                throw LlmRemoteException.parse("Out-of-range embedding index: " + idx);
+                throw LlmRemoteException.parse(LlmI18n.get("llm.rag.outOfRangeEmbeddingIndex", idx));
             }
-            ordered[idx] = JsonUtil.parseFloatVector(item.get("embedding"), "embedding");
+            ordered[idx] = JsonUtil.parseFloatVector(item.get("embedding"),
+                    LlmI18n.get("llm.ctx.embedding"));
         }
         List<float[]> out = new ArrayList<>(inputs.size());
         for (int i = 0; i < ordered.length; i++) {
             if (ordered[i] == null) {
-                throw LlmRemoteException.parse("Missing embedding vector at index " + i);
+                throw LlmRemoteException.parse(LlmI18n.get("llm.rag.missingEmbeddingVector", i));
             }
             out.add(ordered[i]);
         }

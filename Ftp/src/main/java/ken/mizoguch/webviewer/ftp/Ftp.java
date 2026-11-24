@@ -17,6 +17,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
 import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
 import org.apache.commons.net.ftp.FTP;
@@ -32,6 +33,7 @@ import org.apache.commons.net.ftp.FTPSClient;
 public class Ftp extends PluginSupport {
 
     private static final String FUNCTION_NAME = "ftp";
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(Ftp.class);
     private static final int FTP_TIMEOUT_MILLIS = 30000;
     private static final int TEXT_MAX_LENGTH = 16 * 1024 * 1024;
 
@@ -68,19 +70,19 @@ public class Ftp extends PluginSupport {
     public void charset(String charset) {
         try {
             if ((charset == null) || charset.isEmpty()) {
-                write(FUNCTION_NAME, "Incorrect FTP argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.arg.incorrect"), true);
                 return;
             }
             resolveCharset(charset);
         } catch (UnsupportedEncodingException ex) {
-            write(FUNCTION_NAME, "Incorrect FTP argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.arg.incorrect"), true);
             return;
         }
         if (ftpClient_.isConnected()) {
             // the encoding of the control connection is used when the client connects : it can
             // not be changed while the client is connected, the connection has to be opened
             // again
-            write(FUNCTION_NAME, "Failed to change the FTP charset", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.charset.failed"), true);
             return;
         }
         controlEncoding_ = charset;
@@ -94,7 +96,7 @@ public class Ftp extends PluginSupport {
      */
     public Boolean setTimeout(int millis) {
         if (millis < 0) {
-            write(FUNCTION_NAME, "Incorrect FTP argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.arg.incorrect"), true);
             return false;
         }
         timeoutMillis_ = millis;
@@ -122,13 +124,13 @@ public class Ftp extends PluginSupport {
      */
     public Boolean binary() throws IOException {
         if (!ftpClient_.isConnected()) {
-            write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
             return false;
         }
         if (ftpClient_.setFileType(FTP.BINARY_FILE_TYPE)) {
             return true;
         }
-        write(FUNCTION_NAME, "Failed to change the FTP file type", true);
+        write(FUNCTION_NAME, I18N.get(this, "ftp.fileType.failed"), true);
         return false;
     }
 
@@ -138,13 +140,13 @@ public class Ftp extends PluginSupport {
      */
     public Boolean ascii() throws IOException {
         if (!ftpClient_.isConnected()) {
-            write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
             return false;
         }
         if (ftpClient_.setFileType(FTP.ASCII_FILE_TYPE)) {
             return true;
         }
-        write(FUNCTION_NAME, "Failed to change the FTP file type", true);
+        write(FUNCTION_NAME, I18N.get(this, "ftp.fileType.failed"), true);
         return false;
     }
 
@@ -174,7 +176,7 @@ public class Ftp extends PluginSupport {
      */
     public Boolean openWithPort(String host, int port, String username, String password) throws IOException {
         if ((port < 1) || (port > 65535)) {
-            write(FUNCTION_NAME, "Incorrect FTP argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.arg.incorrect"), true);
             return false;
         }
         return openConnection(host, port, username, password, false, false);
@@ -194,7 +196,7 @@ public class Ftp extends PluginSupport {
     public Boolean openFtps(String host, int port, String username, String password, boolean implicit)
             throws IOException {
         if ((port < 1) || (port > 65535)) {
-            write(FUNCTION_NAME, "Incorrect FTP argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.arg.incorrect"), true);
             return false;
         }
         return openConnection(host, port, username, password, true, implicit);
@@ -203,7 +205,7 @@ public class Ftp extends PluginSupport {
     private Boolean openConnection(String host, int port, String username, String password,
             boolean useTls, boolean implicit) throws IOException {
         if ((host == null) || host.isEmpty()) {
-            write(FUNCTION_NAME, "Incorrect FTP argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.arg.incorrect"), true);
             return false;
         }
 
@@ -242,11 +244,11 @@ public class Ftp extends PluginSupport {
                     return true;
                 } else {
                     ftpClient_.disconnect();
-                    write(FUNCTION_NAME, "Failed in the FTP login", true);
+                    write(FUNCTION_NAME, I18N.get(this, "ftp.login.failed"), true);
                 }
             } else {
                 ftpClient_.disconnect();
-                write(FUNCTION_NAME, "Failed to FTP connection", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.connect.failed"), true);
             }
         } catch (IOException ex) {
             // commons-net may leave the socket open when it refuses the greeting or login
@@ -305,7 +307,7 @@ public class Ftp extends PluginSupport {
             ftpClient_.enterLocalPassiveMode();
             return true;
         }
-        write(FUNCTION_NAME, "Not FTP connection", true);
+        write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
         return false;
     }
 
@@ -318,7 +320,7 @@ public class Ftp extends PluginSupport {
             ftpClient_.enterLocalActiveMode();
             return true;
         }
-        write(FUNCTION_NAME, "Not FTP connection", true);
+        write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
         return false;
     }
 
@@ -329,7 +331,7 @@ public class Ftp extends PluginSupport {
      */
     public Boolean noop() throws IOException {
         if (!ftpClient_.isConnected()) {
-            write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
             return false;
         }
         return ftpClient_.sendNoOp();
@@ -344,7 +346,7 @@ public class Ftp extends PluginSupport {
             FTPFile[] files = ftpClient_.listFiles();
             return gson_.toJson(files);
         } else {
-            write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
         }
         return null;
     }
@@ -357,11 +359,11 @@ public class Ftp extends PluginSupport {
      */
     public String lsDir(String path) throws IOException {
         if (!ftpClient_.isConnected()) {
-            write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
             return null;
         }
         if ((path == null) || path.isEmpty()) {
-            write(FUNCTION_NAME, "Incorrect FTP argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.arg.incorrect"), true);
             return null;
         }
         FTPFile[] files = ftpClient_.listFiles(path);
@@ -377,7 +379,7 @@ public class Ftp extends PluginSupport {
             String dir = ftpClient_.printWorkingDirectory();
             return dir;
         } else {
-            write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
         }
         return null;
     }
@@ -391,16 +393,16 @@ public class Ftp extends PluginSupport {
     public Boolean cd(String path) throws IOException {
         if (ftpClient_.isConnected()) {
             if ((path == null) || path.isEmpty()) {
-                write(FUNCTION_NAME, "Incorrect FTP argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.arg.incorrect"), true);
                 return false;
             }
             if (ftpClient_.changeWorkingDirectory(path)) {
                 return true;
             } else {
-                write(FUNCTION_NAME, "Failed to change the FTP directory", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.cd.failed"), true);
             }
         } else {
-            write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
         }
         return false;
     }
@@ -414,16 +416,16 @@ public class Ftp extends PluginSupport {
     public Boolean mkdir(String path) throws IOException {
         if (ftpClient_.isConnected()) {
             if ((path == null) || path.isEmpty()) {
-                write(FUNCTION_NAME, "Incorrect FTP argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.arg.incorrect"), true);
                 return false;
             }
             if (ftpClient_.makeDirectory(path)) {
                 return true;
             } else {
-                write(FUNCTION_NAME, "Failed to create the FTP directory", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.mkdir.failed"), true);
             }
         } else {
-            write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
         }
         return false;
     }
@@ -437,16 +439,16 @@ public class Ftp extends PluginSupport {
     public Boolean rmdir(String path) throws IOException {
         if (ftpClient_.isConnected()) {
             if ((path == null) || path.isEmpty()) {
-                write(FUNCTION_NAME, "Incorrect FTP argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.arg.incorrect"), true);
                 return false;
             }
             if (ftpClient_.removeDirectory(path)) {
                 return true;
             } else {
-                write(FUNCTION_NAME, "Failed to remove the FTP directory", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.rmdir.failed"), true);
             }
         } else {
-            write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
         }
         return false;
     }
@@ -460,16 +462,16 @@ public class Ftp extends PluginSupport {
     public Boolean delete(String path) throws IOException {
         if (ftpClient_.isConnected()) {
             if ((path == null) || path.isEmpty()) {
-                write(FUNCTION_NAME, "Incorrect FTP argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.arg.incorrect"), true);
                 return false;
             }
             if (ftpClient_.deleteFile(path)) {
                 return true;
             } else {
-                write(FUNCTION_NAME, "Failed to FTP Delete", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.delete.failed"), true);
             }
         } else {
-            write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
         }
         return false;
     }
@@ -484,16 +486,16 @@ public class Ftp extends PluginSupport {
     public Boolean rename(String from, String to) throws IOException {
         if (ftpClient_.isConnected()) {
             if ((from == null) || from.isEmpty() || (to == null) || to.isEmpty()) {
-                write(FUNCTION_NAME, "Incorrect FTP argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.arg.incorrect"), true);
                 return false;
             }
             if (ftpClient_.rename(from, to)) {
                 return true;
             } else {
-                write(FUNCTION_NAME, "Failed to change the FTP name", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.rename.failed"), true);
             }
         } else {
-            write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
         }
         return false;
     }
@@ -508,7 +510,7 @@ public class Ftp extends PluginSupport {
     public Boolean get(String from, String to) throws IOException {
         if (ftpClient_.isConnected()) {
             if ((from == null) || from.isEmpty()) {
-                write(FUNCTION_NAME, "Incorrect FTP argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.arg.incorrect"), true);
                 return null;
             }
             // the file of the computer is written in the directory of the page : a path which
@@ -516,18 +518,18 @@ public class Ftp extends PluginSupport {
             Path file = SandboxPath.resolve(webPath_, null, to);
 
             if (file == null) {
-                write(FUNCTION_NAME, "Incorrect file path [" + to + "]", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.path.incorrect", to), true);
                 return null;
             }
             try (OutputStream outputStream = Files.newOutputStream(file)) {
                 if (ftpClient_.retrieveFile(from, outputStream)) {
                     return true;
                 } else {
-                    write(FUNCTION_NAME, "Failed to FTPget", true);
+                    write(FUNCTION_NAME, I18N.get(this, "ftp.get.failed"), true);
                 }
             }
         } else {
-            write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
         }
         return null;
     }
@@ -542,7 +544,7 @@ public class Ftp extends PluginSupport {
     public Boolean put(String from, String to) throws IOException {
         if (ftpClient_.isConnected()) {
             if ((to == null) || to.isEmpty()) {
-                write(FUNCTION_NAME, "Incorrect FTP argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.arg.incorrect"), true);
                 return null;
             }
             // the file of the computer is read in the directory of the page : a path which
@@ -550,18 +552,18 @@ public class Ftp extends PluginSupport {
             Path file = SandboxPath.resolve(webPath_, null, from);
 
             if (file == null) {
-                write(FUNCTION_NAME, "Incorrect file path [" + from + "]", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.path.incorrect", from), true);
                 return null;
             }
             try (InputStream inputStream = Files.newInputStream(file)) {
                 if (ftpClient_.storeFile(to, inputStream)) {
                     return true;
                 } else {
-                    write(FUNCTION_NAME, "Failed to FTPput", true);
+                    write(FUNCTION_NAME, I18N.get(this, "ftp.put.failed"), true);
                 }
             }
         } else {
-            write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
         }
         return null;
     }
@@ -576,13 +578,13 @@ public class Ftp extends PluginSupport {
     public String readAsText(String path, String charset) throws UnsupportedEncodingException, IOException {
         if (ftpClient_.isConnected()) {
             if ((path == null) || path.isEmpty()) {
-                write(FUNCTION_NAME, "Incorrect FTP argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.arg.incorrect"), true);
                 return null;
             }
             Charset resolvedCharset = resolveCharset(charset);
             InputStream stream = ftpClient_.retrieveFileStream(path);
             if (stream == null) {
-                write(FUNCTION_NAME, "Failed to FTPget", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.get.failed"), true);
                 return null;
             }
             String result = null;
@@ -595,7 +597,7 @@ public class Ftp extends PluginSupport {
                 while ((line = bufferedReader.readLine()) != null) {
                     int added = (first ? 0 : newLineCharacter_.length()) + line.length();
                     if ((stringBuilder.length() + added) > TEXT_MAX_LENGTH) {
-                        write(FUNCTION_NAME, "File is too large [" + path + "]", true);
+                        write(FUNCTION_NAME, I18N.get(this, "ftp.file.tooLarge", path), true);
                         aborted = true;
                         break;
                     }
@@ -620,9 +622,9 @@ public class Ftp extends PluginSupport {
             if (ftpClient_.completePendingCommand()) {
                 return result;
             }
-            write(FUNCTION_NAME, "Failed to FTPget", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.get.failed"), true);
         } else {
-            write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
         }
         return null;
     }
@@ -638,13 +640,13 @@ public class Ftp extends PluginSupport {
     public Boolean writeAsText(String path, String text, String charset) throws IOException {
         if (ftpClient_.isConnected()) {
             if ((path == null) || path.isEmpty() || (text == null)) {
-                write(FUNCTION_NAME, "Incorrect FTP argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.arg.incorrect"), true);
                 return false;
             }
             Charset resolvedCharset = resolveCharset(charset);
             OutputStream stream = ftpClient_.storeFileStream(path);
             if (stream == null) {
-                write(FUNCTION_NAME, "Failed to FTPput", true);
+                write(FUNCTION_NAME, I18N.get(this, "ftp.put.failed"), true);
                 return false;
             }
             try (OutputStreamWriter outputStreamWriter = new OutputStreamWriter(stream,
@@ -665,9 +667,9 @@ public class Ftp extends PluginSupport {
             if (ftpClient_.completePendingCommand()) {
                 return true;
             }
-            write(FUNCTION_NAME, "Failed to FTPput", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.put.failed"), true);
         } else {
-            write(FUNCTION_NAME, "Not FTP connection", true);
+            write(FUNCTION_NAME, I18N.get(this, "ftp.notConnected"), true);
         }
         return false;
     }
@@ -711,7 +713,7 @@ public class Ftp extends PluginSupport {
         if (ftpClient_.isConnected()) {
             try {
                 if (!ftpClient_.logout()) {
-                    write(FUNCTION_NAME, "Failed in the FTP log out", true);
+                    write(FUNCTION_NAME, I18N.get(this, "ftp.logout.failed"), true);
                 }
             } catch (IOException ex) {
                 writeStackTrace(FUNCTION_NAME, ex);

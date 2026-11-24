@@ -2,6 +2,7 @@ package ken.mizoguch.webviewer.dbg;
 
 import java.util.concurrent.atomic.AtomicLong;
 import javafx.scene.web.WebEngine;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 import ken.mizoguch.webviewer.plugin.kit.ScriptValue;
 
 /**
@@ -15,6 +16,8 @@ import ken.mizoguch.webviewer.plugin.kit.ScriptValue;
  * @author mizoguch-ken
  */
 final class Bridge {
+
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(Bridge.class);
 
     /**
      * maximum length of a message given to the panel : a longer message is not written in the
@@ -108,7 +111,7 @@ final class Bridge {
         } else if (RESULT.equals(kind) || INSPECT.equals(kind) || NOTICE.equals(kind)) {
             send("dbgUi." + kind, json);
         } else {
-            host_.write(host_.functionName(), "Incorrect kind of message [" + kind + "]", true);
+            host_.write(host_.functionName(), I18N.get(host_, "dbg.bridge.invalidKind", kind), true);
         }
     }
 
@@ -155,7 +158,7 @@ final class Bridge {
             if (json.length() > MAX_MESSAGE) {
                 // a json cut in the middle of it is not read by the panel : the panel is only told the message is too long
                 script = "dbgUi.notice(" + ScriptValue.literal("{\"k\":\"" + NOTICE + "\",\"text\":"
-                        + Json.string("message too long: " + json.length()) + "}") + ");";
+                        + Json.string(I18N.get(host_, "dbg.bridge.messageTooLong", json.length())) + "}") + ");";
             } else {
                 script = function + "(" + ScriptValue.literal(json, MAX_MESSAGE) + ");";
             }

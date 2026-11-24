@@ -28,6 +28,7 @@ import java.util.stream.Stream;
 import javafx.stage.FileChooser;
 import javafx.stage.Stage;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
 import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
 
@@ -38,6 +39,7 @@ import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
 public class File extends PluginSupport {
 
     private static final String FUNCTION_NAME = "file";
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(File.class);
     private static final int BINARY_MAX_BYTES = 16 * 1024 * 1024;
 
     private Stage stage_;
@@ -163,7 +165,7 @@ public class File extends PluginSupport {
     public String lsDir(String path) throws IOException {
         Path dir = getPath(path);
         if (!Files.isDirectory(dir)) {
-            throw new IOException("Not a directory [" + path + "]");
+            throw new IOException(I18N.get(this, "file.notDirectory", path));
         }
         List<String> files = new ArrayList<>();
         try (Stream<Path> list = Files.list(dir)) {
@@ -193,7 +195,7 @@ public class File extends PluginSupport {
     public String cp(String src, String dst) throws IOException {
         Path source = getPath(src);
         if (!Files.isRegularFile(source)) {
-            throw new IOException("File is not a regular file [" + src + "]");
+            throw new IOException(I18N.get(this, "file.notRegular", src));
         }
         return Files.copy(source, getPath(dst), StandardCopyOption.REPLACE_EXISTING).toString();
     }
@@ -210,7 +212,7 @@ public class File extends PluginSupport {
             if (Files.isDirectory(file)) {
                 directory_ = file;
             } else {
-                write(FUNCTION_NAME, "Incorrect file path [" + path + "]", true);
+                write(FUNCTION_NAME, I18N.get(this, "file.path.incorrect", path), true);
             }
         }
         return (directory_ != null) ? directory_.toString() : null;
@@ -248,7 +250,7 @@ public class File extends PluginSupport {
         Path root = (webPath_ != null) ? webPath_.toAbsolutePath().normalize() : null;
 
         if ((root != null) && file.toAbsolutePath().normalize().equals(root)) {
-            write(FUNCTION_NAME, "Incorrect file path [" + path + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "file.path.incorrect", path), true);
             return false;
         }
         if (Files.deleteIfExists(file)) {
@@ -404,7 +406,7 @@ public class File extends PluginSupport {
                 if ((stringBuilder.length() + added) > TEXT_MAX_LENGTH) {
                     // the text of a page is used in the javascript of the page : an
                     // abnormal length is refused instead of filling the memory
-                    write(FUNCTION_NAME, "Text is too long [" + path + "]", true);
+                    write(FUNCTION_NAME, I18N.get(this, "file.text.tooLong", path), true);
                     return null;
                 }
                 if (!first) {
@@ -447,11 +449,11 @@ public class File extends PluginSupport {
         Path file = getPath(path);
 
         if (text == null) {
-            write(FUNCTION_NAME, "Incorrect file content [" + path + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "file.content.incorrect", path), true);
             return false;
         }
         if (text.length() > TEXT_MAX_LENGTH) {
-            write(FUNCTION_NAME, "Text is too long [" + path + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "file.text.tooLong", path), true);
             return false;
         }
         Charset resolvedCharset = resolveCharset(charset);
@@ -487,12 +489,12 @@ public class File extends PluginSupport {
     public String readAsBase64(String path) throws IOException {
         Path file = getPath(path);
         if (!Files.isRegularFile(file)) {
-            write(FUNCTION_NAME, "Incorrect file path [" + path + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "file.path.incorrect", path), true);
             return null;
         }
         long length = Files.size(file);
         if (length > BINARY_MAX_BYTES) {
-            write(FUNCTION_NAME, "File is too large [" + path + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "file.tooLarge", path), true);
             return null;
         }
         return Base64.getEncoder().encodeToString(Files.readAllBytes(file));
@@ -509,18 +511,18 @@ public class File extends PluginSupport {
     public Boolean writeAsBase64(String path, String base64) throws IOException {
         Path file = getPath(path);
         if (base64 == null) {
-            write(FUNCTION_NAME, "Incorrect file content [" + path + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "file.content.incorrect", path), true);
             return false;
         }
         byte[] bytes;
         try {
             bytes = Base64.getDecoder().decode(base64);
         } catch (IllegalArgumentException ex) {
-            write(FUNCTION_NAME, "Incorrect file content [" + path + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "file.content.incorrect", path), true);
             return false;
         }
         if (bytes.length > BINARY_MAX_BYTES) {
-            write(FUNCTION_NAME, "File is too large [" + path + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "file.tooLarge", path), true);
             return false;
         }
         Files.write(file, bytes);
@@ -684,7 +686,7 @@ public class File extends PluginSupport {
         Path file = getStringToPath(path);
 
         if (file == null) {
-            throw new IOException("Incorrect file path [" + path + "]");
+            throw new IOException(I18N.get(this, "file.path.incorrect", path));
         }
         return file;
     }
@@ -732,7 +734,7 @@ public class File extends PluginSupport {
             file = resolveApprovedPath(path);
         }
         if (file == null) {
-            write(FUNCTION_NAME, "Incorrect file path [" + path + "]", true);
+            write(FUNCTION_NAME, I18N.get(this, "file.path.incorrect", path), true);
         }
         return file;
     }

@@ -12,6 +12,7 @@ import javafx.concurrent.Task;
 import javafx.concurrent.Worker;
 import javax.swing.event.EventListenerList;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 import ken.mizoguch.webviewer.plugin.kit.ScriptNotifier;
 import ken.mizoguch.webviewer.plugin.kit.ScriptValue;
 import ken.mizoguch.webviewer.plugin.kit.ServiceSupport;
@@ -110,6 +111,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener {
 
     private static final String FUNCTION_NAME = "onlineArt";
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(OnlineArt.class);
 
     /**
      * the link tasks which read the streams and the packets of the unit : the resources are freed
@@ -159,12 +161,18 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
      */
     public OnlineArt() {
         eventListenerList_ = new EventListenerList();
-        receiveRequestNotifier_ = new ScriptNotifier(this, "Notification of a received request is dropped");
-        receiveResponseNotifier_ = new ScriptNotifier(this, "Notification of a received response is dropped");
-        sendRequestNotifier_ = new ScriptNotifier(this, "Notification of a sent request is dropped");
-        sendResponseNotifier_ = new ScriptNotifier(this, "Notification of a sent response is dropped");
-        sendRetryNotifier_ = new ScriptNotifier(this, "Notification of a retry is dropped");
-        errorNotifier_ = new ScriptNotifier(this, "Notification of an error is dropped");
+        receiveRequestNotifier_ = new ScriptNotifier(this,
+                () -> I18N.get(this, "onlineart.notify.receiveRequest.dropped"));
+        receiveResponseNotifier_ = new ScriptNotifier(this,
+                () -> I18N.get(this, "onlineart.notify.receiveResponse.dropped"));
+        sendRequestNotifier_ = new ScriptNotifier(this,
+                () -> I18N.get(this, "onlineart.notify.sendRequest.dropped"));
+        sendResponseNotifier_ = new ScriptNotifier(this,
+                () -> I18N.get(this, "onlineart.notify.sendResponse.dropped"));
+        sendRetryNotifier_ = new ScriptNotifier(this,
+                () -> I18N.get(this, "onlineart.notify.sendRetry.dropped"));
+        errorNotifier_ = new ScriptNotifier(this,
+                () -> I18N.get(this, "onlineart.notify.error.dropped"));
 
         linkUnitNumber_ = 0;
         linkMaxUnitNumber_ = 0;
@@ -318,7 +326,7 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
      */
     public Boolean linkStart(int relayNumber, int registerNumber) {
         if ((relayNumber < 0) || (registerNumber < 0)) {
-            write(FUNCTION_NAME, "Data is out of range", true);
+            write(FUNCTION_NAME, I18N.get(this, "onlineart.data.outOfRange"), true);
             return false;
         }
         if (!isRunning()) {
@@ -330,7 +338,7 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
             }
             return true;
         } else {
-            write(FUNCTION_NAME, "OnlineArt is already running", true);
+            write(FUNCTION_NAME, I18N.get(this, "onlineart.alreadyRunning"), true);
         }
         return false;
     }
@@ -347,7 +355,7 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
         cancel();
         isExit_ = true;
         if (!awaitTermination(TASK_TERMINATION_MILLIS)) {
-            write(FUNCTION_NAME, "OnlineArt is still running : the resources are not freed", true);
+            write(FUNCTION_NAME, I18N.get(this, "onlineart.stillRunning"), true);
             return false;
         }
         cleanLinkState();
@@ -405,7 +413,7 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
         if (isRunning()) {
             return gson_.toJson(getRelay());
         }
-        write(FUNCTION_NAME, "OnlineArt is not running", true);
+        write(FUNCTION_NAME, I18N.get(this, "onlineart.notRunning"), true);
         return null;
     }
 
@@ -420,13 +428,13 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
                 if (setRelay(gson_.fromJson(data, int[].class))) {
                     return true;
                 } else {
-                    write(FUNCTION_NAME, "Data is out of range", true);
+                    write(FUNCTION_NAME, I18N.get(this, "onlineart.data.outOfRange"), true);
                 }
             } catch (JsonSyntaxException ex) {
                 writeStackTrace(FUNCTION_NAME, ex);
             }
         } else {
-            write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, I18N.get(this, "onlineart.notRunning"), true);
         }
         return false;
     }
@@ -443,10 +451,10 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
             if (ret >= 0) {
                 return (ret == 0x0001);
             } else {
-                write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, I18N.get(this, "onlineart.data.outOfRange"), true);
             }
         } else {
-            write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, I18N.get(this, "onlineart.notRunning"), true);
         }
         return null;
     }
@@ -463,10 +471,10 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
             if (setRelay(data, position, bit)) {
                 return true;
             } else {
-                write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, I18N.get(this, "onlineart.data.outOfRange"), true);
             }
         } else {
-            write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, I18N.get(this, "onlineart.notRunning"), true);
         }
         return false;
     }
@@ -482,10 +490,10 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
             if (ret >= 0) {
                 return ret;
             } else {
-                write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, I18N.get(this, "onlineart.data.outOfRange"), true);
             }
         } else {
-            write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, I18N.get(this, "onlineart.notRunning"), true);
         }
         return null;
     }
@@ -501,10 +509,10 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
             if (setData(data, relay_, position)) {
                 return true;
             } else {
-                write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, I18N.get(this, "onlineart.data.outOfRange"), true);
             }
         } else {
-            write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, I18N.get(this, "onlineart.notRunning"), true);
         }
         return false;
     }
@@ -517,7 +525,7 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
         if (isRunning()) {
             return gson_.toJson(getRegister());
         }
-        write(FUNCTION_NAME, "OnlineArt is not running", true);
+        write(FUNCTION_NAME, I18N.get(this, "onlineart.notRunning"), true);
         return null;
     }
 
@@ -532,13 +540,13 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
                 if (setRegister(gson_.fromJson(data, int[].class))) {
                     return true;
                 } else {
-                    write(FUNCTION_NAME, "Data is out of range", true);
+                    write(FUNCTION_NAME, I18N.get(this, "onlineart.data.outOfRange"), true);
                 }
             } catch (JsonSyntaxException ex) {
                 writeStackTrace(FUNCTION_NAME, ex);
             }
         } else {
-            write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, I18N.get(this, "onlineart.notRunning"), true);
         }
         return false;
     }
@@ -555,10 +563,10 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
             if (ret >= 0) {
                 return (ret == 0x0001);
             } else {
-                write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, I18N.get(this, "onlineart.data.outOfRange"), true);
             }
         } else {
-            write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, I18N.get(this, "onlineart.notRunning"), true);
         }
         return null;
     }
@@ -575,10 +583,10 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
             if (setRegister(data, position, bit)) {
                 return true;
             } else {
-                write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, I18N.get(this, "onlineart.data.outOfRange"), true);
             }
         } else {
-            write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, I18N.get(this, "onlineart.notRunning"), true);
         }
         return false;
     }
@@ -594,10 +602,10 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
             if (ret >= 0) {
                 return ret;
             } else {
-                write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, I18N.get(this, "onlineart.data.outOfRange"), true);
             }
         } else {
-            write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, I18N.get(this, "onlineart.notRunning"), true);
         }
         return null;
     }
@@ -613,10 +621,10 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
             if (setData(data, register_, position)) {
                 return true;
             } else {
-                write(FUNCTION_NAME, "Data is out of range", true);
+                write(FUNCTION_NAME, I18N.get(this, "onlineart.data.outOfRange"), true);
             }
         } else {
-            write(FUNCTION_NAME, "OnlineArt is not running", true);
+            write(FUNCTION_NAME, I18N.get(this, "onlineart.notRunning"), true);
         }
         return false;
     }
@@ -635,7 +643,7 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
         if (setReadRelay(destination, startAddress, receiveAddressOffset, sendAddressOffset, registerNumber)) {
             return true;
         }
-        write(FUNCTION_NAME, "Send data exists", true);
+        write(FUNCTION_NAME, I18N.get(this, "onlineart.sendDataExists"), true);
         return false;
     }
 
@@ -653,7 +661,7 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
         if (setReadRegister(destination, startAddress, receiveAddressOffset, sendAddressOffset, registerNumber)) {
             return true;
         }
-        write(FUNCTION_NAME, "Send data exists", true);
+        write(FUNCTION_NAME, I18N.get(this, "onlineart.sendDataExists"), true);
         return false;
     }
 
@@ -671,7 +679,7 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
         if (setWriteRelay(destination, startAddress, receiveAddressOffset, sendAddressOffset, registerNumber)) {
             return true;
         }
-        write(FUNCTION_NAME, "Send data exists", true);
+        write(FUNCTION_NAME, I18N.get(this, "onlineart.sendDataExists"), true);
         return false;
     }
 
@@ -689,7 +697,7 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
         if (setWriteRegister(destination, startAddress, receiveAddressOffset, sendAddressOffset, registerNumber)) {
             return true;
         }
-        write(FUNCTION_NAME, "Send data exists", true);
+        write(FUNCTION_NAME, I18N.get(this, "onlineart.sendDataExists"), true);
         return false;
     }
 
@@ -1585,7 +1593,7 @@ public class OnlineArt extends ServiceSupport<Void> implements OnlineArtListener
         // the streams and the packets of the unit are freed only when no link task reads them
         // anymore : a task which never ends keeps them and the WebViewer reports it
         if (!awaitTermination(TASK_TERMINATION_MILLIS)) {
-            write(FUNCTION_NAME, "OnlineArt is still running : the resources are not freed", true);
+            write(FUNCTION_NAME, I18N.get(this, "onlineart.stillRunning"), true);
             return;
         }
         cleanUp();

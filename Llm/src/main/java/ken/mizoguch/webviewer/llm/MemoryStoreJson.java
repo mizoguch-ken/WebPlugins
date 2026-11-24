@@ -53,7 +53,7 @@ final class MemoryStoreJson {
     }
 
     static MemoryBank.Snapshot fromJson(String json) {
-        JsonObject root = JsonUtil.parseObject(json, "Memory store JSON");
+        JsonObject root = JsonUtil.parseObject(json, LlmI18n.get("llm.ctx.memoryStoreJson"));
         long nextId = 1L;
         Long nextIdVal = JsonUtil.optLong(root, "nextId");
         if ((nextIdVal != null) && (nextIdVal.longValue() > 0L)) {
@@ -90,7 +90,7 @@ final class MemoryStoreJson {
     }
 
     static MemoryBank.InstinctPack fromInstinctPackJson(String json) {
-        JsonObject root = JsonUtil.parseObject(json, "Instinct pack JSON");
+        JsonObject root = JsonUtil.parseObject(json, LlmI18n.get("llm.ctx.instinctPackJson"));
         JsonArray arr = JsonUtil.optArray(root, "instincts");
         if (arr == null) {
             arr = JsonUtil.optArray(root, "entries");
@@ -105,7 +105,8 @@ final class MemoryStoreJson {
     }
 
     static MemoryBank.Snapshot loadSnapshot(Path file) throws IOException {
-        String content = SandboxFiles.readUtf8Bounded(file, MAX_MEMORY_JSON_BYTES, "Memory file");
+        String content = SandboxFiles.readUtf8Bounded(file, MAX_MEMORY_JSON_BYTES,
+                LlmI18n.get("llm.ctx.memoryFile"));
         return fromJson(content);
     }
 
@@ -115,7 +116,7 @@ final class MemoryStoreJson {
 
     static MemoryBank.InstinctPack loadInstinctPack(Path file) throws IOException {
         String content = SandboxFiles.readUtf8Bounded(file, MAX_MEMORY_JSON_BYTES,
-                "Instinct pack file");
+                LlmI18n.get("llm.ctx.instinctPackFile"));
         return fromInstinctPackJson(content);
     }
 
@@ -199,12 +200,12 @@ final class MemoryStoreJson {
         for (int i = 0; i < arr.size(); i++) {
             JsonElement el = arr.get(i);
             if ((el == null) || !el.isJsonObject()) {
-                throw new IllegalArgumentException("Memory entry at index " + i + " must be a JSON object");
+                throw new IllegalArgumentException(LlmI18n.get("llm.memory.entryObjectAt", i));
             }
             JsonObject obj = el.getAsJsonObject();
             String content = JsonUtil.optString(obj, "content");
             if ((content == null) || content.trim().isEmpty()) {
-                throw new IllegalArgumentException("Memory entry at index " + i + " requires non-empty content");
+                throw new IllegalArgumentException(LlmI18n.get("llm.memory.entryContentAt", i));
             }
             long id = optLongOr(obj, "id", 0L);
             String originStr = JsonUtil.optString(obj, "origin");
@@ -289,7 +290,7 @@ final class MemoryStoreJson {
         try {
             return Enum.valueOf(type, value.trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException ex) {
-            throw new IllegalArgumentException("Invalid memory " + field + ": \"" + value + "\"");
+            throw new IllegalArgumentException(LlmI18n.get("llm.memory.invalidEnum", field, value));
         }
     }
 

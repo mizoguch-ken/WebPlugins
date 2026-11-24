@@ -181,6 +181,13 @@ llm.save(Path.of("model.lmc"));
 
 ---
 
+## Internationalization / 多言語対応
+
+* **Bilingual Diagnostics (`en` / `ja`)**: Exceptions (`LlmCoreException`), training/consolidation log callbacks (`LlmCoreListener.onLog`), `ModelStore` load/save messages, and `ContinualLearner.StepResult` messages are localized in English (`en`, fallback) and Japanese (`ja`) via UTF-8 resource bundles while keeping `LlmCore` strictly zero-dependency (`java.base` only). Binary headers (`LMC1`–`LMC4`), `ModelConfig.toString()`, and prompt markers remain protocol-invariant.
+  * **日英診断メッセージ**: 例外（`LlmCoreException`）、学習・統合ログ（`LlmCoreListener.onLog`）、`ModelStore` の入出力エラー、および `ContinualLearner.StepResult` メッセージを、`java.base` のみの無依存構成を保ったまま UTF-8 リソースバンドル（`-Ddecotofu.language` / `Locale.Category.DISPLAY`）で日英両対応しています（バイナリヘッダや `ModelConfig.toString()` は固定）。
+
+---
+
 ## Requirements & Build / 動作要件とビルド・テスト
 
 * **Requirements**: JDK 21 or later, Apache Maven 3.8 or later (zero runtime dependencies).

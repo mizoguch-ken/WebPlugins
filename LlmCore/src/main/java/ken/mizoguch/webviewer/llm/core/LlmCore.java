@@ -131,19 +131,18 @@ public final class LlmCore {
             ModelConfig config = (configuration == null) ? new ModelConfig()
                     : new ModelConfig(configuration);
             if (!config.isValid()) {
-                throw new LlmCoreException("Invalid model configuration");
+                throw new LlmCoreException(LlmCoreI18n.get("model.config.invalid"));
             }
             if (!config.isTrainable()) {
-                throw new LlmCoreException("A model of " + config.parameters()
-                        + " weights is too large : the plug-in accepts "
-                        + ModelConfig.MAX_PARAMETERS + " weights");
+                throw new LlmCoreException(LlmCoreI18n.get("core.model.tooLarge",
+                        config.parameters(), ModelConfig.MAX_PARAMETERS));
             }
             Tokenizer nextTokenizer = (config.vocabType() == ModelConfig.VOCAB_CHAR)
                     ? new CharTokenizer()
                     : new ByteTokenizer();
             config.setVocabSize(vocabularyOf(config, nextTokenizer));
             if (!config.isTrainable()) {
-                throw new LlmCoreException("Invalid or oversized model configuration");
+                throw new LlmCoreException(LlmCoreI18n.get("store.config.invalidOrOversized"));
             }
             TransformerModel nextModel = new TransformerModel(config);
 
@@ -179,21 +178,19 @@ public final class LlmCore {
             }
             ModelConfig config = content.config();
             if (!config.isTrainable()) {
-                throw new LlmCoreException("A model of " + config.parameters()
-                        + " weights is too large : the plug-in accepts "
-                        + ModelConfig.MAX_PARAMETERS + " weights");
+                throw new LlmCoreException(LlmCoreI18n.get("core.model.tooLarge",
+                        config.parameters(), ModelConfig.MAX_PARAMETERS));
             }
             TransformerModel read = new TransformerModel(config);
             float[][] weights = content.weights();
             if (weights.length != read.weights().length) {
-                throw new LlmCoreException("[" + file + "] holds " + weights.length
-                        + " weights, the model reads " + read.weights().length);
+                throw new LlmCoreException(LlmCoreI18n.get("core.load.weightsCountMismatch",
+                        file, weights.length, read.weights().length));
             }
             for (int index = 0; index < weights.length; index++) {
                 if (weights[index].length != read.weights()[index].length) {
-                    throw new LlmCoreException("[" + file + "] holds a weight of "
-                            + weights[index].length + " values, the model reads "
-                            + read.weights()[index].length);
+                    throw new LlmCoreException(LlmCoreI18n.get("core.load.weightSizeMismatch",
+                            file, weights[index].length, read.weights()[index].length));
                 }
                 System.arraycopy(weights[index], 0, read.weights()[index], 0, weights[index].length);
             }
@@ -326,8 +323,7 @@ public final class LlmCore {
             ready();
             busy();
             if (!optimizer_.setLearningRate(learningRate)) {
-                throw new LlmCoreException("A learning rate of " + learningRate
-                        + " is refused : use a rate between 0 and 0.1");
+                throw new LlmCoreException(LlmCoreI18n.get("core.lr.refused", learningRate));
             }
         }
     }
@@ -342,8 +338,7 @@ public final class LlmCore {
             ready();
             busy();
             if (!optimizer_.setWeightDecay(weightDecay)) {
-                throw new LlmCoreException("A weight decay of " + weightDecay
-                        + " is refused : use a decay between 0 and 0.5");
+                throw new LlmCoreException(LlmCoreI18n.get("core.wd.refused", weightDecay));
             }
         }
     }
@@ -358,8 +353,7 @@ public final class LlmCore {
             ready();
             busy();
             if (!optimizer_.setLargestGradient(largestGradient)) {
-                throw new LlmCoreException("A largest gradient of " + largestGradient
-                        + " is refused : use zero or a positive number");
+                throw new LlmCoreException(LlmCoreI18n.get("core.grad.refused", largestGradient));
             }
         }
     }
@@ -371,13 +365,13 @@ public final class LlmCore {
 
     private void busy() {
         if (running_ != IDLE) {
-            throw new LlmCoreException("The model is already working");
+            throw new LlmCoreException(LlmCoreI18n.get("core.busy"));
         }
     }
 
     private void ready() {
         if (model_ == null) {
-            throw new LlmCoreException("No model : ask newModel() or load() first");
+            throw new LlmCoreException(LlmCoreI18n.get("core.notReady"));
         }
     }
 
@@ -467,7 +461,7 @@ public final class LlmCore {
                             double wLoss = model_.loss(window, len);
                             if (!Double.isFinite(wLoss)) {
                                 throw new LlmCoreException(
-                                        "Evaluation failed on invalid token sequence");
+                                        LlmCoreI18n.get("core.eval.invalidTokens"));
                             }
                             int stepTokens = len - 1;
                             totalLoss += wLoss * stepTokens;
@@ -484,14 +478,14 @@ public final class LlmCore {
                     if (stopped) {
                         return new EvalResult(Double.NaN, Double.NaN, 0L, 0, seconds(began), true);
                     }
-                    throw new LlmCoreException("The texts hold nothing to evaluate");
+                    throw new LlmCoreException(LlmCoreI18n.get("core.eval.empty"));
                 }
                 double mean = totalLoss / totalTokens;
                 double perplexity = Math.exp(mean);
                 return new EvalResult(mean, perplexity, totalTokens, windows, seconds(began),
                         stopped);
             } catch (OutOfMemoryError memory) {
-                throw new LlmCoreException("Not enough memory to evaluate : ask a shorter text");
+                throw new LlmCoreException(LlmCoreI18n.get("core.eval.oom"));
             } finally {
                 running_ = IDLE;
                 stop_ = false;
@@ -509,19 +503,18 @@ public final class LlmCore {
             ready();
             busy();
             if (options == null) {
-                throw new LlmCoreException("Training options are required");
+                throw new LlmCoreException(LlmCoreI18n.get("core.train.optionsRequired"));
             }
             int epochs = options.epochs();
             if ((epochs < 1) || (epochs > MAX_EPOCHS)) {
-                throw new LlmCoreException("A training of " + epochs
-                        + " epochs is refused : use 1 to " + MAX_EPOCHS + " epochs");
+                throw new LlmCoreException(
+                        LlmCoreI18n.get("core.train.epochsRefused", epochs, MAX_EPOCHS));
             }
             Double learningRate = options.learningRate();
             if (learningRate != null) {
                 double lr = learningRate.doubleValue();
                 if (!Double.isFinite(lr) || (lr <= 0d) || (lr > 0.1d)) {
-                    throw new LlmCoreException("A learning rate of " + learningRate
-                            + " is refused : use a rate between 0 and 0.1");
+                    throw new LlmCoreException(LlmCoreI18n.get("core.lr.refused", learningRate));
                 }
             }
             double peakLr = (learningRate != null) ? learningRate.doubleValue()
@@ -529,17 +522,17 @@ public final class LlmCore {
             if (options.minLearningRate() != null) {
                 double minLr = options.minLearningRate().doubleValue();
                 if (!Double.isFinite(minLr) || (minLr < 0d) || (minLr > peakLr)) {
-                    throw new LlmCoreException("A minimum learning rate of " + minLr
-                            + " is refused : use a rate between 0 and " + peakLr);
+                    throw new LlmCoreException(
+                            LlmCoreI18n.get("core.train.minLrRefused", minLr, peakLr));
                 }
             }
             if (options.warmupSteps() < 0) {
-                throw new LlmCoreException("Warmup steps must be non-negative: "
-                        + options.warmupSteps());
+                throw new LlmCoreException(
+                        LlmCoreI18n.get("core.train.warmupNegative", options.warmupSteps()));
             }
             if (options.gradientAccumulation() < 1) {
-                throw new LlmCoreException("Gradient accumulation steps must be at least 1: "
-                        + options.gradientAccumulation());
+                throw new LlmCoreException(LlmCoreI18n.get("core.train.gradAccumTooSmall",
+                        options.gradientAccumulation()));
             }
             LlmCoreListener told = (listener == null) ? NONE : listener;
             double began = System.nanoTime();
@@ -553,29 +546,27 @@ public final class LlmCore {
             if (candidateTokenizer instanceof CharTokenizer currentChar) {
                 if ((steps_ > 0L) || loaded_) {
                     if (currentChar.hasUnseen(texts)) {
-                        throw new LlmCoreException("The model vocabulary is locked after "
-                                + "training or loading : build a new model to learn unseen "
-                                + "characters");
+                        throw new LlmCoreException(LlmCoreI18n.get("core.train.vocabLocked"));
                     }
                     candidateDataset = new Dataset(currentChar);
                     candidateDataset.addAll(texts, false);
                     if (candidateDataset.isShort()) {
-                        throw new LlmCoreException("The texts hold nothing to learn");
+                        throw new LlmCoreException(LlmCoreI18n.get("core.train.empty"));
                     }
                 } else {
                     CharTokenizer tempChar = currentChar.copy();
                     candidateDataset = new Dataset(tempChar);
                     candidateDataset.addAll(texts, true);
                     if (candidateDataset.isShort()) {
-                        throw new LlmCoreException("The texts hold nothing to learn");
+                        throw new LlmCoreException(LlmCoreI18n.get("core.train.empty"));
                     }
                     int targetVocab = Math.max(ModelConfig.MIN_VOCAB, tempChar.size());
                     if (targetVocab != candidateModel.vocabulary()) {
                         ModelConfig rebuiltConfig = new ModelConfig(candidateModel.config());
                         if (!rebuiltConfig.setVocabSize(targetVocab)
                                 || !rebuiltConfig.isTrainable()) {
-                            throw new LlmCoreException("A vocabulary of " + targetVocab
-                                    + " tokens exceeds the limits of the model");
+                            throw new LlmCoreException(
+                                    LlmCoreI18n.get("core.train.vocabExceeds", targetVocab));
                         }
                         candidateModel = new TransformerModel(rebuiltConfig);
                         candidateOptimizer = new AdamW(candidateModel.weights(),
@@ -591,7 +582,7 @@ public final class LlmCore {
                 candidateDataset = new Dataset(candidateTokenizer);
                 candidateDataset.addAll(texts, false);
                 if (candidateDataset.isShort()) {
-                    throw new LlmCoreException("The texts hold nothing to learn");
+                    throw new LlmCoreException(LlmCoreI18n.get("core.train.empty"));
                 }
             }
 
@@ -603,8 +594,7 @@ public final class LlmCore {
                 optimizer_.setLearningRate(learningRate.doubleValue());
             }
             if (expanded) {
-                told.onLog("the model learned a vocabulary of " + candidateTokenizer.size()
-                        + " tokens");
+                told.onLog(LlmCoreI18n.get("core.train.vocabLearned", candidateTokenizer.size()));
             }
 
             running_ = TRAINING;
@@ -615,8 +605,7 @@ public final class LlmCore {
                 }
                 return tr;
             } catch (OutOfMemoryError memory) {
-                throw new LlmCoreException("Not enough memory for this model : make the model or"
-                        + " the texts smaller and train again");
+                throw new LlmCoreException(LlmCoreI18n.get("core.train.oom"));
             } finally {
                 running_ = IDLE;
                 stop_ = false;
@@ -677,8 +666,7 @@ public final class LlmCore {
                             epochLossSum += accumLossSum;
                             epochWindows += microCount;
                         } else {
-                            listener.onLog("the gradients of a step are not a number : lower the"
-                                    + " learning rate and train again");
+                            listener.onLog(LlmCoreI18n.get("core.train.nonFiniteGrad"));
                         }
                     }
                     if (epochWindows > 0L) {
@@ -700,8 +688,7 @@ public final class LlmCore {
                     }
                     microCount = 0;
                     accumLossSum = 0d;
-                    listener.onLog("the gradients of a step are not a number : lower the"
-                            + " learning rate and train again");
+                    listener.onLog(LlmCoreI18n.get("core.train.nonFiniteGrad"));
                     continue;
                 }
                 microCount++;
@@ -723,8 +710,7 @@ public final class LlmCore {
                         epochWindows += microCount;
                         reportedLoss = accumLossSum / microCount;
                     } else {
-                        listener.onLog("the gradients of a step are not a number : lower the"
-                                + " learning rate and train again");
+                        listener.onLog(LlmCoreI18n.get("core.train.nonFiniteGrad"));
                     }
                     microCount = 0;
                     accumLossSum = 0d;
@@ -766,7 +752,7 @@ public final class LlmCore {
             return new ContinualLearner.StepResult(
                     ContinualLearner.StepOutcome.NO_PENDING, 0, 0, steps_,
                     Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN, false,
-                    "No confirmed un-consolidated semantic memories pending");
+                    LlmCoreI18n.get("core.consolidate.noPending"));
         }
 
         List<String> rawTexts = new ArrayList<>(batch.targets().size());
@@ -793,7 +779,7 @@ public final class LlmCore {
                         return new ContinualLearner.StepResult(
                                 ContinualLearner.StepOutcome.SKIPPED, 0, 0, steps_,
                                 Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN, false,
-                                "Pending entries contain unseen characters with vocabulary growth disabled");
+                                LlmCoreI18n.get("core.consolidate.unseenNoGrowth"));
                     }
                     batch = new MemoryBank.ConsolidationBatch(List.copyOf(filteredIds),
                             List.copyOf(filteredTargets), batch.instinctHoldout(),
@@ -808,7 +794,7 @@ public final class LlmCore {
                         return new ContinualLearner.StepResult(
                                 ContinualLearner.StepOutcome.SKIPPED, 0, 0, steps_,
                                 Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN, false,
-                                "Vocabulary growth exceeds configured model limits");
+                                LlmCoreI18n.get("core.consolidate.vocabExceedsLimits"));
                     }
                     unseen = candidateUnseen;
                 }
@@ -836,7 +822,7 @@ public final class LlmCore {
                 return new ContinualLearner.StepResult(
                         ContinualLearner.StepOutcome.SKIPPED, 0, 0, steps_,
                         Double.NaN, Double.NaN, Double.NaN, Double.NaN, Double.NaN, false,
-                        "No encodable token sequences in consolidation batch");
+                        LlmCoreI18n.get("core.consolidate.noEncodable"));
             }
 
             float[][] baselineWeights = expanded ? model_.copyWeights() : savedWeights;
@@ -850,7 +836,7 @@ public final class LlmCore {
                 return new ContinualLearner.StepResult(
                         ContinualLearner.StepOutcome.PREEMPTED, 0, windows.size(), steps_,
                         instBefore, Double.NaN, cogBefore, Double.NaN, Double.NaN, false,
-                        "Preempted before consolidation training");
+                        LlmCoreI18n.get("core.consolidate.preemptedBefore"));
             }
 
             double attemptLr = cfg.consolidationLearningRate();
@@ -908,7 +894,7 @@ public final class LlmCore {
                     return new ContinualLearner.StepResult(
                             ContinualLearner.StepOutcome.PREEMPTED, 0, windows.size(), steps_,
                             instBefore, Double.NaN, cogBefore, Double.NaN, Double.NaN, false,
-                            "Preempted during consolidation");
+                            LlmCoreI18n.get("core.consolidate.preemptedDuring"));
                 }
                 lastTrainLoss = (trainCount > 0) ? (trainLossSum / trainCount) : Double.NaN;
                 if (diverged || (trainCount == 0)) {
@@ -923,7 +909,7 @@ public final class LlmCore {
                     return new ContinualLearner.StepResult(
                             ContinualLearner.StepOutcome.PREEMPTED, 0, windows.size(), steps_,
                             instBefore, lastInstAfter, cogBefore, lastCogAfter, lastTrainLoss,
-                            false, "Preempted during post-consolidation validation");
+                            false, LlmCoreI18n.get("core.consolidate.preemptedValidation"));
                 }
 
                 boolean instinctOk = !Double.isFinite(instBefore)
@@ -945,7 +931,7 @@ public final class LlmCore {
                 return new ContinualLearner.StepResult(
                         ContinualLearner.StepOutcome.ROLLED_BACK, 0, windows.size(), steps_,
                         instBefore, lastInstAfter, cogBefore, lastCogAfter, lastTrainLoss, false,
-                        "Holdout regression exceeded threshold; rolled back cleanly");
+                        LlmCoreI18n.get("core.consolidate.rolledBack"));
             }
 
             if (Double.isFinite(lastTrainLoss)) {
@@ -956,8 +942,7 @@ public final class LlmCore {
             return new ContinualLearner.StepResult(
                     ContinualLearner.StepOutcome.CONSOLIDATED, marked, windows.size(), steps_,
                     instBefore, lastInstAfter, cogBefore, lastCogAfter, lastTrainLoss, expanded,
-                    "Consolidated " + marked + " semantic entries across " + windows.size()
-                            + " windows");
+                    LlmCoreI18n.get("core.consolidate.consolidated", marked, windows.size()));
         } finally {
             running_ = IDLE;
             stop_ = false;
@@ -1182,7 +1167,7 @@ public final class LlmCore {
                 try {
                     return answer(prompt, limit, chosen, told, began);
                 } catch (OutOfMemoryError memory) {
-                    throw new LlmCoreException("Not enough memory to answer : ask a shorter text");
+                    throw new LlmCoreException(LlmCoreI18n.get("core.answer.oom"));
                 } finally {
                     running_ = IDLE;
                     stop_ = false;

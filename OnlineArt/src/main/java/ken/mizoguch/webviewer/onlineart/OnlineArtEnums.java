@@ -1,5 +1,7 @@
 package ken.mizoguch.webviewer.onlineart;
 
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
+
 /**
  *
  * @author mizoguch-ken
@@ -10,7 +12,7 @@ public enum OnlineArtEnums {
     ONLINEART_PORT_USED("The port is already in use", "ポートが既に使用されています"),
     ONLINEART_NOT_SUPPORT("Serial is not supported", "シリアルがサポートされていません");
 
-    private volatile int lang_ = 0;
+    private volatile int lang_ = -1;
     private final String[] text_ = new String[2];
 
     private OnlineArtEnums(final String message) {
@@ -30,8 +32,13 @@ public enum OnlineArtEnums {
         }
     }
 
+    void resetLang() {
+        lang_ = -1;
+    }
+
     @Override
     public String toString() {
-        return text_[lang_];
+        int resolved = (lang_ >= 0) ? lang_ : (PluginI18n.isJapanese() ? 1 : 0);
+        return text_[resolved];
     }
 }

@@ -2,6 +2,7 @@ package ken.mizoguch.webviewer.plugin.kit;
 
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Locale;
 import javafx.concurrent.Service;
 import javafx.concurrent.Worker;
 import javafx.scene.image.Image;
@@ -140,6 +141,11 @@ public abstract class ServiceSupport<V> extends Service<V> implements WebViewerP
         host_.write(name, msg, err);
     }
 
+    @Override
+    public Locale locale() {
+        return host_.locale();
+    }
+
     /**
      * name of a function of the page the plug-in has to execute : the plug-in writes the name in
      * the javascript it executes in the page, so a name which comes from the page can not carry an
@@ -154,7 +160,7 @@ public abstract class ServiceSupport<V> extends Service<V> implements WebViewerP
         if ((func == null) || ScriptFunction.isValid(func)) {
             return func;
         }
-        write(functionName(), "Incorrect script function name", true);
+        write(functionName(), PluginI18n.kit(this, "kit.script.invalidFunctionName"), true);
         return null;
     }
 }

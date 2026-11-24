@@ -23,11 +23,6 @@ import javafx.scene.control.TextArea;
 public class LicenseDialog {
 
     /**
-     * the title of the window of the dialog
-     */
-    private static final String TITLE = "Licenses";
-
-    /**
      * the name of the file of the package of a plug-in which holds the text of its licenses
      */
     private static final String LICENSES_FILE = "licenses.txt";
@@ -98,7 +93,7 @@ public class LicenseDialog {
 
         textArea.setText(licenses_);
         alert.setResizable(true);
-        alert.setTitle(TITLE);
+        alert.setTitle(PluginI18n.kit("kit.licenses.title"));
         alert.getDialogPane().setHeaderText(null);
         textArea.setEditable(false);
         textArea.setWrapText(true);

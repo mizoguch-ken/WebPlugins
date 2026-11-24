@@ -84,10 +84,10 @@ public final class ByteTokenizer implements Tokenizer {
         int count = in.readInt();
 
         if (count != 0) {
-            throw new IOException("A byte vocabulary of [" + count + "] tokens is refused");
+            throw new IOException(LlmCoreI18n.get("tokenizer.byte.refusedCount", count));
         }
         if (size != SIZE) {
-            throw new IOException("Incorrect byte vocabulary size [" + size + "]");
+            throw new IOException(LlmCoreI18n.get("tokenizer.byte.incorrectSize", size));
         }
     }
 }

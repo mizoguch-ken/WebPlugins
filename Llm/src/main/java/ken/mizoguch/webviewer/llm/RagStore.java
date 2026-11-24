@@ -66,13 +66,13 @@ final class RagStore {
 
     int upsertJson(String json) {
         if ((json == null) || json.trim().isEmpty()) {
-            throw new IllegalArgumentException("RAG upsert payload must not be empty");
+            throw new IllegalArgumentException(LlmI18n.get("llm.rag.upsertEmpty"));
         }
         JsonElement parsed;
         try {
             parsed = JsonParser.parseString(json.trim());
         } catch (JsonSyntaxException ex) {
-            throw new IllegalArgumentException("Invalid RAG upsert JSON: " + ex.getMessage(), ex);
+            throw new IllegalArgumentException(LlmI18n.get("llm.rag.upsertInvalidJson", ex.getMessage()), ex);
         }
         List<UpsertSpec> specs = new ArrayList<>();
         if ((parsed != null) && parsed.isJsonObject()) {
@@ -85,13 +85,12 @@ final class RagStore {
             for (int i = 0; i < arr.size(); i++) {
                 JsonElement item = arr.get(i);
                 if ((item == null) || !item.isJsonObject()) {
-                    throw new IllegalArgumentException(
-                            "RAG entry at index " + i + " must be a JSON object");
+                    throw new IllegalArgumentException(LlmI18n.get("llm.rag.entryObjectAt", i));
                 }
                 specs.add(parseSpec(item.getAsJsonObject(), i));
             }
         } else {
-            throw new IllegalArgumentException("RAG upsert payload must be a JSON object or array");
+            throw new IllegalArgumentException(LlmI18n.get("llm.rag.upsertPayloadType"));
         }
         return upsertSpecs(specs);
     }
@@ -105,8 +104,8 @@ final class RagStore {
         lock_.writeLock().lock();
         try {
             if ((batch.batchDim() > 0) && (dimensions_ > 0) && (batch.batchDim() != dimensions_)) {
-                throw new IllegalArgumentException("Vector dimension mismatch: expected "
-                        + dimensions_ + ", got " + batch.batchDim());
+                throw new IllegalArgumentException(
+                        LlmI18n.get("llm.rag.vectorDimMismatch", dimensions_, batch.batchDim()));
             }
             int additions = 0;
             Set<String> seen = new HashSet<>();
@@ -117,7 +116,7 @@ final class RagStore {
             }
             if ((entries_.size() + additions) > MAX_ENTRIES) {
                 throw new IllegalArgumentException(
-                        "RAG store capacity exceeded (max " + MAX_ENTRIES + " entries)");
+                        LlmI18n.get("llm.rag.storeCapacityExceeded", MAX_ENTRIES));
             }
             if ((batch.batchDim() > 0) && (dimensions_ == 0)) {
                 dimensions_ = batch.batchDim();
@@ -133,7 +132,7 @@ final class RagStore {
 
     int replaceByPrefix(String prefix, List<UpsertSpec> specs) {
         if ((prefix == null) || prefix.isEmpty()) {
-            throw new IllegalArgumentException("Document prefix must not be empty");
+            throw new IllegalArgumentException(LlmI18n.get("llm.rag.docPrefixEmpty"));
         }
         ValidatedBatch batch = buildBatch(specs);
 
@@ -153,8 +152,8 @@ final class RagStore {
             }
             int remainingVecs = vectorCount_ - removedVecs;
             if ((batch.batchDim() > 0) && (remainingVecs > 0) && (batch.batchDim() != dimensions_)) {
-                throw new IllegalArgumentException("Vector dimension mismatch: expected "
-                        + dimensions_ + ", got " + batch.batchDim());
+                throw new IllegalArgumentException(
+                        LlmI18n.get("llm.rag.vectorDimMismatch", dimensions_, batch.batchDim()));
             }
             int additions = 0;
             Set<String> seen = new HashSet<>();
@@ -167,7 +166,7 @@ final class RagStore {
             int remainingEntries = entries_.size() - toRemove.size();
             if ((remainingEntries + additions) > MAX_ENTRIES) {
                 throw new IllegalArgumentException(
-                        "RAG store capacity exceeded (max " + MAX_ENTRIES + " entries)");
+                        LlmI18n.get("llm.rag.storeCapacityExceeded", MAX_ENTRIES));
             }
             for (Entry old : toRemove) {
                 removeEntryLocked(old.id());
@@ -192,7 +191,7 @@ final class RagStore {
         int batchDim = 0;
         for (UpsertSpec spec : specs) {
             if ((spec.id() == null) || spec.id().trim().isEmpty()) {
-                throw new IllegalArgumentException("RAG entry requires a non-empty \"id\"");
+                throw new IllegalArgumentException(LlmI18n.get("llm.rag.entryIdRequired"));
             }
             float[] unitVec = (spec.rawVector() == null) ? null : normalize(spec.rawVector());
             if (unitVec != null) {
@@ -200,12 +199,12 @@ final class RagStore {
                     batchDim = unitVec.length;
                 } else if (unitVec.length != batchDim) {
                     throw new IllegalArgumentException(
-                            "Vector dimension mismatch for \"" + spec.id() + "\"");
+                            LlmI18n.get("llm.rag.entryDimMismatchFor", spec.id()));
                 }
             }
             if ((unitVec == null) && ((spec.text() == null) || spec.text().trim().isEmpty())) {
                 throw new IllegalArgumentException(
-                        "RAG entry \"" + spec.id() + "\" requires \"text\" or \"vector\"");
+                        LlmI18n.get("llm.rag.entryTextOrVectorRequired", spec.id()));
             }
             List<String> tokens = tokenizeLexical(spec.text());
             Map<String, Integer> tf = new HashMap<>();
@@ -294,7 +293,7 @@ final class RagStore {
     }
 
     String searchJson(String queryJson) {
-        JsonObject query = JsonUtil.parseObject(queryJson, "RAG search query");
+        JsonObject query = JsonUtil.parseObject(queryJson, LlmI18n.get("llm.ctx.ragSearchQuery"));
         String queryText = JsonUtil.optString(query, "text");
         JsonElement vecEl = query.get("vector");
         float[] queryVec = ((vecEl != null) && !vecEl.isJsonNull())
@@ -303,13 +302,13 @@ final class RagStore {
         Integer topKObj = JsonUtil.optInt(query, "topK");
         int topK = (topKObj == null) ? DEFAULT_TOP_K : topKObj.intValue();
         if (topK < 1) {
-            throw new IllegalArgumentException("\"topK\" must be at least 1");
+            throw new IllegalArgumentException(LlmI18n.get("llm.rag.topKMin"));
         }
         Double minScore = JsonUtil.optDouble(query, "minScore");
         Integer rrfKObj = JsonUtil.optInt(query, "rrfK");
         int rrfK = (rrfKObj == null) ? DEFAULT_RRF_K : rrfKObj.intValue();
         if (rrfK < 1) {
-            throw new IllegalArgumentException("\"rrfK\" must be at least 1");
+            throw new IllegalArgumentException(LlmI18n.get("llm.rag.rrfKMin"));
         }
         JsonObject filter = JsonUtil.optObject(query, "filter");
         String mode = resolveSearchMode(rawMode, queryText, queryVec);
@@ -331,8 +330,8 @@ final class RagStore {
             }
             if (useVector && (dimensions_ > 0) && (queryVec != null)
                     && (queryVec.length != dimensions_)) {
-                throw new IllegalArgumentException("Query vector dimension mismatch: expected "
-                        + dimensions_ + ", got " + queryVec.length);
+                throw new IllegalArgumentException(
+                        LlmI18n.get("llm.rag.queryDimMismatch", dimensions_, queryVec.length));
             }
 
             List<ScoredId> vectorHits = new ArrayList<>();
@@ -420,8 +419,7 @@ final class RagStore {
 
     static double cosineSimilarity(float[] a, float[] b) {
         if ((a == null) || (b == null) || (a.length == 0) || (a.length != b.length)) {
-            throw new IllegalArgumentException(
-                    "Vectors must be non-empty and have matching dimensions");
+            throw new IllegalArgumentException(LlmI18n.get("llm.rag.vectorsNonEmptySameDim"));
         }
         double dot = 0d;
         double normA = 0d;
@@ -430,7 +428,7 @@ final class RagStore {
             double va = a[i];
             double vb = b[i];
             if (!Double.isFinite(va) || !Double.isFinite(vb)) {
-                throw new IllegalArgumentException("Vector contains non-finite numbers");
+                throw new IllegalArgumentException(LlmI18n.get("llm.rag.vectorNonFinite"));
             }
             dot += va * vb;
             normA += va * va;
@@ -438,7 +436,7 @@ final class RagStore {
         }
         double denom = Math.sqrt(normA) * Math.sqrt(normB);
         if ((denom == 0d) || !Double.isFinite(denom)) {
-            throw new IllegalArgumentException("Vector norm must be non-zero");
+            throw new IllegalArgumentException(LlmI18n.get("llm.rag.vectorZeroNorm"));
         }
         return Math.clamp(dot / denom, -1d, 1d);
     }
@@ -475,22 +473,21 @@ final class RagStore {
     }
 
     String load(Path file) throws IOException {
-        String raw = SandboxFiles.readUtf8Bounded(file, MAX_FILE_BYTES, "RAG file");
-        JsonObject root = JsonUtil.parseObject(raw, "RAG file");
+        String raw = SandboxFiles.readUtf8Bounded(file, MAX_FILE_BYTES, LlmI18n.get("llm.ctx.ragFile"));
+        JsonObject root = JsonUtil.parseObject(raw, LlmI18n.get("llm.ctx.ragFile"));
         JsonArray arr = JsonUtil.optArray(root, "entries");
         if (arr == null) {
-            throw new IllegalArgumentException("RAG file missing \"entries\" array");
+            throw new IllegalArgumentException(LlmI18n.get("llm.rag.fileMissingEntries"));
         }
         if (arr.size() > MAX_ENTRIES) {
             throw new IllegalArgumentException(
-                    "RAG file exceeds maximum entries (" + MAX_ENTRIES + ")");
+                    LlmI18n.get("llm.rag.fileExceedsMaxEntries", MAX_ENTRIES));
         }
         List<UpsertSpec> specs = new ArrayList<>(arr.size());
         for (int i = 0; i < arr.size(); i++) {
             JsonElement el = arr.get(i);
             if ((el == null) || !el.isJsonObject()) {
-                throw new IllegalArgumentException(
-                        "RAG file entry at index " + i + " must be a JSON object");
+                throw new IllegalArgumentException(LlmI18n.get("llm.rag.fileEntryObjectAt", i));
             }
             specs.add(parseSpec(el.getAsJsonObject(), i));
         }
@@ -669,33 +666,31 @@ final class RagStore {
             if (hasText) {
                 return "lexical";
             }
-            throw new IllegalArgumentException(
-                    "RAG search requires at least \"text\" or \"vector\"");
+            throw new IllegalArgumentException(LlmI18n.get("llm.rag.searchTextOrVectorRequired"));
         }
         String norm = rawMode.trim().toLowerCase(Locale.ROOT);
         return switch (norm) {
             case "vector" -> {
                 if (!hasVec) {
-                    throw new IllegalArgumentException("\"vector\" mode requires query \"vector\"");
+                    throw new IllegalArgumentException(LlmI18n.get("llm.rag.vectorModeRequiresVector"));
                 }
                 yield "vector";
             }
             case "lexical" -> {
                 if (!hasText) {
-                    throw new IllegalArgumentException("\"lexical\" mode requires query \"text\"");
+                    throw new IllegalArgumentException(LlmI18n.get("llm.rag.lexicalModeRequiresText"));
                 }
                 yield "lexical";
             }
             case "hybrid" -> {
                 if (!hasText && !hasVec) {
                     throw new IllegalArgumentException(
-                            "\"hybrid\" mode requires \"text\" and/or \"vector\"");
+                            LlmI18n.get("llm.rag.hybridModeRequiresTextOrVector"));
                 }
                 yield "hybrid";
             }
             default -> throw new IllegalArgumentException(
-                    "Unsupported search mode \"" + rawMode
-                            + "\": use \"auto\", \"vector\", \"lexical\", or \"hybrid\"");
+                    LlmI18n.get("llm.rag.unsupportedSearchMode", rawMode));
         };
     }
 
@@ -707,8 +702,9 @@ final class RagStore {
     private static UpsertSpec parseSpec(JsonObject obj, int index) {
         String id = JsonUtil.optString(obj, "id");
         if ((id == null) || id.trim().isEmpty()) {
-            String prefix = (index >= 0) ? ("RAG entry at index " + index) : "RAG entry";
-            throw new IllegalArgumentException(prefix + " requires a non-empty \"id\"");
+            throw new IllegalArgumentException((index >= 0)
+                    ? LlmI18n.get("llm.rag.entryIdRequiredAt", index)
+                    : LlmI18n.get("llm.rag.entryIdRequired"));
         }
         String text = JsonUtil.optString(obj, "text");
         JsonObject metadata = JsonUtil.optObject(obj, "metadata");
@@ -721,18 +717,18 @@ final class RagStore {
     private static float[] normalize(float[] raw) {
         if ((raw == null) || (raw.length == 0) || (raw.length > MAX_DIMENSIONS)) {
             throw new IllegalArgumentException(
-                    "Vector dimensions must be between 1 and " + MAX_DIMENSIONS);
+                    LlmI18n.get("llm.rag.vectorDimensionsRange", MAX_DIMENSIONS));
         }
         double sumSq = 0d;
         for (float v : raw) {
             if (!Float.isFinite(v)) {
-                throw new IllegalArgumentException("Vector contains non-finite numbers");
+                throw new IllegalArgumentException(LlmI18n.get("llm.rag.vectorNonFinite"));
             }
             sumSq += (double) v * v;
         }
         double norm = Math.sqrt(sumSq);
         if ((norm == 0d) || !Double.isFinite(norm)) {
-            throw new IllegalArgumentException("Vector norm must be non-zero");
+            throw new IllegalArgumentException(LlmI18n.get("llm.rag.vectorZeroNorm"));
         }
         float[] out = new float[raw.length];
         for (int i = 0; i < raw.length; i++) {

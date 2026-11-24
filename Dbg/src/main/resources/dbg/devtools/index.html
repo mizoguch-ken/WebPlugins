@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="ja">
+<html lang="en">
     <head>
         <meta charset="utf-8">
         <title>DevTools</title>
@@ -8,44 +8,44 @@
     <body>
         <div id="bar">
             <div id="tabs">
-                <button class="tab on" id="tab-console">Console</button>
-                <button class="tab" id="tab-elements">Elements</button>
-                <button class="tab" id="tab-sources">Sources</button>
-                <button class="tab" id="tab-network">Network</button>
-                <button class="tab" id="tab-storage">Storage</button>
-                <button class="tab" id="tab-about">About</button>
+                <button class="tab on" id="tab-console" data-i18n="tab.console">Console</button>
+                <button class="tab" id="tab-elements" data-i18n="tab.elements">Elements</button>
+                <button class="tab" id="tab-sources" data-i18n="tab.sources">Sources</button>
+                <button class="tab" id="tab-network" data-i18n="tab.network">Network</button>
+                <button class="tab" id="tab-storage" data-i18n="tab.storage">Storage</button>
+                <button class="tab" id="tab-about" data-i18n="tab.about">About</button>
             </div>
             <div id="state">...</div>
         </div>
 
         <div class="panel" id="panel-console">
             <div class="tools">
-                <input type="text" id="filter" class="grow" placeholder="filter">
+                <input type="text" id="filter" class="grow" placeholder="filter" data-i18n-placeholder="ph.filter">
                 <select id="level">
-                    <option value="">all</option>
+                    <option value="" data-i18n="level.all">all</option>
                     <option value="log">log</option>
                     <option value="info">info</option>
                     <option value="warn">warn</option>
                     <option value="error">error</option>
                 </select>
-                <label><input type="checkbox" id="stamp"> time</label>
-                <button id="clear">Clear</button>
-                <button id="save">Save</button>
+                <label><input type="checkbox" id="stamp"> <span data-i18n="console.time">time</span></label>
+                <button id="clear" data-i18n="btn.clear">Clear</button>
+                <button id="save" data-i18n="btn.save">Save</button>
                 <span id="saved"></span>
             </div>
             <div class="list" id="log"></div>
             <div id="repl">
                 <span class="prompt">&gt;</span>
-                <input type="text" id="ask" placeholder="an expression of the page">
+                <input type="text" id="ask" placeholder="an expression of the page" data-i18n-placeholder="ph.ask">
             </div>
         </div>
 
         <div class="panel hidden" id="panel-elements">
             <div class="tools">
-                <button id="point">Inspect</button>
-                <button id="reload">Reload</button>
-                <input type="text" id="query" class="grow" placeholder="a selector of the page">
-                <button id="find">Find</button>
+                <button id="point" data-i18n="btn.inspect">Inspect</button>
+                <button id="reload" data-i18n="btn.reload">Reload</button>
+                <input type="text" id="query" class="grow" placeholder="a selector of the page" data-i18n-placeholder="ph.query">
+                <button id="find" data-i18n="btn.find">Find</button>
             </div>
             <div id="crumbs"></div>
             <div id="split">
@@ -56,18 +56,18 @@
 
         <div class="panel hidden" id="panel-sources">
             <div class="tools">
-                <button id="srcReload">Reload</button>
-                <input type="text" id="srcFilter" class="grow" placeholder="filter">
-                <input type="text" id="srcWord" class="grow" placeholder="a word of the sources">
-                <button id="srcFind">Find</button>
+                <button id="srcReload" data-i18n="btn.reload">Reload</button>
+                <input type="text" id="srcFilter" class="grow" placeholder="filter" data-i18n-placeholder="ph.filter">
+                <input type="text" id="srcWord" class="grow" placeholder="a word of the sources" data-i18n-placeholder="ph.srcWord">
+                <button id="srcFind" data-i18n="btn.find">Find</button>
             </div>
             <div id="split">
                 <div class="list" id="srclist"></div>
                 <textarea id="srccode" spellcheck="false"></textarea>
             </div>
             <div class="tools">
-                <button id="srcApply">Write in the page</button>
-                <button id="srcRun">Run in the page</button>
+                <button id="srcApply" data-i18n="btn.srcApply">Write in the page</button>
+                <button id="srcRun" data-i18n="btn.srcRun">Run in the page</button>
                 <span id="srcNote" class="src grow"></span>
             </div>
             <div class="list half" id="srcfind"></div>
@@ -75,33 +75,33 @@
 
         <div class="panel hidden" id="panel-network">
             <div class="tools">
-                <input type="text" id="netFilter" class="grow" placeholder="filter">
+                <input type="text" id="netFilter" class="grow" placeholder="filter" data-i18n-placeholder="ph.filter">
                 <select id="netKind">
-                    <option value="">all kinds</option>
+                    <option value="" data-i18n="net.kind.all">all kinds</option>
                     <option value="xhr">xhr</option>
                     <option value="fetch">fetch</option>
-                    <option value="js">js of the page</option>
-                    <option value="css">css of the page</option>
-                    <option value="img">img of the page</option>
-                    <option value="iframe">iframe of the page</option>
-                    <option value="media">media of the page</option>
-                    <option value="file">files of the engine</option>
+                    <option value="js" data-i18n="net.kind.js">js of the page</option>
+                    <option value="css" data-i18n="net.kind.css">css of the page</option>
+                    <option value="img" data-i18n="net.kind.img">img of the page</option>
+                    <option value="iframe" data-i18n="net.kind.iframe">iframe of the page</option>
+                    <option value="media" data-i18n="net.kind.media">media of the page</option>
+                    <option value="file" data-i18n="net.kind.file">files of the engine</option>
                 </select>
-                <label><input type="checkbox" id="netBad"> errors only</label>
-                <button id="netFiles">Files of the page</button>
-                <button id="netClear">Clear</button>
-                <button id="netSave">Save</button>
+                <label><input type="checkbox" id="netBad"> <span data-i18n="net.errorsOnly">errors only</span></label>
+                <button id="netFiles" data-i18n="btn.netFiles">Files of the page</button>
+                <button id="netClear" data-i18n="btn.clear">Clear</button>
+                <button id="netSave" data-i18n="btn.save">Save</button>
             </div>
             <div class="list" id="netlist">
                 <table class="grid">
                     <thead>
-                        <tr><th>Time</th><th>Method</th><th>URL</th><th>Status</th><th>Kind</th><th>ms</th><th>Size</th></tr>
+                        <tr><th data-i18n="net.col.time">Time</th><th data-i18n="net.col.method">Method</th><th data-i18n="net.col.url">URL</th><th data-i18n="net.col.status">Status</th><th data-i18n="net.col.kind">Kind</th><th data-i18n="net.col.ms">ms</th><th data-i18n="net.col.size">Size</th></tr>
                     </thead>
                     <tbody id="netbody"></tbody>
                 </table>
             </div>
             <div class="tools">
-                <span class="src">the row of a request holds its answer when the user clicks it, and hides it again</span>
+                <span class="src" data-i18n="net.hint">the row of a request holds its answer when the user clicks it, and hides it again</span>
             </div>
         </div>
 
@@ -111,41 +111,41 @@
                     <option value="local">localStorage</option>
                     <option value="session">sessionStorage</option>
                 </select>
-                <button id="stReload">Reload</button>
-                <button id="stClear">Clear</button>
+                <button id="stReload" data-i18n="btn.reload">Reload</button>
+                <button id="stClear" data-i18n="btn.clear">Clear</button>
                 <span id="stNote"></span>
             </div>
             <div class="list" id="stlist">
                 <table class="grid">
                     <thead>
-                        <tr><th>Key</th><th>Value</th><th></th></tr>
+                        <tr><th data-i18n="storage.col.key">Key</th><th data-i18n="storage.col.value">Value</th><th></th></tr>
                     </thead>
                     <tbody id="stbody"></tbody>
                 </table>
             </div>
             <div class="tools">
-                <input type="text" id="stKey" class="grow" placeholder="key">
-                <input type="text" id="stValue" class="grow" placeholder="value">
-                <button id="stSet">Set</button>
+                <input type="text" id="stKey" class="grow" placeholder="key" data-i18n-placeholder="ph.key">
+                <input type="text" id="stValue" class="grow" placeholder="value" data-i18n-placeholder="ph.value">
+                <button id="stSet" data-i18n="btn.set">Set</button>
             </div>
 
             <div class="tools">
                 <span id="coNote"></span>
-                <button id="coReload">Cookies</button>
-                <button id="coClear">Clear</button>
+                <button id="coReload" data-i18n="btn.cookies">Cookies</button>
+                <button id="coClear" data-i18n="btn.clear">Clear</button>
             </div>
             <div class="list half" id="colist">
                 <table class="grid">
                     <thead>
-                        <tr><th>Cookie</th><th>Value</th><th></th></tr>
+                        <tr><th data-i18n="storage.col.cookie">Cookie</th><th data-i18n="storage.col.value">Value</th><th></th></tr>
                     </thead>
                     <tbody id="cobody"></tbody>
                 </table>
             </div>
             <div class="tools">
-                <input type="text" id="coKey" class="grow" placeholder="cookie">
-                <input type="text" id="coValue" class="grow" placeholder="value">
-                <button id="coSet">Set</button>
+                <input type="text" id="coKey" class="grow" placeholder="cookie" data-i18n-placeholder="ph.cookie">
+                <input type="text" id="coValue" class="grow" placeholder="value" data-i18n-placeholder="ph.value">
+                <button id="coSet" data-i18n="btn.set">Set</button>
             </div>
         </div>
 

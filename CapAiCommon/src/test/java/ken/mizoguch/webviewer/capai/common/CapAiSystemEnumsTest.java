@@ -1,5 +1,7 @@
 package ken.mizoguch.webviewer.capai.common;
 
+import java.util.Locale;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -19,9 +21,21 @@ public class CapAiSystemEnumsTest {
 
     @AfterEach
     public void restoreLanguage() {
+        System.clearProperty(PluginI18n.PROPERTY_LANGUAGE);
+        Locale.setDefault(Locale.Category.DISPLAY, Locale.US);
         for (CapAiSystemEnums value : CapAiSystemEnums.values()) {
-            value.setLang(0);
+            value.resetLang();
         }
+    }
+
+    @Test
+    @DisplayName("the dynamic default follows the runtime language when setLang is not called")
+    public void testDynamicLanguageFollowing() {
+        System.setProperty(PluginI18n.PROPERTY_LANGUAGE, "ja");
+        assertTrue(CapAiSystemEnums.SET_ADDRESS.toString().contains("\u30a2\u30c9\u30ec\u30b9"));
+
+        System.setProperty(PluginI18n.PROPERTY_LANGUAGE, "en");
+        assertEquals("Please set the address", CapAiSystemEnums.SET_ADDRESS.toString());
     }
 
     @Test

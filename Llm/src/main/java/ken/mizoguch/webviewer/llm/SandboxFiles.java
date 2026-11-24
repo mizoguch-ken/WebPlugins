@@ -26,11 +26,11 @@ final class SandboxFiles {
 
     static String readUtf8Bounded(Path file, long maxBytes, String label) throws IOException {
         if (!Files.isRegularFile(file)) {
-            throw new IOException(label + " is not a regular file: " + file.getFileName());
+            throw new IOException(LlmI18n.get("llm.sandbox.notRegularFile", label, file.getFileName()));
         }
         long announcedSize = Files.size(file);
         if (announcedSize > maxBytes) {
-            throw new IOException(label + " exceeds " + maxBytes + " bytes");
+            throw new IOException(LlmI18n.get("llm.sandbox.exceedsMaxBytes", label, maxBytes));
         }
         int initialCap = (int) Math.min(Math.max(announcedSize, 256L), 65536L);
         ByteArrayOutputStream out = new ByteArrayOutputStream(initialCap);
@@ -41,7 +41,7 @@ final class SandboxFiles {
             while ((n = in.read(buf)) != -1) {
                 total += n;
                 if (total > maxBytes) {
-                    throw new IOException(label + " exceeds " + maxBytes + " bytes");
+                    throw new IOException(LlmI18n.get("llm.sandbox.exceedsMaxBytes", label, maxBytes));
                 }
                 out.write(buf, 0, n);
             }
@@ -52,7 +52,7 @@ final class SandboxFiles {
     static void writeUtf8Atomically(Path file, String content) throws IOException {
         Path parent = file.toAbsolutePath().getParent();
         if (parent == null) {
-            throw new IOException("No parent directory for file: " + file);
+            throw new IOException(LlmI18n.get("llm.sandbox.noParentDir", file));
         }
         Files.createDirectories(parent);
         String prefix = (file.getFileName() == null) ? "tmp" : file.getFileName().toString();

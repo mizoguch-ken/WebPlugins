@@ -114,7 +114,8 @@ public final class Llm extends PluginSupport {
         root.add("local", JsonUtil.tryParseObject(localService_.modelInfo()));
         String remoteState = tasks_.hasRemoteTasks() ? "asking" : "idle";
         root.add("remote", profiles_.allProfilesPublicJson(remoteState));
-        root.add("sessions", JsonUtil.parseArray(sessionStore_.listJson(), "sessions"));
+        root.add("sessions", JsonUtil.parseArray(sessionStore_.listJson(),
+                LlmI18n.get(this, "llm.ctx.sessions")));
         root.add("rag", JsonUtil.tryParseObject(ragStore_.infoJson()));
         root.add("memory", memoryApi_.statusJsonObject());
         root.add("activeTasks", tasks_.activeTasksJsonArray());
@@ -194,13 +195,14 @@ public final class Llm extends PluginSupport {
     Path resolveSandboxPath(String path) {
         Path file = SandboxFiles.resolve(directory_, webPath_, path);
         if (file == null) {
-            logError("Incorrect file path [" + path + "]");
+            logError(LlmI18n.get(this, "llm.path.incorrect", path));
         }
         return file;
     }
 
     void logError(String message) {
-        String text = ((message == null) || message.isEmpty()) ? "Unknown error" : message;
+        String text = ((message == null) || message.isEmpty())
+                ? LlmI18n.get(this, "llm.error.unknown") : message;
         lastError_ = text;
         write(FUNCTION_NAME, text, true);
     }
@@ -208,7 +210,7 @@ public final class Llm extends PluginSupport {
     void logException(Throwable ex) {
         String msg = (ex == null) ? null : ex.getMessage();
         lastError_ = ((msg == null) || msg.isEmpty())
-                ? ((ex == null) ? "Unknown error" : ex.getClass().getSimpleName())
+                ? ((ex == null) ? LlmI18n.get(this, "llm.error.unknown") : ex.getClass().getSimpleName())
                 : msg;
         writeStackTrace(FUNCTION_NAME, ex);
     }

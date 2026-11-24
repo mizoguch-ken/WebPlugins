@@ -71,6 +71,7 @@ Thread-safe (`volatile`) wrapper holding the `WebViewerPlugin` host reference. C
 | `public Stage stage()` / `WebEngine webEngine()` / `Path webPath()` | Returns host value or `null` when unset. |
 | `public List<Image> icons()` | Returns host icons or a new empty `ArrayList<>()` when unset/null. |
 | `public void writeStackTrace(String name, Throwable t)` / `write(String name, String msg, boolean err)` | Forwards to host when set; safe no-op when unset. |
+| `public Locale locale()` | Returns host `locale()` when set, or falls back via `WebViewerPlugin` default resolution when unset (`PluginSupport` and `ServiceSupport` delegate here).<br>設定時はホストの `locale()`、未設定時はデフォルト解決した `Locale` を返します（`PluginSupport` / `ServiceSupport` もここへ委譲）。 |
 
 ### 4. `SandboxPath` (`public final class SandboxPath`)
 Canonicalizes user-supplied paths and blocks path traversal (`..`) and symlinks resolving outside the permitted root directory.
@@ -104,6 +105,7 @@ Bounded asynchronous dispatcher for page callbacks (`public static final int QUE
 | Constructor / Method / メソッド | Behavior / 仕様 |
 | :--- | :--- |
 | `public ScriptNotifier(WebViewerPlugin host, String dropped)` | Creates notifier using `host` for FX error logging with message `dropped` (cannot be `null`). |
+| `public ScriptNotifier(WebViewerPlugin host, Supplier<String> droppedSupplier)` | Overload taking a lazy `Supplier<String>` so dropped-notification warnings are formatted in the active locale when a drop occurs.<br>キュー溢れ時のエラーメッセージを動的サプライヤから取得し、通知発生時の言語で出力します。 |
 | `public void setFunction(String function)` / `public String function()` | Sets or reads callback target expression (e.g. `onDone`). |
 | `public void setEngine(WebEngine engine)` | Stores active `WebEngine` and drains queued notifications if `SUCCEEDED`. |
 | `public void setState(Worker.State state)` | Stores `Worker.State` and drains queued notifications once `state == Worker.State.SUCCEEDED`. |
@@ -119,7 +121,18 @@ Bounded asynchronous dispatcher for page callbacks (`public static final int QUE
 | `protected LicenseDialog()` | Subclass helper: reads UTF-8 resource `licenses.txt` relative to `getClass()`'s package (`""` if missing or error).<br>派生クラス自身のパッケージ配下にある `licenses.txt` (UTF-8) を読み込みます。 |
 | `public LicenseDialog(String licenses)` | Uses provided text directly (`null` → `""`). |
 | `public String text()` | Returns loaded license text string. |
-| `public void show()` | Opens a non-modal resizable `Alert.AlertType.INFORMATION` titled `"Licenses"` with a wrapped non-editable `TextArea` (auto-marshals onto FX thread via `Platform.runLater`).<br>非モーダルかつリサイズ可能なライセンス表示ダイアログを開きます。 |
+| `public void show()` | Opens a non-modal resizable `Alert.AlertType.INFORMATION` dialog displaying `text()` with localized title/button text (`en`/`ja`, auto-marshals onto FX thread via `Platform.runLater`).<br>非モーダルかつリサイズ可能なライセンス表示ダイアログを開きます（タイトル・ボタン表示も多言語対応）。 |
+
+### 9. `PluginI18n` (`public final class PluginI18n`)
+UTF-8 `messages.properties` / `messages_ja.properties` resource bundle helper with `{0}`, `{1}`, ... placeholder formatting. Constants: `PROPERTY_LANGUAGE = "decotofu.language"`, `LANG_AUTO = "auto"`, `LANG_EN = "en"`, `LANG_JA = "ja"`.
+
+| Member / メソッド | Behavior / 仕様 |
+| :--- | :--- |
+| `public static Bundle bundle(Class<?> anchor)` | Loads `<anchor package>/messages.properties` (EN fallback) and `messages_ja.properties` (JA) in UTF-8.<br>`anchor` と同じパッケージ配下の UTF-8 リソースバンドルを読み込みます。 |
+| `Bundle.get(String key, Object... args)` | Resolves active language (`decotofu.language` → `Locale.Category.DISPLAY`, falling back to `en`) and formats message `key`. |
+| `Bundle.get(WebViewerPlugin host, String key, Object... args)` | Resolves language via explicit `"decotofu.language"` property, then `host.locale()`, then `Locale.Category.DISPLAY`. |
+| `Bundle.get(Locale locale, String key, Object... args)` | Formats message `key` specifically for `locale` (`ja` → JA bundle, otherwise EN fallback). |
+| `Bundle.englishKeys()` / `japaneseKeys()` / `englishBundle()` / `japaneseBundle()` | Exposes immutable bundle keys and maps for parity verification tests.<br>キー・プレースホルダー整合性テスト用に不変のキー集合およびメッセージマップを返します。 |
 
 ---
 

@@ -185,7 +185,8 @@ public final class ContinualConfig {
 
         public Builder maxWorkingEntries(int value) {
             if ((value < 4) || (value > 10_000)) {
-                throw new LlmCoreException("maxWorkingEntries out of range (4..10000): " + value);
+                throw new LlmCoreException(
+                        LlmCoreI18n.get("continual.config.maxWorkingEntries", value));
             }
             maxWorkingEntries = value;
             return this;
@@ -193,7 +194,8 @@ public final class ContinualConfig {
 
         public Builder workingTtlMinutes(long value) {
             if ((value < 1L) || (value > 10_080L)) {
-                throw new LlmCoreException("workingTtlMinutes out of range (1..10080): " + value);
+                throw new LlmCoreException(
+                        LlmCoreI18n.get("continual.config.workingTtlMinutes", value));
             }
             workingTtlMinutes = value;
             return this;
@@ -201,7 +203,8 @@ public final class ContinualConfig {
 
         public Builder maxEpisodicEntries(int value) {
             if ((value < 16) || (value > 20_000)) {
-                throw new LlmCoreException("maxEpisodicEntries out of range (16..20000): " + value);
+                throw new LlmCoreException(
+                        LlmCoreI18n.get("continual.config.maxEpisodicEntries", value));
             }
             maxEpisodicEntries = value;
             return this;
@@ -210,7 +213,7 @@ public final class ContinualConfig {
         public Builder episodicHalfLifeHours(double value) {
             if (!Double.isFinite(value) || (value < 0.01d) || (value > 87_600d)) {
                 throw new LlmCoreException(
-                        "episodicHalfLifeHours out of range (0.01..87600): " + value);
+                        LlmCoreI18n.get("continual.config.episodicHalfLifeHours", value));
             }
             episodicHalfLifeHours = value;
             return this;
@@ -218,7 +221,8 @@ public final class ContinualConfig {
 
         public Builder maxSemanticEntries(int value) {
             if ((value < 16) || (value > 50_000)) {
-                throw new LlmCoreException("maxSemanticEntries out of range (16..50000): " + value);
+                throw new LlmCoreException(
+                        LlmCoreI18n.get("continual.config.maxSemanticEntries", value));
             }
             maxSemanticEntries = value;
             return this;
@@ -227,7 +231,7 @@ public final class ContinualConfig {
         public Builder confirmEvidenceThreshold(int value) {
             if ((value < 1) || (value > 100)) {
                 throw new LlmCoreException(
-                        "confirmEvidenceThreshold out of range (1..100): " + value);
+                        LlmCoreI18n.get("continual.config.confirmEvidenceThreshold", value));
             }
             confirmEvidenceThreshold = value;
             return this;
@@ -236,7 +240,7 @@ public final class ContinualConfig {
         public Builder episodicPromoteStrength(double value) {
             if (!Double.isFinite(value) || (value < 0d) || (value > 1d)) {
                 throw new LlmCoreException(
-                        "episodicPromoteStrength out of range [0, 1]: " + value);
+                        LlmCoreI18n.get("continual.config.episodicPromoteStrength", value));
             }
             episodicPromoteStrength = value;
             return this;
@@ -245,7 +249,7 @@ public final class ContinualConfig {
         public Builder episodicForgetThreshold(double value) {
             if (!Double.isFinite(value) || (value < 0d) || (value > 0.95d)) {
                 throw new LlmCoreException(
-                        "episodicForgetThreshold out of range [0, 0.95]: " + value);
+                        LlmCoreI18n.get("continual.config.episodicForgetThreshold", value));
             }
             episodicForgetThreshold = value;
             return this;
@@ -258,7 +262,8 @@ public final class ContinualConfig {
 
         public Builder localRecallBoost(double value) {
             if (!Double.isFinite(value) || (value < 0d) || (value > 20d)) {
-                throw new LlmCoreException("localRecallBoost out of range [0, 20]: " + value);
+                throw new LlmCoreException(
+                        LlmCoreI18n.get("continual.config.localRecallBoost", value));
             }
             localRecallBoost = value;
             return this;
@@ -267,7 +272,7 @@ public final class ContinualConfig {
         public Builder consolidationBatchSize(int value) {
             if ((value < 1) || (value > 256)) {
                 throw new LlmCoreException(
-                        "consolidationBatchSize out of range (1..256): " + value);
+                        LlmCoreI18n.get("continual.config.consolidationBatchSize", value));
             }
             consolidationBatchSize = value;
             return this;
@@ -275,7 +280,8 @@ public final class ContinualConfig {
 
         public Builder consolidationEpochs(int value) {
             if ((value < 1) || (value > 20)) {
-                throw new LlmCoreException("consolidationEpochs out of range (1..20): " + value);
+                throw new LlmCoreException(
+                        LlmCoreI18n.get("continual.config.consolidationEpochs", value));
             }
             consolidationEpochs = value;
             return this;
@@ -284,7 +290,7 @@ public final class ContinualConfig {
         public Builder consolidationLearningRate(double value) {
             if (!Double.isFinite(value) || (value < 1e-7d) || (value > 0.05d)) {
                 throw new LlmCoreException(
-                        "consolidationLearningRate out of range [1e-7, 0.05]: " + value);
+                        LlmCoreI18n.get("continual.config.consolidationLearningRate", value));
             }
             consolidationLearningRate = value;
             return this;
@@ -292,7 +298,8 @@ public final class ContinualConfig {
 
         public Builder instinctReplayRatio(double value) {
             if (!Double.isFinite(value) || (value < 0d) || (value > 10d)) {
-                throw new LlmCoreException("instinctReplayRatio out of range [0, 10]: " + value);
+                throw new LlmCoreException(
+                        LlmCoreI18n.get("continual.config.instinctReplayRatio", value));
             }
             instinctReplayRatio = value;
             return this;
@@ -300,7 +307,8 @@ public final class ContinualConfig {
 
         public Builder holdoutSize(int value) {
             if ((value < 1) || (value > 512)) {
-                throw new LlmCoreException("holdoutSize out of range (1..512): " + value);
+                throw new LlmCoreException(
+                        LlmCoreI18n.get("continual.config.holdoutSize", value));
             }
             holdoutSize = value;
             return this;
@@ -308,7 +316,8 @@ public final class ContinualConfig {
 
         public Builder maxInstinctRegression(double value) {
             if (!Double.isFinite(value) || (value < 0d) || (value > 1d)) {
-                throw new LlmCoreException("maxInstinctRegression out of range [0, 1]: " + value);
+                throw new LlmCoreException(
+                        LlmCoreI18n.get("continual.config.maxInstinctRegression", value));
             }
             maxInstinctRegression = value;
             return this;
@@ -316,7 +325,8 @@ public final class ContinualConfig {
 
         public Builder maxCognitiveRegression(double value) {
             if (!Double.isFinite(value) || (value < 0d) || (value > 1d)) {
-                throw new LlmCoreException("maxCognitiveRegression out of range [0, 1]: " + value);
+                throw new LlmCoreException(
+                        LlmCoreI18n.get("continual.config.maxCognitiveRegression", value));
             }
             maxCognitiveRegression = value;
             return this;

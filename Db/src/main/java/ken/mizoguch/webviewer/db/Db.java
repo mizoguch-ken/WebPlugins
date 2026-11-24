@@ -28,6 +28,7 @@ import java.util.Map;
 import java.util.Properties;
 import java.util.ServiceConfigurationError;
 import java.util.ServiceLoader;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
 import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
 
@@ -38,6 +39,7 @@ import ken.mizoguch.webviewer.plugin.kit.SandboxPath;
 public class Db extends PluginSupport {
 
     private static final String FUNCTION_NAME = "db";
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(Db.class);
 
     private Connection conn_;
     private URLClassLoader loader_;
@@ -77,7 +79,7 @@ public class Db extends PluginSupport {
     public Boolean connect(String libraryPath, String url, String user, String pass)
             throws MalformedURLException, ClassNotFoundException, SQLException {
         if ((libraryPath == null) || (url == null)) {
-            write(FUNCTION_NAME, "Incorrect database argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.arg.incorrect"), true);
             return null;
         }
         Path path = resolveDriverLibrary(libraryPath);
@@ -102,30 +104,30 @@ public class Db extends PluginSupport {
     public Boolean connectWithLibraries(String libraryPathsJson, String url, String user, String pass)
             throws MalformedURLException, ClassNotFoundException, SQLException {
         if ((libraryPathsJson == null) || (url == null)) {
-            write(FUNCTION_NAME, "Incorrect database argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.arg.incorrect"), true);
             return null;
         }
         JsonArray list;
         try {
             JsonElement parsed = JsonParser.parseString(libraryPathsJson);
             if (!parsed.isJsonArray()) {
-                write(FUNCTION_NAME, "Incorrect database argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "db.arg.incorrect"), true);
                 return null;
             }
             list = parsed.getAsJsonArray();
         } catch (JsonSyntaxException ex) {
-            write(FUNCTION_NAME, "Incorrect database argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.arg.incorrect"), true);
             return null;
         }
         if (list.isEmpty()) {
-            write(FUNCTION_NAME, "Incorrect database argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.arg.incorrect"), true);
             return null;
         }
         URL[] urls = new URL[list.size()];
         for (int i = 0; i < list.size(); i++) {
             JsonElement element = list.get(i);
             if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isString()) {
-                write(FUNCTION_NAME, "Incorrect database argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "db.arg.incorrect"), true);
                 return null;
             }
             Path resolved = resolveDriverLibrary(element.getAsString());
@@ -143,15 +145,15 @@ public class Db extends PluginSupport {
         // code of any file of the computer
         Path path = SandboxPath.resolve(webPath(), null, libraryPath);
         if (path == null) {
-            write(FUNCTION_NAME, "Incorrect database argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.arg.incorrect"), true);
             return null;
         }
         if (!Files.exists(path)) {
-            write(FUNCTION_NAME, "File not found", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.file.notFound"), true);
             return null;
         }
         if (!Files.isRegularFile(path)) {
-            write(FUNCTION_NAME, "File is not a regular file", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.file.notRegular"), true);
             return null;
         }
         return path;
@@ -216,11 +218,11 @@ public class Db extends PluginSupport {
      */
     public Boolean setAutoCommit(Boolean autoCommit) throws SQLException {
         if (conn_ == null) {
-            write(FUNCTION_NAME, "Not connected", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.notConnected"), true);
             return false;
         }
         if (autoCommit == null) {
-            write(FUNCTION_NAME, "Incorrect database argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.arg.incorrect"), true);
             return false;
         }
         conn_.setAutoCommit(autoCommit);
@@ -234,7 +236,7 @@ public class Db extends PluginSupport {
      */
     public Boolean getAutoCommit() throws SQLException {
         if (conn_ == null) {
-            write(FUNCTION_NAME, "Not connected", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.notConnected"), true);
             return null;
         }
         return conn_.getAutoCommit();
@@ -247,7 +249,7 @@ public class Db extends PluginSupport {
      */
     public Boolean commit() throws SQLException {
         if (conn_ == null) {
-            write(FUNCTION_NAME, "Not connected", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.notConnected"), true);
             return false;
         }
         conn_.commit();
@@ -261,7 +263,7 @@ public class Db extends PluginSupport {
      */
     public Boolean rollback() throws SQLException {
         if (conn_ == null) {
-            write(FUNCTION_NAME, "Not connected", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.notConnected"), true);
             return false;
         }
         conn_.rollback();
@@ -279,7 +281,7 @@ public class Db extends PluginSupport {
             return true;
         }
         if (seconds < 0) {
-            write(FUNCTION_NAME, "Incorrect database argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.arg.incorrect"), true);
             return false;
         }
         queryTimeout_ = seconds;
@@ -305,7 +307,7 @@ public class Db extends PluginSupport {
             return true;
         }
         if (maxRows < 0) {
-            write(FUNCTION_NAME, "Incorrect database argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.arg.incorrect"), true);
             return false;
         }
         maxRows_ = maxRows;
@@ -360,10 +362,10 @@ public class Db extends PluginSupport {
                     }
                 }
             } else {
-                write(FUNCTION_NAME, "Incorrect database argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "db.arg.incorrect"), true);
             }
         } else {
-            write(FUNCTION_NAME, "Not connected", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.notConnected"), true);
         }
         return null;
     }
@@ -377,11 +379,11 @@ public class Db extends PluginSupport {
      */
     public String queryParams(String sql, String paramsJson) throws SQLException {
         if (conn_ == null) {
-            write(FUNCTION_NAME, "Not connected", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.notConnected"), true);
             return null;
         }
         if (sql == null) {
-            write(FUNCTION_NAME, "Incorrect database argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.arg.incorrect"), true);
             return null;
         }
         JsonArray params = parseParameters(paramsJson);
@@ -411,10 +413,10 @@ public class Db extends PluginSupport {
                     return stmt.executeUpdate(sql);
                 }
             } else {
-                write(FUNCTION_NAME, "Incorrect database argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "db.arg.incorrect"), true);
             }
         } else {
-            write(FUNCTION_NAME, "Not connected", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.notConnected"), true);
         }
         return null;
     }
@@ -428,11 +430,11 @@ public class Db extends PluginSupport {
      */
     public Integer updateParams(String sql, String paramsJson) throws SQLException {
         if (conn_ == null) {
-            write(FUNCTION_NAME, "Not connected", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.notConnected"), true);
             return null;
         }
         if (sql == null) {
-            write(FUNCTION_NAME, "Incorrect database argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.arg.incorrect"), true);
             return null;
         }
         JsonArray params = parseParameters(paramsJson);
@@ -462,12 +464,12 @@ public class Db extends PluginSupport {
         try {
             JsonElement parsed = JsonParser.parseString(paramsJson);
             if (!parsed.isJsonArray()) {
-                write(FUNCTION_NAME, "Incorrect database argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "db.arg.incorrect"), true);
                 return null;
             }
             return parsed.getAsJsonArray();
         } catch (JsonSyntaxException ex) {
-            write(FUNCTION_NAME, "Incorrect database argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "db.arg.incorrect"), true);
             return null;
         }
     }

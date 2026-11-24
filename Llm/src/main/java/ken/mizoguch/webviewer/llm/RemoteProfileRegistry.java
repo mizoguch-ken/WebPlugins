@@ -25,8 +25,8 @@ final class RemoteProfileRegistry {
                 ? activeProfile_
                 : normalizeProfileName(profileName);
         if (!profiles_.containsKey(name) && (profiles_.size() >= MAX_PROFILES)) {
-            throw LlmRemoteException.config("Maximum number of remote profiles reached ("
-                    + MAX_PROFILES + ")");
+            throw LlmRemoteException.config(
+                    LlmI18n.get("llm.profile.maxReached", MAX_PROFILES));
         }
         RemoteConfig existing = profiles_.get(name);
         RemoteConfig updated = RemoteConfig.parseAndMerge(existing, configInput);
@@ -45,14 +45,14 @@ final class RemoteProfileRegistry {
         if ((profileName == null) || profileName.trim().isEmpty()) {
             RemoteConfig active = profiles_.get(activeProfile_);
             if (active == null) {
-                throw LlmRemoteException.config("Remote endpoint is not configured");
+                throw LlmRemoteException.config(LlmI18n.get("llm.profile.notConfigured"));
             }
             return active;
         }
         String name = normalizeProfileName(profileName);
         RemoteConfig config = profiles_.get(name);
         if (config == null) {
-            throw LlmRemoteException.config("Remote profile \"" + name + "\" is not configured");
+            throw LlmRemoteException.config(LlmI18n.get("llm.profile.namedNotConfigured", name));
         }
         return config;
     }
@@ -72,7 +72,7 @@ final class RemoteProfileRegistry {
         String name = normalizeProfileName(profileName);
         RemoteConfig target = profiles_.get(name);
         if (target == null) {
-            throw LlmRemoteException.config("Remote profile \"" + name + "\" is not configured");
+            throw LlmRemoteException.config(LlmI18n.get("llm.profile.namedNotConfigured", name));
         }
         activeProfile_ = name;
         return target;
@@ -118,12 +118,11 @@ final class RemoteProfileRegistry {
 
     private static String normalizeProfileName(String raw) {
         if ((raw == null) || raw.trim().isEmpty()) {
-            throw LlmRemoteException.config("Profile name must not be empty");
+            throw LlmRemoteException.config(LlmI18n.get("llm.profile.nameEmpty"));
         }
         String trimmed = raw.trim();
         if (!VALID_PROFILE_NAME.matcher(trimmed).matches()) {
-            throw LlmRemoteException.config(
-                    "Invalid profile name \"" + trimmed + "\": use 1..64 [A-Za-z0-9_.-] chars");
+            throw LlmRemoteException.config(LlmI18n.get("llm.profile.nameInvalid", trimmed));
         }
         return trimmed;
     }

@@ -78,7 +78,7 @@ final class SseParser {
             if ("data".equals(field)) {
                 int extra = value.length() + (hasData ? 1 : 0);
                 if ((data.length() + extra) > MAX_EVENT_CHARS) {
-                    throw LlmRemoteException.stream("SSE event payload exceeds maximum size",
+                    throw LlmRemoteException.stream(LlmI18n.get("llm.sse.eventExceedsMax"),
                             "stream_limit_exceeded", null);
                 }
                 if (hasData) {
@@ -147,8 +147,9 @@ final class SseParser {
                     return buffer_.toString();
                 }
                 if (buffer_.length() >= maxChars_) {
-                    throw LlmRemoteException.stream("SSE line exceeds maximum size of "
-                            + maxChars_ + " characters", "stream_limit_exceeded", null);
+                    throw LlmRemoteException.stream(
+                            LlmI18n.get("llm.sse.lineExceedsMax", maxChars_),
+                            "stream_limit_exceeded", null);
                 }
                 buffer_.append((char) ch);
             }

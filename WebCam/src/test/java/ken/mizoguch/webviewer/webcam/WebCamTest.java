@@ -7,17 +7,23 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import javafx.application.Platform;
 import javafx.concurrent.Worker;
 import javafx.scene.image.Image;
 import javafx.scene.web.WebEngine;
 import javafx.stage.Stage;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 import org.bytedeco.javacv.FrameGrabber;
 import org.bytedeco.javacv.OpenCVFrameGrabber;
 import org.bytedeco.opencv.opencv_core.Scalar;
@@ -168,12 +174,43 @@ public class WebCamTest {
 
     @AfterEach
     void tearDown() throws Exception {
+        System.clearProperty(PluginI18n.PROPERTY_LANGUAGE);
+        Locale.setDefault(Locale.Category.DISPLAY, Locale.US);
+        runFx(() -> webCam_.onLanguageChanged(Locale.ENGLISH));
         runFx(() -> webCam_.close());
         waitCounter(0, TASK_END_TIMEOUT_MILLIS);
 
         if (webcam() != null) {
             set("webcam_", null);
         }
+    }
+
+    @Test
+    @DisplayName("i18n bundles have parity and WebCam stage title & errors follow locale")
+    void i18nBundleParityAndDynamicLanguageMessages() throws Exception {
+        PluginI18n.Bundle bundle = PluginI18n.bundle(WebCam.class);
+        assertEquals(bundle.englishKeys(), bundle.japaneseKeys());
+        Pattern placeholderPattern = Pattern.compile("\\{(\\d+)}");
+        for (String key : bundle.englishKeys()) {
+            Set<String> enTokens = new HashSet<>();
+            Set<String> jaTokens = new HashSet<>();
+            Matcher m1 = placeholderPattern.matcher(bundle.englishBundle().get(key));
+            while (m1.find()) {
+                enTokens.add(m1.group(0));
+            }
+            Matcher m2 = placeholderPattern.matcher(bundle.japaneseBundle().get(key));
+            while (m2.find()) {
+                jaTokens.add(m2.group(0));
+            }
+            assertEquals(enTokens, jaTokens, "Placeholder mismatch for " + key);
+        }
+
+        System.setProperty(PluginI18n.PROPERTY_LANGUAGE, "ja");
+        runFx(() -> webCam_.onLanguageChanged(Locale.JAPANESE));
+        Stage stage = (Stage) get("webcamStage_");
+        assertEquals("Webカメラ", callFx(stage::getTitle));
+        assertFalse((Boolean) callFx(() -> webCam_.isPlaying()));
+        assertTrue(recorder_.writes().contains("カメラデバイスが開かれていません"));
     }
 
     /**

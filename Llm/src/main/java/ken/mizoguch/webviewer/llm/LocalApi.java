@@ -219,7 +219,7 @@ public final class LocalApi {
             return null;
         }
         if (parsed.isEmpty()) {
-            owner_.logError("Training requires non-empty text input");
+            owner_.logError(LlmI18n.get(owner_, "llm.local.trainEmpty"));
             return null;
         }
         return submitTraining(parsed, optionsJson);
@@ -241,7 +241,7 @@ public final class LocalApi {
             return null;
         }
         if (loaded.isEmpty()) {
-            owner_.logError("Corpus file contains no text to learn");
+            owner_.logError(LlmI18n.get(owner_, "llm.local.corpusLearnEmpty"));
             return null;
         }
         return submitTraining(loaded, optionsJson);
@@ -259,7 +259,7 @@ public final class LocalApi {
             return null;
         }
         if (parsed.isEmpty()) {
-            owner_.logError("Evaluation requires non-empty text input");
+            owner_.logError(LlmI18n.get(owner_, "llm.local.evalEmpty"));
             return null;
         }
         return submitEvaluation(parsed);
@@ -281,7 +281,7 @@ public final class LocalApi {
             return null;
         }
         if (loaded.isEmpty()) {
-            owner_.logError("Corpus file contains no text to evaluate");
+            owner_.logError(LlmI18n.get(owner_, "llm.local.corpusEvalEmpty"));
             return null;
         }
         return submitEvaluation(loaded);
@@ -293,7 +293,7 @@ public final class LocalApi {
      */
     public String generate(String prompt, String optionsJson) {
         if ((prompt == null) || prompt.isEmpty()) {
-            owner_.logError("Generation requires a non-empty prompt");
+            owner_.logError(LlmI18n.get(owner_, "llm.local.promptEmpty"));
             return null;
         }
         final LocalModelService.GenerateOptions opts;
@@ -319,7 +319,7 @@ public final class LocalApi {
                 service_::stopIfRunning);
         if (taskId == null) {
             continual_.releaseUser();
-            owner_.logError("Local model is busy or plug-in is closed");
+            owner_.logError(LlmI18n.get(owner_, "llm.local.busyOrClosed"));
         }
         return taskId;
     }
@@ -349,7 +349,7 @@ public final class LocalApi {
                 service_::stopIfRunning);
         if (taskId == null) {
             continual_.releaseUser();
-            owner_.logError("Local model is busy or plug-in is closed");
+            owner_.logError(LlmI18n.get(owner_, "llm.local.busyOrClosed"));
         }
         return taskId;
     }
@@ -371,14 +371,14 @@ public final class LocalApi {
                 service_::stopIfRunning);
         if (taskId == null) {
             continual_.releaseUser();
-            owner_.logError("Local model is busy or plug-in is closed");
+            owner_.logError(LlmI18n.get(owner_, "llm.local.busyOrClosed"));
         }
         return taskId;
     }
 
     private boolean requireLocalModelPresent() {
         if (!service_.hasModel()) {
-            owner_.logError("No local model is loaded");
+            owner_.logError(LlmI18n.get(owner_, "llm.local.noModelLoaded"));
             return false;
         }
         return true;
@@ -386,13 +386,13 @@ public final class LocalApi {
 
     private boolean acquireUserHoldSync() {
         if (!tasks_.isLocalIdle()) {
-            owner_.logError("Local model is currently busy");
+            owner_.logError(LlmI18n.get(owner_, "llm.local.busy"));
             return false;
         }
         continual_.preemptForUser();
         if (!tasks_.isLocalIdle() || !service_.isIdle()) {
             continual_.releaseUser();
-            owner_.logError("Local model is currently busy");
+            owner_.logError(LlmI18n.get(owner_, "llm.local.busy"));
             return false;
         }
         return true;

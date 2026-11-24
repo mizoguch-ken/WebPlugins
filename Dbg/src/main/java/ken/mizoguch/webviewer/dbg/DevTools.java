@@ -10,6 +10,7 @@ import javafx.scene.image.Image;
 import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
 import javafx.stage.Stage;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 import netscape.javascript.JSObject;
 
 /**
@@ -30,6 +31,7 @@ final class DevTools {
      * the title of the window of the panel
      */
     static final String TITLE = "DevTools";
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(DevTools.class);
 
     /**
      * the file of the panel kept in the jar of the plug-in
@@ -85,6 +87,21 @@ final class DevTools {
         });
     }
 
+    void updateTitle() {
+        String title = I18N.get(host_, "dbg.devtools.title");
+        Runnable update = () -> {
+            Stage window = stage_;
+            if (window != null) {
+                window.setTitle(title);
+            }
+        };
+        if (Platform.isFxApplicationThread()) {
+            update.run();
+        } else {
+            Platform.runLater(update);
+        }
+    }
+
     /**
      * write the window of the panel and read the files of the panel : the plug-in is given to the
      * panel when its page is ready, so the panel calls the functions of the plug-in
@@ -101,7 +118,7 @@ final class DevTools {
             panel is written in the console of the WebViewer, so the panel does not fail without a
             word ; the engine of the page keeps the message of its error only */
             host_.write(host_.functionName(),
-                    "Error in the panel of the plug-in : " + event.getMessage(), true);
+                    I18N.get(host_, "dbg.devtools.panelError", event.getMessage()), true);
         });
         panel.getLoadWorker().stateProperty().addListener(
                 (observable, was, now) -> {
@@ -112,7 +129,7 @@ final class DevTools {
 
         Stage window = new Stage();
 
-        window.setTitle(TITLE);
+        window.setTitle(I18N.get(host_, "dbg.devtools.title"));
         Stage owner = host_.ownerStage();
 
         if (owner != null) {

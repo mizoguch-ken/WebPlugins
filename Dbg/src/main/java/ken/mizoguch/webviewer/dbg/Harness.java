@@ -7,6 +7,7 @@ import javafx.scene.Scene;
 import javafx.scene.web.WebEngine;
 import javafx.scene.web.WebView;
 import javafx.stage.Stage;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 import netscape.javascript.JSObject;
 
 /**
@@ -27,8 +28,7 @@ public final class Harness extends Application {
      * the page of the jar read when the run asks for no page
      */
     private static final String DEFAULT_PAGE = "sample.html";
-
-    private static final String TITLE = "Dbg harness";
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(Harness.class);
 
     private static final double WIDTH = 1000;
     private static final double HEIGHT = 700;
@@ -56,7 +56,7 @@ public final class Harness extends Application {
                         ready(page);
                     }
                 });
-        stage.setTitle(TITLE + " - " + page_());
+        stage.setTitle(I18N.get("dbg.harness.title") + " - " + page_());
         stage.setOnCloseRequest(event -> plugin_.close());
         stage.setScene(new Scene(view, WIDTH, HEIGHT));
         stage.show();

@@ -3,6 +3,7 @@ package ken.mizoguch.webviewer.plugin.kit;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import javafx.concurrent.Worker;
 import javafx.scene.image.Image;
 import javafx.scene.web.WebEngine;
@@ -136,5 +137,15 @@ public class HostRef {
         if (viewer != null) {
             viewer.write(name, msg, err);
         }
+    }
+
+    /**
+     * the display locale of the WebViewer
+     *
+     * @return the resolved locale
+     */
+    public Locale locale() {
+        WebViewerPlugin viewer = webViewer_;
+        return (viewer != null) ? PluginI18n.resolveLocale(viewer) : PluginI18n.resolveLocale();
     }
 }

@@ -253,6 +253,8 @@ function setupRemoteSession() {
 * **Path Sandboxing (`SandboxPath`)**: All `save` / `load` / `trainFile` / `evaluateFile` / `indexFile` / `exportInstinct` / `inheritInstinct` / `autoSavePath` / `autoMemorySavePath` paths must resolve inside `webPath` (`~/` aliases to `webPath`). Path traversal (`..`) and symlinks escaping `webPath` return `null`/`false` and set `llm.lastError()`.
 * **File Size Limits**: Local corpus (`trainFile`), `MemoryApi.save`/`load`, `RagApi.indexFile`: **16 MiB**; `SessionApi.save`/`load`: **8 MiB**; `RagApi.save`/`load` & remote HTTP responses: **32 MiB**.
 * **Gson Dependency**: `Gson` has `<scope>provided</scope>` in `pom.xml` (supplied by host `WebViewer`, not shaded into `Llm.jar`).
+* **Internationalization (`en` / `ja`)**: Console error logs (`llm.lastError()`), dropped-event warnings, validation/sandbox/RAG/session exceptions, and HTTP/SSE/stream diagnostics support English (`en`, fallback) and Japanese (`ja`) resolved from `-Ddecotofu.language`, host `WebViewerPlugin.locale()`, and `Locale.getDefault(Locale.Category.DISPLAY)`. JSON schema field names, `errorType`/`errorCode` values, and RAG/memory prompt markers remain protocol-fixed.
+  * **多言語対応 (`en` / `ja`)**: コンソールエラー（`llm.lastError()`）、イベント破棄通知、各APIの検証/例外メッセージ、および HTTP/SSE 診断出力が、システムプロパティ `"decotofu.language"`、ホストの `WebViewerPlugin.locale()`、および `Locale.Category.DISPLAY` に応じて日英で切り替わります（JSON スキーマ名やエラーコード・プロンプトマーカーは不変）。
 
 ---
 

@@ -80,7 +80,7 @@ public final class ContinualLearner {
 
     public void setConfig(ContinualConfig config) {
         if (config == null) {
-            throw new LlmCoreException("ContinualConfig must not be null");
+            throw new LlmCoreException(LlmCoreI18n.get("continual.config.null"));
         }
         config_ = config;
     }

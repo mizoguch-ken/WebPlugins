@@ -31,6 +31,7 @@ import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import javafx.concurrent.Worker;
 import ken.mizoguch.webviewer.plugin.WebViewerPlugin;
+import ken.mizoguch.webviewer.plugin.kit.PluginI18n;
 import ken.mizoguch.webviewer.plugin.kit.PluginSupport;
 import ken.mizoguch.webviewer.plugin.kit.ScriptFunction;
 import ken.mizoguch.webviewer.plugin.kit.ScriptNotifier;
@@ -42,6 +43,7 @@ import ken.mizoguch.webviewer.plugin.kit.ScriptNotifier;
 public class Serial extends PluginSupport implements SerialPortEventListener {
 
     private static final String FUNCTION_NAME = "serial";
+    private static final PluginI18n.Bundle I18N = PluginI18n.bundle(Serial.class);
     private static final int MAX_BUFFER_SIZE = 65536;
     private static final char[] HEX_CHARS = "0123456789ABCDEF".toCharArray();
 
@@ -82,16 +84,24 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
         charset_ = StandardCharsets.UTF_8;
         newLineCharacter_ = "\n";
 
-        notifyDataAvailable_ = new ScriptNotifier(this, "Notification of received data is dropped");
-        notifyOutputEmpty_ = new ScriptNotifier(this, "Notification of output buffer empty is dropped");
-        notifyBreakInterrupt_ = new ScriptNotifier(this, "Notification of break interrupt is dropped");
-        notifyCarrierDetect_ = new ScriptNotifier(this, "Notification of carrier detect is dropped");
-        notifyCTS_ = new ScriptNotifier(this, "Notification of CTS is dropped");
-        notifyDSR_ = new ScriptNotifier(this, "Notification of DSR is dropped");
-        notifyFramingError_ = new ScriptNotifier(this, "Notification of framing error is dropped");
-        notifyOverrunError_ = new ScriptNotifier(this, "Notification of overrun error is dropped");
-        notifyParityError_ = new ScriptNotifier(this, "Notification of parity error is dropped");
-        notifyRingIndicator_ = new ScriptNotifier(this, "Notification of ring indicator is dropped");
+        notifyDataAvailable_ = new ScriptNotifier(this,
+                () -> I18N.get(this, "serial.notify.dataAvailable.dropped"));
+        notifyOutputEmpty_ = new ScriptNotifier(this,
+                () -> I18N.get(this, "serial.notify.outputEmpty.dropped"));
+        notifyBreakInterrupt_ = new ScriptNotifier(this,
+                () -> I18N.get(this, "serial.notify.breakInterrupt.dropped"));
+        notifyCarrierDetect_ = new ScriptNotifier(this,
+                () -> I18N.get(this, "serial.notify.carrierDetect.dropped"));
+        notifyCTS_ = new ScriptNotifier(this, () -> I18N.get(this, "serial.notify.cts.dropped"));
+        notifyDSR_ = new ScriptNotifier(this, () -> I18N.get(this, "serial.notify.dsr.dropped"));
+        notifyFramingError_ = new ScriptNotifier(this,
+                () -> I18N.get(this, "serial.notify.framingError.dropped"));
+        notifyOverrunError_ = new ScriptNotifier(this,
+                () -> I18N.get(this, "serial.notify.overrunError.dropped"));
+        notifyParityError_ = new ScriptNotifier(this,
+                () -> I18N.get(this, "serial.notify.parityError.dropped"));
+        notifyRingIndicator_ = new ScriptNotifier(this,
+                () -> I18N.get(this, "serial.notify.ringIndicator.dropped"));
         notifiers_ = new ScriptNotifier[]{
             notifyDataAvailable_, notifyOutputEmpty_, notifyBreakInterrupt_,
             notifyCarrierDetect_, notifyCTS_, notifyDSR_,
@@ -569,12 +579,12 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
             throws TooManyListenersException, IOException, NoSuchPortException, PortInUseException,
             UnsupportedCommOperationException {
         if (owner_) {
-            write(FUNCTION_NAME, "Serial is already open", true);
+            write(FUNCTION_NAME, I18N.get(this, "serial.alreadyOpen"), true);
             return false;
         }
         if ((name == null) || name.trim().isEmpty() || (baud <= 0) || !Double.isFinite(stopbits)
                 || (parity == null)) {
-            write(FUNCTION_NAME, "Incorrect serial argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "serial.arg.incorrect"), true);
             return false;
         }
 
@@ -593,13 +603,13 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
                 dataBitsParam = SerialPort.DATABITS_8;
                 break;
             default:
-                write(FUNCTION_NAME, "Incorrect serial argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "serial.arg.incorrect"), true);
                 return false;
         }
 
         long scaledStop = Math.round(stopbits * 10.0);
         if (Math.abs((stopbits * 10.0) - scaledStop) >= 1e-6) {
-            write(FUNCTION_NAME, "Incorrect serial argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "serial.arg.incorrect"), true);
             return false;
         }
         int stopBitsParam;
@@ -614,7 +624,7 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
                 stopBitsParam = SerialPort.STOPBITS_2;
                 break;
             default:
-                write(FUNCTION_NAME, "Incorrect serial argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "serial.arg.incorrect"), true);
                 return false;
         }
 
@@ -636,7 +646,7 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
                 parityParam = SerialPort.PARITY_SPACE;
                 break;
             default:
-                write(FUNCTION_NAME, "Incorrect serial argument", true);
+                write(FUNCTION_NAME, I18N.get(this, "serial.arg.incorrect"), true);
                 return false;
         }
 
@@ -646,7 +656,7 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
             if (com != null) {
                 com.close();
             }
-            write(FUNCTION_NAME, "Serial is not supported", true);
+            write(FUNCTION_NAME, I18N.get(this, "serial.unsupported"), true);
             return false;
         }
         port_ = (SerialPort) com;
@@ -706,7 +716,7 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      */
     public Boolean setCharset(String charsetName) {
         if ((charsetName == null) || charsetName.trim().isEmpty()) {
-            write(FUNCTION_NAME, "Incorrect charset name", true);
+            write(FUNCTION_NAME, I18N.get(this, "serial.charset.incorrect"), true);
             return false;
         }
         try {
@@ -733,7 +743,7 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
      */
     public Boolean setNewLineCharacter(String nl) {
         if ((nl == null) || nl.isEmpty()) {
-            write(FUNCTION_NAME, "Incorrect new line character", true);
+            write(FUNCTION_NAME, I18N.get(this, "serial.newLine.incorrect"), true);
             return false;
         }
         newLineCharacter_ = nl;
@@ -833,7 +843,7 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
             return false;
         }
         if ((parsed == null) || !parsed.isJsonArray()) {
-            write(FUNCTION_NAME, "Incorrect byte array argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "serial.byteArray.incorrect"), true);
             return false;
         }
         JsonArray array = parsed.getAsJsonArray();
@@ -841,12 +851,12 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
         for (int i = 0; i < array.size(); i++) {
             JsonElement el = array.get(i);
             if ((el == null) || !el.isJsonPrimitive() || !el.getAsJsonPrimitive().isNumber()) {
-                write(FUNCTION_NAME, "Incorrect byte value at index " + i, true);
+                write(FUNCTION_NAME, I18N.get(this, "serial.byteValue.incorrect", i), true);
                 return false;
             }
             double d = el.getAsDouble();
             if (!Double.isFinite(d) || (d != Math.rint(d)) || (d < 0) || (d > 255)) {
-                write(FUNCTION_NAME, "Byte value out of range (0..255) at index " + i, true);
+                write(FUNCTION_NAME, I18N.get(this, "serial.byteValue.outOfRange", i), true);
                 return false;
             }
             bytes[i] = (byte) ((int) d);
@@ -908,7 +918,7 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
             }
         }
         if ((cleaned.length() == 0) || ((cleaned.length() % 2) != 0)) {
-            write(FUNCTION_NAME, "Incorrect hex argument", true);
+            write(FUNCTION_NAME, I18N.get(this, "serial.hex.incorrect"), true);
             return false;
         }
         byte[] bytes = new byte[cleaned.length() / 2];
@@ -916,7 +926,7 @@ public class Serial extends PluginSupport implements SerialPortEventListener {
             int hi = Character.digit(cleaned.charAt(i * 2), 16);
             int lo = Character.digit(cleaned.charAt((i * 2) + 1), 16);
             if ((hi < 0) || (lo < 0)) {
-                write(FUNCTION_NAME, "Incorrect hex character", true);
+                write(FUNCTION_NAME, I18N.get(this, "serial.hex.charIncorrect"), true);
                 return false;
             }
             bytes[i] = (byte) ((hi << 4) | lo);

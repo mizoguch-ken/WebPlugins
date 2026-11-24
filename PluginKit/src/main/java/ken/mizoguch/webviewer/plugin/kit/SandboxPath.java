@@ -121,7 +121,7 @@ public final class SandboxPath {
         Path file = resolve(directory, page, path);
 
         if (file == null) {
-            throw new IOException("Incorrect file path [" + path + "]");
+            throw new IOException(PluginI18n.kit("kit.path.invalid", path));
         }
         return file;
     }

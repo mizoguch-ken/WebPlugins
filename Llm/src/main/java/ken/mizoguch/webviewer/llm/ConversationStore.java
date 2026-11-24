@@ -43,7 +43,7 @@ final class ConversationStore {
         int maxMessages = DEFAULT_MAX_MESSAGES;
 
         if ((configJson != null) && !configJson.trim().isEmpty()) {
-            JsonObject obj = JsonUtil.parseObject(configJson, "Session configuration");
+            JsonObject obj = JsonUtil.parseObject(configJson, LlmI18n.get("llm.ctx.sessionConfig"));
             id = normalizeOptionalId(JsonUtil.optString(obj, "id"));
             systemPrompt = JsonUtil.optString(obj, "systemPrompt");
             model = JsonUtil.optString(obj, "model");
@@ -62,9 +62,9 @@ final class ConversationStore {
     synchronized String update(String sessionId, String configJson) {
         SessionState state = requireSession(sessionId);
         if (state.inFlight_) {
-            throw new IllegalStateException("Session \"" + state.id_ + "\" has a turn in flight");
+            throw new IllegalStateException(LlmI18n.get("llm.session.turnInFlight", state.id_));
         }
-        JsonObject obj = JsonUtil.parseObject(configJson, "Session update");
+        JsonObject obj = JsonUtil.parseObject(configJson, LlmI18n.get("llm.ctx.sessionUpdate"));
         if (obj.has("systemPrompt")) {
             state.systemPrompt_ = JsonUtil.optString(obj, "systemPrompt");
         }
@@ -114,9 +114,9 @@ final class ConversationStore {
     synchronized boolean appendMessage(String sessionId, String messageJson) {
         SessionState state = requireSession(sessionId);
         if (state.inFlight_) {
-            throw new IllegalStateException("Session \"" + state.id_ + "\" has a turn in flight");
+            throw new IllegalStateException(LlmI18n.get("llm.session.turnInFlight", state.id_));
         }
-        JsonObject msg = JsonUtil.parseObject(messageJson, "Message");
+        JsonObject msg = JsonUtil.parseObject(messageJson, LlmI18n.get("llm.ctx.message"));
         validateMessage(msg, -1);
         state.messages_.add(msg.deepCopy());
         trimHistory(state);
@@ -130,7 +130,7 @@ final class ConversationStore {
             return false;
         }
         if (state.inFlight_) {
-            throw new IllegalStateException("Session \"" + state.id_ + "\" has a turn in flight");
+            throw new IllegalStateException(LlmI18n.get("llm.session.turnInFlight", state.id_));
         }
         state.messages_.clear();
         state.updatedAt_ = System.currentTimeMillis();
@@ -144,7 +144,7 @@ final class ConversationStore {
             return false;
         }
         if (state.inFlight_) {
-            throw new IllegalStateException("Session \"" + id + "\" has a turn in flight");
+            throw new IllegalStateException(LlmI18n.get("llm.session.turnInFlight", id));
         }
         sessions_.remove(id);
         return true;
@@ -162,19 +162,18 @@ final class ConversationStore {
         SessionState state = requireSession(sessionId);
         if (state.inFlight_) {
             throw new IllegalStateException(
-                    "Session \"" + state.id_ + "\" already has a request in flight");
+                    LlmI18n.get("llm.session.requestInFlight", state.id_));
         }
         boolean hasNewUser = (userText != null) && !userText.isEmpty();
         if (!hasNewUser && state.messages_.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "Session turn requires user text or existing conversation messages");
+            throw new IllegalArgumentException(LlmI18n.get("llm.session.turnInputRequired"));
         }
 
         JsonObject request = new JsonObject();
         String targetProfile = state.profile_;
 
         if ((optionsJson != null) && !optionsJson.trim().isEmpty()) {
-            JsonObject opts = JsonUtil.parseObject(optionsJson, "Session chat options");
+            JsonObject opts = JsonUtil.parseObject(optionsJson, LlmI18n.get("llm.ctx.sessionChatOptions"));
             String optProfile = JsonUtil.optString(opts, "profile");
             if ((optProfile != null) && !optProfile.trim().isEmpty()) {
                 targetProfile = optProfile.trim();
@@ -249,8 +248,9 @@ final class ConversationStore {
     }
 
     String load(Path file) throws IOException {
-        String raw = SandboxFiles.readUtf8Bounded(file, MAX_SESSION_FILE_BYTES, "Session file");
-        JsonObject root = JsonUtil.parseObject(raw, "Session file");
+        String raw = SandboxFiles.readUtf8Bounded(file, MAX_SESSION_FILE_BYTES,
+                LlmI18n.get("llm.ctx.sessionFile"));
+        JsonObject root = JsonUtil.parseObject(raw, LlmI18n.get("llm.ctx.sessionFile"));
         String id = requireValidId(JsonUtil.optString(root, "id"));
         String systemPrompt = JsonUtil.optString(root, "systemPrompt");
         String model = JsonUtil.optString(root, "model");
@@ -275,7 +275,7 @@ final class ConversationStore {
                 JsonElement el = msgArr.get(i);
                 if ((el == null) || !el.isJsonObject()) {
                     throw new IllegalArgumentException(
-                            "Session message at index " + i + " must be a JSON object");
+                            LlmI18n.get("llm.session.messageObjectAt", i));
                 }
                 JsonObject msg = el.getAsJsonObject().deepCopy();
                 validateMessage(msg, i);
@@ -287,11 +287,11 @@ final class ConversationStore {
         synchronized (this) {
             SessionState existing = sessions_.get(id);
             if ((existing != null) && existing.inFlight_) {
-                throw new IllegalStateException("Session \"" + id + "\" has a turn in flight");
+                throw new IllegalStateException(LlmI18n.get("llm.session.turnInFlight", id));
             }
             if ((existing == null) && (sessions_.size() >= MAX_SESSIONS)) {
                 throw new IllegalArgumentException(
-                        "Maximum number of active sessions reached (" + MAX_SESSIONS + ")");
+                        LlmI18n.get("llm.session.maxSessionsReached", MAX_SESSIONS));
             }
             sessions_.put(id, loaded);
             return JsonUtil.GSON.toJson(loaded.toInfoJson());
@@ -305,11 +305,11 @@ final class ConversationStore {
                 id = "session-" + (nextSeq_++);
             } while (sessions_.containsKey(id));
         } else if (sessions_.containsKey(id)) {
-            throw new IllegalArgumentException("Session already exists: " + id);
+            throw new IllegalArgumentException(LlmI18n.get("llm.session.alreadyExists", id));
         }
         if (sessions_.size() >= MAX_SESSIONS) {
             throw new IllegalArgumentException(
-                    "Maximum number of active sessions reached (" + MAX_SESSIONS + ")");
+                    LlmI18n.get("llm.session.maxSessionsReached", MAX_SESSIONS));
         }
         return id;
     }
@@ -321,7 +321,7 @@ final class ConversationStore {
         int v = value.intValue();
         if ((v < 1) || (v > MAX_MESSAGES_LIMIT)) {
             throw new IllegalArgumentException(
-                    "\"maxMessages\" must be between 1 and " + MAX_MESSAGES_LIMIT);
+                    LlmI18n.get("llm.session.maxMessagesRange", MAX_MESSAGES_LIMIT));
         }
         return v;
     }
@@ -330,7 +330,7 @@ final class ConversationStore {
         String id = requireValidId(sessionId);
         SessionState state = sessions_.get(id);
         if (state == null) {
-            throw new IllegalArgumentException("Session not found: " + id);
+            throw new IllegalArgumentException(LlmI18n.get("llm.session.notFound", id));
         }
         return state;
     }
@@ -344,12 +344,11 @@ final class ConversationStore {
 
     private static String requireValidId(String raw) {
         if ((raw == null) || raw.trim().isEmpty()) {
-            throw new IllegalArgumentException("Session ID must not be empty");
+            throw new IllegalArgumentException(LlmI18n.get("llm.session.idEmpty"));
         }
         String trimmed = raw.trim();
         if (!VALID_SESSION_ID.matcher(trimmed).matches()) {
-            throw new IllegalArgumentException(
-                    "Invalid session ID \"" + trimmed + "\": use 1..64 [A-Za-z0-9_.-] chars");
+            throw new IllegalArgumentException(LlmI18n.get("llm.session.idInvalid", trimmed));
         }
         return trimmed;
     }
@@ -357,8 +356,9 @@ final class ConversationStore {
     private static void validateMessage(JsonObject msg, int index) {
         String role = JsonUtil.optString(msg, "role");
         if ((role == null) || role.trim().isEmpty()) {
-            String prefix = (index >= 0) ? ("Message at index " + index) : "Message";
-            throw new IllegalArgumentException(prefix + " must have a non-empty \"role\"");
+            throw new IllegalArgumentException((index >= 0)
+                    ? LlmI18n.get("llm.session.messageRoleAt", index)
+                    : LlmI18n.get("llm.session.messageRole"));
         }
     }
 

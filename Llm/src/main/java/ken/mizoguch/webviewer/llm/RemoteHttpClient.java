@@ -76,7 +76,7 @@ final class RemoteHttpClient implements AutoCloseable {
     RemoteExecutionResult execute(RemoteConfig config, String endpoint, String requestInput,
             RemoteListener listener, CancellationToken cancel) {
         if (config == null) {
-            throw LlmRemoteException.config("Remote endpoint is not configured");
+            throw LlmRemoteException.config(LlmI18n.get("llm.profile.notConfigured"));
         }
         CancellationToken token = (cancel == null) ? CancellationToken.NONE : cancel;
         if (token.isCancelled()) {
@@ -93,19 +93,18 @@ final class RemoteHttpClient implements AutoCloseable {
                     .GET();
         } else {
             if ((requestInput == null) || requestInput.trim().isEmpty()) {
-                throw LlmRemoteException.config("Remote request must not be empty");
+                throw LlmRemoteException.config(LlmI18n.get("llm.remote.requestEmpty"));
             }
             if ((config.provider() == RemoteConfig.Provider.ANTHROPIC)
                     && !CHAT.equals(endpoint)) {
-                throw LlmRemoteException.config("Endpoint \"" + endpoint
-                        + "\" is not supported by Anthropic provider (use \"chat\" or \"models\")");
+                throw LlmRemoteException.config(
+                        LlmI18n.get("llm.remote.anthropicEndpointUnsupported", endpoint));
             }
 
             JsonObject body = normalizeRequest(requestInput, endpoint);
             if (!body.has("model") || body.get("model").isJsonNull()) {
                 if (config.defaultModel() == null) {
-                    throw LlmRemoteException.config(
-                            "Remote request requires \"model\" in payload or endpoint config");
+                    throw LlmRemoteException.config(LlmI18n.get("llm.http.modelRequired"));
                 }
                 body.addProperty("model", config.defaultModel());
             }
@@ -138,7 +137,7 @@ final class RemoteHttpClient implements AutoCloseable {
             case RESPONSES -> RESPONSES_PATH;
             case EMBEDDINGS -> EMBEDDINGS_PATH;
             case MODELS -> MODELS_PATH;
-            default -> throw LlmRemoteException.config("Unknown remote endpoint: " + endpoint);
+            default -> throw LlmRemoteException.config(LlmI18n.get("llm.http.unknownEndpoint", endpoint));
         };
     }
 
@@ -169,7 +168,8 @@ final class RemoteHttpClient implements AutoCloseable {
             try {
                 builder.header(config.authHeader(), value);
             } catch (IllegalArgumentException ex) {
-                throw LlmRemoteException.config("Auth header rejected: \"" + config.authHeader() + "\"");
+                throw LlmRemoteException.config(
+                        LlmI18n.get("llm.http.authHeaderRejected", config.authHeader()));
             }
         }
         if ((config.provider() == RemoteConfig.Provider.ANTHROPIC)
@@ -182,7 +182,7 @@ final class RemoteHttpClient implements AutoCloseable {
                 builder.header(header.getKey(), header.getValue());
             } catch (IllegalArgumentException ex) {
                 throw LlmRemoteException.config(
-                        "HTTP header rejected: \"" + header.getKey() + "\"");
+                        LlmI18n.get("llm.http.headerRejected", header.getKey()));
             }
         }
     }
@@ -213,8 +213,8 @@ final class RemoteHttpClient implements AutoCloseable {
                     ? lastFailure.retryAfterMillis()
                     : backoffWithJitter(attempt);
             if (listener != null) {
-                listener.onLog("Retrying remote " + endpoint + " request in " + waitMillis
-                        + " ms: " + JsonUtil.truncate(lastFailure.getMessage(), 256));
+                listener.onLog(LlmI18n.get("llm.http.retrying", endpoint, waitMillis,
+                        JsonUtil.truncate(lastFailure.getMessage(), 256)));
             }
             if (!cancel.awaitMillis(waitMillis)) {
                 throw LlmRemoteException.cancelled();
@@ -245,12 +245,12 @@ final class RemoteHttpClient implements AutoCloseable {
             }
             if (cause instanceof HttpTimeoutException) {
                 return AttemptOutcome.failure(LlmRemoteException.timeout(
-                        "Remote request timed out after " + config.timeoutSeconds() + " seconds",
+                        LlmI18n.get("llm.http.requestTimedOut", config.timeoutSeconds()),
                         cause), false);
             }
             String reason = (cause == null) ? "Unknown connection error" : cause.toString();
             return AttemptOutcome.failure(LlmRemoteException.network(
-                    "Remote request failed: " + reason, cause), false);
+                    LlmI18n.get("llm.http.requestFailed", reason), cause), false);
         } finally {
             cancel.unbindFuture(future);
         }
@@ -264,16 +264,16 @@ final class RemoteHttpClient implements AutoCloseable {
                 String errorText = "";
                 try {
                     errorText = readBoundedUtf8(errWatched, cancel, MAX_ERROR_BYTES,
-                            "error response", true);
+                            LlmI18n.get("llm.ctx.errorResponse"), true);
                     if (errWatched.isTimedOut()) {
                         return AttemptOutcome.failure(LlmRemoteException.timeout(
-                                "Remote error response timed out after " + errIdle + " seconds",
+                                LlmI18n.get("llm.http.errorResponseTimedOut", errIdle),
                                 null), false);
                     }
                 } catch (IOException ex) {
                     if (errWatched.isTimedOut()) {
                         return AttemptOutcome.failure(LlmRemoteException.timeout(
-                                "Remote error response timed out after " + errIdle + " seconds",
+                                LlmI18n.get("llm.http.errorResponseTimedOut", errIdle),
                                 ex), false);
                     }
                     if (cancel.isCancelled()) {
@@ -303,7 +303,7 @@ final class RemoteHttpClient implements AutoCloseable {
                 return AttemptOutcome.failure(LlmRemoteException.cancelled(), false);
             }
             return AttemptOutcome.failure(LlmRemoteException.network(
-                    "Error reading remote response: " + ex.getMessage(), ex), false);
+                    LlmI18n.get("llm.http.errorReadingResponse", ex.getMessage()), ex), false);
         }
     }
 
@@ -322,20 +322,20 @@ final class RemoteHttpClient implements AutoCloseable {
             } catch (IOException ex) {
                 if (watched.isTimedOut()) {
                     return AttemptOutcome.failure(LlmRemoteException.timeout(
-                            "Remote stream idle timed out after "
-                                    + config.streamIdleTimeoutSeconds() + " seconds", ex),
+                            LlmI18n.get("llm.http.streamIdleTimedOut", config.streamIdleTimeoutSeconds()),
+                            ex),
                             acc.emitted());
                 }
                 if (!cancel.isCancelled()) {
                     return AttemptOutcome.failure(LlmRemoteException.network(
-                            "Error reading SSE stream: " + ex.getMessage(), ex), acc.emitted());
+                            LlmI18n.get("llm.http.errorReadingSse", ex.getMessage()), ex), acc.emitted());
                 }
             }
 
             if (watched.isTimedOut()) {
                 return AttemptOutcome.failure(LlmRemoteException.timeout(
-                        "Remote stream idle timed out after "
-                                + config.streamIdleTimeoutSeconds() + " seconds", null),
+                        LlmI18n.get("llm.http.streamIdleTimedOut", config.streamIdleTimeoutSeconds()),
+                        null),
                         acc.emitted());
             }
             if (cancel.isCancelled()) {
@@ -346,7 +346,7 @@ final class RemoteHttpClient implements AutoCloseable {
                 return AttemptOutcome.success(JsonUtil.GSON.toJson(partial), true);
             }
             if (!acc.ended() && (listener != null)) {
-                listener.onLog("Remote SSE stream terminated before completion");
+                listener.onLog(LlmI18n.get("llm.http.streamTerminatedEarly"));
             }
             JsonObject assembled = acc.buildFinalResponse(config.defaultModel());
             return AttemptOutcome.success(JsonUtil.GSON.toJson(assembled), false);
@@ -362,18 +362,19 @@ final class RemoteHttpClient implements AutoCloseable {
         IdleTimeoutInputStream watched = new IdleTimeoutInputStream(
                 rawStream, cancel, config.streamIdleTimeoutSeconds(), watchdog_);
         try {
-            body = readBoundedUtf8(watched, cancel, MAX_RESPONSE_BYTES, "response body", false);
+            body = readBoundedUtf8(watched, cancel, MAX_RESPONSE_BYTES,
+                    LlmI18n.get("llm.ctx.responseBody"), false);
             if (watched.isTimedOut()) {
                 return AttemptOutcome.failure(LlmRemoteException.timeout(
-                        "Remote response timed out after "
-                                + config.streamIdleTimeoutSeconds() + " seconds", null),
+                        LlmI18n.get("llm.http.responseTimedOut", config.streamIdleTimeoutSeconds()),
+                        null),
                         false);
             }
         } catch (IOException ex) {
             if (watched.isTimedOut()) {
                 return AttemptOutcome.failure(LlmRemoteException.timeout(
-                        "Remote response timed out after "
-                                + config.streamIdleTimeoutSeconds() + " seconds", ex),
+                        LlmI18n.get("llm.http.responseTimedOut", config.streamIdleTimeoutSeconds()),
+                        ex),
                         false);
             }
             if (cancel.isCancelled()) {
@@ -391,8 +392,7 @@ final class RemoteHttpClient implements AutoCloseable {
             parsed = JsonParser.parseString(body);
         } catch (JsonSyntaxException ex) {
             return AttemptOutcome.failure(LlmRemoteException.parse(
-                    "Remote model returned non-JSON response: "
-                            + JsonUtil.truncate(body, 256)), false);
+                    LlmI18n.get("llm.http.nonJsonResponse", JsonUtil.truncate(body, 256))), false);
         }
         if ((parsed != null) && parsed.isJsonObject()) {
             JsonObject obj = parsed.getAsJsonObject();
@@ -434,9 +434,8 @@ final class RemoteHttpClient implements AutoCloseable {
             detail = (errorText == null) ? "" : errorText.trim();
         }
         String summary = detail.isEmpty()
-                ? ("Remote model returned HTTP " + status)
-                : ("Remote model returned HTTP " + status + " : "
-                        + JsonUtil.truncate(detail, 512));
+                ? LlmI18n.get("llm.http.httpError", status)
+                : LlmI18n.get("llm.http.httpErrorDetail", status, JsonUtil.truncate(detail, 512));
         return LlmRemoteException.http(status, summary, errorType, errorCode, retryable, retryAfter);
     }
 
@@ -500,8 +499,8 @@ final class RemoteHttpClient implements AutoCloseable {
                         }
                         break;
                     }
-                    throw LlmRemoteException.parse("Remote " + context
-                            + " exceeds maximum size of " + maxBytes + " bytes");
+                    throw LlmRemoteException.parse(
+                            LlmI18n.get("llm.http.exceedsMaxBytes", context, maxBytes));
                 }
                 buffer.write(chunk, 0, read);
                 total += read;
@@ -539,7 +538,7 @@ final class RemoteHttpClient implements AutoCloseable {
                             .build();
                 } catch (UncheckedIOException ex) {
                     throw LlmRemoteException.network(
-                            "Failed to initialize HTTP client: " + ex.getMessage(), ex.getCause());
+                            LlmI18n.get("llm.http.clientInitFailed", ex.getMessage()), ex.getCause());
                 }
                 clients_.put(key, client);
             }

@@ -258,7 +258,7 @@ public final class MemoryBank {
             double importance, String source) {
         String normContent = normalizeText(content);
         if (normContent.isEmpty()) {
-            throw new IllegalArgumentException("Instinct content must not be empty");
+            throw new IllegalArgumentException(LlmCoreI18n.get("memory.instinct.empty"));
         }
         Kind safeKind = (kind == null) ? Kind.RULE : kind;
         String safeScope = normalizeScope(scope);
@@ -298,7 +298,7 @@ public final class MemoryBank {
         ContinualConfig effective = (cfg == null) ? ContinualConfig.defaults() : cfg;
         String normContent = normalizeText(content);
         if (normContent.isEmpty()) {
-            throw new IllegalArgumentException("Working memory content must not be empty");
+            throw new IllegalArgumentException(LlmCoreI18n.get("memory.working.empty"));
         }
         String safeScope = normalizeScope(scope);
         String safeSubject = normalizeText(subject);
@@ -348,7 +348,7 @@ public final class MemoryBank {
         ContinualConfig effective = (cfg == null) ? ContinualConfig.defaults() : cfg;
         String normContent = normalizeText(content);
         if (normContent.isEmpty()) {
-            throw new IllegalArgumentException("Episodic memory content must not be empty");
+            throw new IllegalArgumentException(LlmCoreI18n.get("memory.episodic.empty"));
         }
         Kind safeKind = (kind == null) ? Kind.EXPERIENCE : kind;
         String safeScope = normalizeScope(scope);
@@ -397,7 +397,7 @@ public final class MemoryBank {
         ContinualConfig effective = (cfg == null) ? ContinualConfig.defaults() : cfg;
         String normContent = normalizeText(content);
         if (normContent.isEmpty()) {
-            throw new IllegalArgumentException("Semantic memory content must not be empty");
+            throw new IllegalArgumentException(LlmCoreI18n.get("memory.semantic.empty"));
         }
         Kind safeKind = (kind == null) ? Kind.FACT : kind;
         String safeScope = normalizeScope(scope);
